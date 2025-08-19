@@ -18,6 +18,8 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_started
+      ollama:
+        condition: service_started
     volumes:
       - ./app:/app/app
       - ./requirements.txt:/app/requirements.txt
@@ -110,31 +112,10 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 10
+      start_period: 60s
 
-  # Ollama Model Initializer (runs once to pull models)
-  ollama-init:
-    image: ollama/ollama:latest
-    container_name: ollama-init
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      - fastapi-network
-    depends_on:
-      ollama:
-        condition: service_healthy
-    command: >
-      sh -c "
-        echo 'Waiting for Ollama to be ready...' &&
-        while ! curl -f http://ollama:11434/api/tags > /dev/null 2>&1; do
-          echo 'Waiting for Ollama...'
-          sleep 5
-        done &&
-        echo 'Ollama is ready! Pulling tinyllama model...' &&
-        OLLAMA_HOST=http://ollama:11434 ollama pull tinyllama &&
-        echo 'Models pulled successfully!'
-      "
-    restart: "no"
+
 
   # Flowise Service
   # flowise:

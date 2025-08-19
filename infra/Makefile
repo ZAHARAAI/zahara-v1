@@ -20,7 +20,7 @@ help:
 # Initialize environment
 init:
 	@echo "Initializing environment..."
-	@cp .env.example ../.env.local || (echo "Creating .env.local from example..." && cp .env.example ../.env.local)
+	@if not exist ..\.env.local (copy .env.example ..\.env.local) else (echo ".env.local already exists")
 	@echo "Environment initialized! Edit ../.env.local as needed."
 
 # Start all services
@@ -67,7 +67,7 @@ build:
 test:
 	@echo "Testing API endpoints..."
 	@echo "Waiting for services to be ready..."
-	@sleep 10
+	@timeout /t 10 /nobreak > nul
 	@echo ""
 	@echo "Testing main API health endpoint:"
 	@curl -f http://localhost:8000/health/ || echo "❌ API health check failed"
@@ -82,6 +82,16 @@ test:
 		|| echo "❌ Chat completions test failed"
 	@echo ""
 	@echo "API tests completed."
+
+# Ollama model management
+pull-models:
+	@echo "Pulling Ollama models..."
+	@cd .. && docker compose exec ollama ollama pull tinyllama
+	@echo "Models pulled successfully!"
+
+list-models:
+	@echo "Available Ollama models:"
+	@cd .. && docker compose exec ollama ollama list
 
 # Development shortcuts
 dev-up: init up
