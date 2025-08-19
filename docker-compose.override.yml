@@ -1,0 +1,37 @@
+# Development overrides for docker-compose.yml
+services:
+  fastapi:
+    environment:
+      - DEBUG=true
+      - RELOAD=true
+      - DATABASE_URL=postgresql://fastapi_user:secure_password_123@postgres:5432/fastapi_db_dev
+    volumes:
+      - ./app:/app/app:rw
+      - ./requirements.txt:/app/requirements.txt:ro
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  postgres:
+    environment:
+      - POSTGRES_DB=fastapi_db_dev
+    ports:
+      - "5433:5432"  # Different port for development
+
+  redis:
+    command: redis-server --requirepass redis_password_123 --maxmemory 128mb --maxmemory-policy allkeys-lru --save ""
+
+  qdrant:
+    environment:
+      - QDRANT__LOG_LEVEL=INFO
+      - QDRANT__SERVICE__ENABLE_CORS=true
+
+  ollama:
+    environment:
+      - OLLAMA_DEBUG=1
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_ORIGINS=*
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
