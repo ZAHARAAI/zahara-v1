@@ -204,7 +204,7 @@ jobs:
         echo "DATABASE_URL=postgresql://test_user:test_password@localhost:5432/test_db" > .env.local
         echo "REDIS_URL=redis://localhost:6379" >> .env.local
         echo "SECRET_KEY=test_secret_key_for_ci" >> .env.local
-        docker-compose up -d
+        docker compose up -d
         
         # Wait for services to be ready
         timeout 300 bash -c 'until curl -f http://localhost:8000/health/all; do sleep 5; done'
@@ -232,7 +232,7 @@ jobs:
     - name: Collect logs
       if: failure()
       run: |
-        docker-compose logs > docker-compose-logs.txt
+        docker compose logs > docker-compose-logs.txt
     
     - name: Upload logs
       if: failure()
@@ -244,7 +244,7 @@ jobs:
     - name: Cleanup
       if: always()
       run: |
-        docker-compose down -v
+        docker compose down -v
 
   deploy:
     runs-on: ubuntu-latest

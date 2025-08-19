@@ -54,6 +54,7 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(vector.router)
 app.include_router(llm_router.router)
+app.include_router(llm_router.v1_router)
 app.include_router(agents.router)
 
 # Mount static files

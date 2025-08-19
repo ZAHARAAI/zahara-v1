@@ -7,6 +7,9 @@ from ..models.user import User
 
 router = APIRouter(prefix="/llm", tags=["llm"])
 
+# OpenAI-compatible router for standard endpoints
+v1_router = APIRouter(prefix="/v1", tags=["openai-compatible"])
+
 class ChatMessage(BaseModel):
     role: str
     content: str
@@ -76,3 +79,74 @@ async def get_models(
         raise HTTPException(status_code=400, detail=result["error"])
     
     return result
+
+
+# OpenAI-compatible endpoint models
+class OpenAIChatMessage(BaseModel):
+    role: str
+    content: str
+
+class OpenAIChatCompletionRequest(BaseModel):
+    model: str
+    messages: List[OpenAIChatMessage]
+    temperature: Optional[float] = 0.7
+    max_tokens: Optional[int] = None
+    stream: Optional[bool] = False
+
+@v1_router.post("/chat/completions")
+async def openai_chat_completions(request: OpenAIChatCompletionRequest):
+    """OpenAI-compatible chat completions endpoint"""
+    # Check if we have any provider keys configured
+    llm_service = LLMService()
+    
+    # If no API keys are configured and trying to use non-local models, return 501
+    if (request.model not in ["tinyllama", "llama2", "llama3", "codellama"] and 
+        not llm_service.openai_api_key and 
+        not llm_service.openrouter_api_key):
+        raise HTTPException(
+            status_code=501,
+            detail="Not implemented: No provider API keys configured for this model"
+        )
+    
+    # Convert to our internal format
+    messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
+    
+    # Determine provider based on model
+    if request.model.startswith("gpt-"):
+        provider = "openai"
+    elif request.model in ["tinyllama", "llama2", "llama3", "codellama"]:
+        provider = "local"
+    else:
+        provider = "openrouter"
+    
+    result = await llm_service.chat_completion(
+        messages=messages,
+        model=request.model,
+        provider=provider
+    )
+    
+    if "error" in result:
+        if "not configured" in result["error"]:
+            raise HTTPException(status_code=501, detail=result["error"])
+        raise HTTPException(status_code=400, detail=result["error"])
+    
+    # Return OpenAI-compatible format
+    return {
+        "id": f"chatcmpl-{hash(str(messages))}"[:28],
+        "object": "chat.completion",
+        "created": 1677652288,
+        "model": request.model,
+        "choices": [{
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": result.get("message", "")
+            },
+            "finish_reason": "stop"
+        }],
+        "usage": result.get("usage", {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+        })
+    }

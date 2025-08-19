@@ -112,6 +112,30 @@ services:
       timeout: 10s
       retries: 3
 
+  # Ollama Model Initializer (runs once to pull models)
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: ollama-init
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - fastapi-network
+    depends_on:
+      ollama:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo 'Waiting for Ollama to be ready...' &&
+        while ! curl -f http://ollama:11434/api/tags > /dev/null 2>&1; do
+          echo 'Waiting for Ollama...'
+          sleep 5
+        done &&
+        echo 'Ollama is ready! Pulling tinyllama model...' &&
+        OLLAMA_HOST=http://ollama:11434 ollama pull tinyllama &&
+        echo 'Models pulled successfully!'
+      "
+    restart: "no"
+
   # Flowise Service
   # flowise:
   #   image: flowiseai/flowise:latest
