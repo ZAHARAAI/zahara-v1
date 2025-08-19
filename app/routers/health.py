@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from ..database import get_db, get_redis, get_qdrant
 from ..services.vector_service import VectorService
 from ..services.llm_service import LLMService
@@ -16,7 +17,7 @@ async def basic_health():
 async def database_health(db: Session = Depends(get_db)):
     """Check database connectivity"""
     try:
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         return {"status": "healthy", "service": "postgresql"}
     except Exception as e:
         return {"status": "unhealthy", "service": "postgresql", "error": str(e)}
@@ -52,7 +53,7 @@ async def full_health_check(db: Session = Depends(get_db)):
     
     # Check database
     try:
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         results["database"] = {"status": "healthy", "service": "postgresql"}
     except Exception as e:
         results["database"] = {"status": "unhealthy", "service": "postgresql", "error": str(e)}

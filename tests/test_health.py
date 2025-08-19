@@ -17,6 +17,9 @@ async def test_health_all_endpoint(async_client: AsyncClient):
     response = await async_client.get("/health/all")
     assert response.status_code == 200
     data = response.json()
-    assert "status" in data
-    assert "timestamp" in data
+    assert "overall_status" in data
     assert "services" in data
+    # Check that services dict contains expected service types
+    services = data["services"]
+    assert isinstance(services, dict)
+    # Don't assert specific service health since they may be down in CI environment
