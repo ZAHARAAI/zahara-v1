@@ -14,7 +14,13 @@ jobs:
         python-version: "3.11"
     
     - name: Install dependencies
-      run: pip install ruff pytest pytest-asyncio httpx requests
+      run: |
+        # Install test dependencies
+        pip install ruff pytest pytest-asyncio httpx requests
+        # Install API service dependencies for testing
+        pip install -r services/api/requirements.txt
+        # Install Router service dependencies for testing
+        pip install -r services/router/requirements.txt
     
     - name: Lint with ruff
       run: ruff check .
