@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # Redis Settings
     redis_host: str = "redis"
     redis_port: int = 6379
-    redis_password: str = "redis_password_123"
+    redis_password: Optional[str] = None
     redis_url: str = ""
 
     # Qdrant Settings
@@ -58,7 +58,10 @@ class Settings(BaseSettings):
         if not self.database_url:
             self.database_url = f"postgresql://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         if not self.redis_url:
-            self.redis_url = f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}"
+            if self.redis_password:
+                self.redis_url = f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}"
+            else:
+                self.redis_url = f"redis://{self.redis_host}:{self.redis_port}"
         if not self.qdrant_url:
             self.qdrant_url = f"http://{self.qdrant_host}:{self.qdrant_port}"
 
