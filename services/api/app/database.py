@@ -1,8 +1,9 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
-from .config import settings
 import redis
 from qdrant_client import QdrantClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+
+from .config import settings
 
 # PostgreSQL Database
 engine = create_engine(settings.database_url)

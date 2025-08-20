@@ -1,10 +1,11 @@
+
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 from sqlalchemy import text
-from ..database import get_db, get_redis, get_qdrant
-from ..services.vector_service import VectorService
+from sqlalchemy.orm import Session
+
+from ..database import get_db, get_redis
 from ..services.llm_service import LLMService
-import asyncio
+from ..services.vector_service import VectorService
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -50,14 +51,14 @@ async def llm_health():
 async def full_health_check(db: Session = Depends(get_db)):
     """Comprehensive health check for all services"""
     results = {}
-    
+
     # Check database
     try:
         db.execute(text("SELECT 1"))
         results["database"] = {"status": "healthy", "service": "postgresql"}
     except Exception as e:
         results["database"] = {"status": "unhealthy", "service": "postgresql", "error": str(e)}
-    
+
     # Check Redis
     try:
         redis_client = get_redis()
@@ -65,23 +66,23 @@ async def full_health_check(db: Session = Depends(get_db)):
         results["redis"] = {"status": "healthy", "service": "redis"}
     except Exception as e:
         results["redis"] = {"status": "unhealthy", "service": "redis", "error": str(e)}
-    
+
     # Check Qdrant
     vector_service = VectorService()
     qdrant_result = await vector_service.health_check()
     results["qdrant"] = {"service": "qdrant", **qdrant_result}
-    
+
     # Check LLM
     llm_service = LLMService()
     llm_result = await llm_service.health_check()
     results["llm"] = {"service": "llm", **llm_result}
-    
+
     # Overall status
     all_healthy = all(
-        result.get("status") == "healthy" 
+        result.get("status") == "healthy"
         for result in results.values()
     )
-    
+
     return {
         "overall_status": "healthy" if all_healthy else "degraded",
         "services": results

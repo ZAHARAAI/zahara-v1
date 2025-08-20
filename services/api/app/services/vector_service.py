@@ -1,14 +1,15 @@
-from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
-from typing import List, Dict, Any, Optional
 import uuid
+from typing import Any, Dict, List, Optional
+
+from qdrant_client.models import Distance, PointStruct, VectorParams
+
 from ..database import get_qdrant
-from ..config import settings
+
 
 class VectorService:
     def __init__(self):
         self.client = get_qdrant()
-    
+
     async def create_collection(self, collection_name: str, vector_size: int = 384):
         """Create a new collection in Qdrant"""
         try:
@@ -19,19 +20,19 @@ class VectorService:
             return {"status": "success", "message": f"Collection '{collection_name}' created"}
         except Exception as e:
             return {"status": "error", "message": str(e)}
-    
+
     async def list_collections(self):
         """List all collections"""
         try:
             collections = self.client.get_collections()
             return {
-                "status": "success", 
+                "status": "success",
                 "collections": [col.name for col in collections.collections]
             }
         except Exception as e:
             return {"status": "error", "message": str(e)}
-    
-    async def add_vectors(self, collection_name: str, vectors: List[List[float]], 
+
+    async def add_vectors(self, collection_name: str, vectors: List[List[float]],
                          payloads: Optional[List[Dict[str, Any]]] = None):
         """Add vectors to a collection"""
         try:
@@ -40,13 +41,13 @@ class VectorService:
                 point_id = str(uuid.uuid4())
                 payload = payloads[i] if payloads and i < len(payloads) else {}
                 points.append(PointStruct(id=point_id, vector=vector, payload=payload))
-            
+
             self.client.upsert(collection_name=collection_name, points=points)
             return {"status": "success", "message": f"Added {len(vectors)} vectors"}
         except Exception as e:
             return {"status": "error", "message": str(e)}
-    
-    async def search_vectors(self, collection_name: str, query_vector: List[float], 
+
+    async def search_vectors(self, collection_name: str, query_vector: List[float],
                            limit: int = 10, score_threshold: float = 0.0):
         """Search for similar vectors"""
         try:
@@ -56,7 +57,7 @@ class VectorService:
                 limit=limit,
                 score_threshold=score_threshold
             )
-            
+
             return {
                 "status": "success",
                 "results": [
@@ -70,7 +71,7 @@ class VectorService:
             }
         except Exception as e:
             return {"status": "error", "message": str(e)}
-    
+
     async def health_check(self):
         """Check if Qdrant is healthy"""
         try:

@@ -17,27 +17,32 @@ This repo hosts the backend sprint. Work via **PRs only** (no direct pushes).
 ## Quick Start
 
 ```bash
-# Initialize environment and start services
+# Default (no dev pages)
 make -C infra init && make -C infra up
 
-# Test API health endpoints
-curl localhost:8000/health
-curl localhost:8000/health/all
+# Check service status  
+docker compose -f infra/docker-compose.yml ps
 
-# Test chat completions endpoint (returns 501 when no API keys configured)
-curl -X POST localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"gpt-3.5-turbo","messages":[{"role":"user","content":"Hello"}]}'
+# Test health endpoints
+curl http://localhost:8000/health/
+curl http://localhost:7000/health
+
+# With dev pages enabled
+docker compose -f infra/docker-compose.yml -f infra/docker-compose.dev.yml --profile dev up -d
+curl http://localhost:8000/dev/test
 ```
 
 ## Architecture
 
-### Services
-- **API**: FastAPI application (port 8000)
-- **PostgreSQL**: User data and application state (port 5432) 
-- **Redis**: Caching and rate limiting (port 6379)
-- **Qdrant**: Vector database for embeddings (port 6333)
-- **Ollama**: Local LLM service (port 11434)
+### Core Services (Default Stack)
+- **API**: FastAPI application (port 8000) - `/services/api`
+- **Router**: LLM routing service (port 7000) - `/services/router`  
+- **PostgreSQL**: Database (port 5432)
+- **Redis**: Cache and rate limiting (port 6379)
+- **Qdrant**: Vector database (port 6333)
+
+### Development Services (Profile: `dev`)
+- **Ollama**: Local LLM service (port 11434) - `docker compose --profile dev up`
 
 ### API Endpoints
 
@@ -72,13 +77,11 @@ cp infra/.env.example .env.local
 ```bash
 # Infrastructure commands
 make -C infra help         # Show all available commands
-make -C infra init         # Initialize environment  
+make -C infra init         # Pull Docker images
 make -C infra up           # Start all services
 make -C infra down         # Stop all services
 make -C infra logs         # Show logs
 make -C infra ps           # Show service status
-make -C infra test         # Run API health checks
-make -C infra clean        # Clean up volumes
 ```
 
 ### Testing
@@ -100,6 +103,9 @@ $ make -C infra ps
 ```bash
 $ curl localhost:8000/health/
 {"status":"healthy","message":"FastAPI backend is running"}
+
+$ curl localhost:7000/health
+{"status":"healthy","service":"router"}
 
 $ curl localhost:8000/health/all  
 {"overall_status":"healthy","services":{"database":{"status":"healthy"},...}}

@@ -50,46 +50,63 @@ A comprehensive, production-ready FastAPI backend system with PostgreSQL, Redis,
 
 ## 🏗️ Architecture
 
+### Core Services (Default Stack)
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   FastAPI App   │    │   PostgreSQL    │    │     Redis       │
+│   API Service   │    │   PostgreSQL    │    │     Redis       │
 │   Port: 8000    │◄──►│   Port: 5432    │    │   Port: 6379    │
 │                 │    │                 │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
          │                                              │
          ▼                                              ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│     Qdrant      │    │     Ollama      │    │    Flowise      │
-│   Port: 6333    │    │   Port: 11434   │    │   Port: 3000    │
-│  Vector Store   │    │   Local LLM     │    │   (Optional)    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+┌─────────────────┐    ┌─────────────────┐
+│     Qdrant      │    │  Router Service │
+│   Port: 6333    │    │   Port: 7000    │
+│  Vector Store   │    │   LLM Router    │
+└─────────────────┘    └─────────────────┘
+```
+
+### Development Services (Profile: `dev`)
+```
+┌─────────────────┐
+│     Ollama      │
+│   Port: 11434   │
+│   Local LLM     │
+│  (Dev Profile)  │
+└─────────────────┘
 ```
 
 ## 🚀 Quick Start
 
-Get the entire system running in 3 commands:
+Get the entire system running with these commands:
 
 ```bash
 # 1. Clone and navigate
 git clone <repository-url>
-cd fastapi-backend
+cd zahara-v1
 
-# 2. Start all services
-make quick-start
+# 2. Start all services (default stack)
+make -C infra init && make -C infra up
 
-# 3. Access the dashboard
+# 3. Check service status
+make -C infra ps
+
+# 4. Test health endpoints
+curl http://localhost:8000/health/
+curl http://localhost:7000/health
+
+# 5. Access the dashboard (if available)
 open http://localhost:8000/static/index.html
 ```
 
-That's it! The system will:
-- Build and start all containers
-- Install lightweight LLM models (TinyLlama, Phi-3-mini)
-- Set up the database with default admin user
-- Be ready for development and testing
+### Development Mode (with dev pages)
+```bash
+# Start with dev pages enabled
+docker compose -f infra/docker-compose.yml -f infra/docker-compose.dev.yml --profile dev up -d
 
-### Default Credentials
-- **Username:** `admin`
-- **Password:** `admin123`
+# Test dev endpoint
+curl http://localhost:8000/dev/test
+```
 
 ## 🔧 Services
 
@@ -97,17 +114,17 @@ That's it! The system will:
 
 | Service | Port | URL | Purpose |
 |---------|------|-----|---------|
-| FastAPI | 8000 | http://localhost:8000 | Main API |
+| API Service | 8000 | http://localhost:8000 | Main FastAPI application |
+| Router Service | 7000 | http://localhost:7000 | LLM routing service |
 | Dashboard | 8000 | http://localhost:8000/static/index.html | Web Interface |
 | API Docs | 8000 | http://localhost:8000/docs | Swagger UI |
 | ReDoc | 8000 | http://localhost:8000/redoc | Alternative Docs |
 | PostgreSQL | 5432 | localhost:5432 | Database |
 | Redis | 6379 | localhost:6379 | Cache & Rate Limiting |
 | Qdrant | 6333 | http://localhost:6333 | Vector Database |
-| Ollama | 11434 | http://localhost:11434 | Local LLM |
-| Flowise* | 3000 | http://localhost:3000 | AI Workflows |
+| Ollama* | 11434 | http://localhost:11434 | Local LLM (dev profile) |
 
-*Flowise is disabled by default
+*Ollama is only available with dev profile
 
 ### Service Details
 
@@ -275,91 +292,71 @@ GET /agents/list
 ### Available Make Commands
 
 ```bash
-# Service Management
-make up              # Start all services
-make down            # Stop all services  
-make build           # Build all containers
-make rebuild         # Rebuild and restart
-make logs            # View all logs
-make status          # Show container status
-
-# Development
-make shell           # Access FastAPI container
-make shell-db        # Access PostgreSQL shell
-make shell-redis     # Access Redis CLI
-make dev-setup       # Setup development environment
-
-# Database
-make db-migrate      # Run database migrations
-make db-reset        # Reset database (WARNING: deletes data)
-make backup          # Backup database
-make restore BACKUP=file.sql  # Restore from backup
-
-# LLM Management
-make install-models  # Install TinyLlama and Phi-3-mini
-make list-models     # List installed models
+# Infrastructure Management (run from project root)
+make -C infra help   # Show all available commands
+make -C infra init   # Pull Docker images
+make -C infra up     # Start all services
+make -C infra down   # Stop all services
+make -C infra logs   # View all logs (follow mode)
+make -C infra ps     # Show container status
 
 # Testing & Quality
-make test            # Run tests
-make test-coverage   # Run tests with coverage
-make lint            # Run linting
-make format          # Format code
-
-# Monitoring
-make health          # Check service health
-make stats           # Show resource usage
-
-# Cleanup
-make clean           # Clean containers and volumes
-make clean-all       # Clean everything including images
-
-# Flowise
-make enable-flowise  # Enable Flowise service
-make disable-flowise # Disable Flowise service
+pytest tests/ -v     # Run tests
+ruff check .         # Run linting
 ```
 
 ### Development Workflow
 
 1. **Setup Development Environment**
    ```bash
-   make dev-setup
+   # Start the infrastructure
+   make -C infra init && make -C infra up
    ```
 
 2. **Make Code Changes**
-   - Edit files in `app/` directory
+   - Edit files in `services/api/app/` directory for API service
+   - Edit files in `services/router/app/` directory for Router service
    - Changes auto-reload in development mode
 
 3. **Test Changes**
    ```bash
-   make test
-   make lint
+   pytest tests/ -v     # Run tests
+   ruff check .         # Run linting
    ```
 
 4. **Check Service Health**
    ```bash
-   make health
+   curl http://localhost:8000/health/  # API health
+   curl http://localhost:7000/health   # Router health
+   make -C infra ps                    # Container status
    ```
 
 5. **View Logs**
    ```bash
-   make logs-api  # FastAPI logs only
-   make logs      # All services
+   make -C infra logs   # All services logs
    ```
 
 ### Adding New Features
 
-1. **Create new router** in `app/routers/`
-2. **Add models** in `app/models/`
-3. **Create services** in `app/services/`
-4. **Update main.py** to include new router
-5. **Add tests** and run `make test`
+1. **For API Service:**
+   - Create new router in `services/api/app/routers/`
+   - Add models in `services/api/app/models/`
+   - Create services in `services/api/app/services/`
+   - Update `services/api/app/main.py` to include new router
+
+2. **For Router Service:**
+   - Edit `services/router/app/main.py` directly
+
+3. **Testing:**
+   - Add tests in `tests/` directory
+   - Run `pytest tests/ -v` to verify
 
 ## ⚙️ Environment Configuration
 
 ### Environment Files
 
-- **`.env.example`** - Template with all variables
-- **`.env.local`** - Local development settings (auto-created)
+- **`infra/.env.example`** - Template with all variables (no secrets)
+- **`.env.local`** - Local development settings (create manually, gitignored)
 - **`.env.production`** - Production settings (create manually)
 
 ### Key Configuration Variables
@@ -405,36 +402,21 @@ RATE_LIMIT_WINDOW=60
 - **Configure CORS** appropriately
 - **Use environment-specific** `.env` files
 
-## 🌊 Enabling Flowise
+## 🔄 Development Modes
 
-Flowise is an AI workflow builder that's disabled by default. To enable:
+### Default Mode (Production-Like)
+- Core services only: API, Router, PostgreSQL, Redis, Qdrant
+- No dev endpoints available
+- Suitable for production-like testing
 
-### Step 1: Enable the Service
+### Development Mode
+- All core services plus development features
+- Dev endpoints enabled (`/dev/test`, `/dev/health`)
+- Additional debugging and development tools
+
 ```bash
-make enable-flowise
-```
-
-### Step 2: Access Flowise
-- URL: http://localhost:3000
-- Username: `admin`
-- Password: `flowise_admin_123`
-
-### Step 3: Configure Database Connection
-In Flowise settings, use:
-- **Host:** `postgres`
-- **Port:** `5432`
-- **Database:** `fastapi_db`
-- **Username:** `fastapi_user`
-- **Password:** `secure_password_123`
-
-### Step 4: Connect to Local LLM
-Add Ollama connection:
-- **Base URL:** `http://ollama:11434`
-- **Model:** `tinyllama` or `phi3:mini`
-
-### Disable Flowise
-```bash
-make disable-flowise
+# Enable development mode
+docker compose -f infra/docker-compose.yml -f infra/docker-compose.dev.yml --profile dev up -d
 ```
 
 ## 🚀 Production Deployment
@@ -455,21 +437,22 @@ make disable-flowise
 
 ```bash
 # Build for production
-make prod-build
+docker build -t zahara-api ./services/api
+docker build -t zahara-router ./services/router
 
-# Start in production mode
-make prod-up
+# Start in production mode  
+make -C infra up
 
 # Production environment file
-cp .env.example .env.production
+cp infra/.env.example .env.production
 # Edit .env.production with production values
 ```
 
 ### Docker Compose Production
 
 ```bash
-# Use production compose file
-docker-compose -f docker-compose.yml up -d
+# Use production compose file with environment override
+docker compose -f infra/docker-compose.yml up -d
 ```
 
 ### Environment Variables for Production
@@ -495,37 +478,39 @@ SENTRY_DSN=<your-sentry-dsn>
 #### Services Won't Start
 ```bash
 # Check container status
-make status
+make -C infra ps
 
 # View logs
-make logs
+make -C infra logs
 
 # Rebuild containers
-make rebuild
+make -C infra down && make -C infra up
 ```
 
 #### Database Connection Issues
 ```bash
 # Check database health
-curl http://localhost:8000/health/database
+curl http://localhost:8000/health/all
 
 # Access database shell
-make shell-db
+docker exec -it zahara-postgres psql -U postgres -d postgres
 
-# Reset database
-make db-reset
+# Restart database
+make -C infra down && make -C infra up
 ```
 
 #### LLM Models Not Working
 ```bash
-# Check Ollama status
-make logs-llm
+# Check if Ollama is running (dev profile only)
+docker compose -f infra/docker-compose.yml -f infra/docker-compose.dev.yml --profile dev ps
 
-# Reinstall models
-make install-models
+# Check router service logs
+docker logs zahara-router
 
-# List available models
-make list-models
+# Test chat completions endpoint
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-3.5-turbo","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
 #### Port Conflicts
@@ -577,18 +562,20 @@ make rebuild
 #### Access Container Logs
 ```bash
 # All services
-make logs
+make -C infra logs
 
 # Specific service
-make logs-api
-make logs-db
-make logs-redis
+docker logs zahara-api
+docker logs zahara-router
+docker logs zahara-postgres
+docker logs zahara-redis
+docker logs zahara-qdrant
 ```
 
 #### Database Debugging
 ```bash
 # Access PostgreSQL
-make shell-db
+docker exec -it zahara-postgres psql -U postgres -d postgres
 
 # Check tables
 \dt
@@ -610,7 +597,7 @@ SELECT * FROM pg_stat_activity;
 
 3. **Set up development environment**
    ```bash
-   make dev-setup
+   make -C infra init && make -C infra up
    ```
 
 4. **Create feature branch**
@@ -620,8 +607,8 @@ SELECT * FROM pg_stat_activity;
 
 5. **Make changes and test**
    ```bash
-   make test
-   make lint
+   pytest tests/ -v    # Run tests
+   ruff check .        # Run linting
    ```
 
 6. **Submit pull request**

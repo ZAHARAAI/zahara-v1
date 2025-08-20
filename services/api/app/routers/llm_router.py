@@ -1,9 +1,11 @@
+from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
-from ..services.llm_service import LLMService
+
 from ..middleware.auth import get_current_user
 from ..models.user import User
+from ..services.llm_service import LLMService
 
 router = APIRouter(prefix="/llm", tags=["llm"])
 
@@ -31,19 +33,19 @@ async def chat_completion(
 ):
     """Generate chat completion"""
     llm_service = LLMService()
-    
+
     # Convert Pydantic models to dicts
     messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
-    
+
     result = await llm_service.chat_completion(
         messages=messages,
         model=request.model,
         provider=request.provider
     )
-    
+
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
-    
+
     return result
 
 @router.post("/generate")
@@ -53,16 +55,16 @@ async def generate_text(
 ):
     """Generate text completion"""
     llm_service = LLMService()
-    
+
     result = await llm_service.generate_text(
         prompt=request.prompt,
         model=request.model,
         provider=request.provider
     )
-    
+
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
-    
+
     return result
 
 @router.get("/models")
@@ -72,12 +74,12 @@ async def get_models(
 ):
     """Get available models for a provider"""
     llm_service = LLMService()
-    
+
     result = await llm_service.get_available_models(provider=provider)
-    
+
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
-    
+
     return result
 
 
@@ -98,19 +100,22 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
     """OpenAI-compatible chat completions endpoint"""
     # Check if we have any provider keys configured
     llm_service = LLMService()
-    
-    # If no API keys are configured and trying to use non-local models, return 501
-    if (request.model not in ["tinyllama", "llama2", "llama3", "codellama"] and 
-        not llm_service.openai_api_key and 
-        not llm_service.openrouter_api_key):
+
+    # If no valid API keys are configured and trying to use non-local models, return 501
+    def is_valid_api_key(key):
+        return key and key not in [None, "", "your_openai_key_here", "your_openrouter_key_here"]
+
+    if (request.model not in ["tinyllama", "llama2", "llama3", "codellama"] and
+        not is_valid_api_key(llm_service.openai_api_key) and
+        not is_valid_api_key(llm_service.openrouter_api_key)):
         raise HTTPException(
             status_code=501,
             detail="Not implemented: No provider API keys configured for this model"
         )
-    
+
     # Convert to our internal format
     messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
-    
+
     # Determine provider based on model
     if request.model.startswith("gpt-"):
         provider = "openai"
@@ -118,18 +123,18 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
         provider = "local"
     else:
         provider = "openrouter"
-    
+
     result = await llm_service.chat_completion(
         messages=messages,
         model=request.model,
         provider=provider
     )
-    
+
     if "error" in result:
         if "not configured" in result["error"]:
             raise HTTPException(status_code=501, detail=result["error"])
         raise HTTPException(status_code=400, detail=result["error"])
-    
+
     # Return OpenAI-compatible format
     return {
         "id": f"chatcmpl-{hash(str(messages))}"[:28],

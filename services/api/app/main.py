@@ -1,14 +1,15 @@
-from fastapi import FastAPI, Request
-from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import uvicorn
 import os
 
+import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+
 from .config import settings
-from .database import engine, Base
-from .routers import health, auth, vector, llm_router, agents
+from .database import Base, engine
 from .middleware.rate_limit import RateLimitMiddleware
+from .routers import agents, auth, health, llm_router, vector
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -56,6 +57,11 @@ app.include_router(vector.router)
 app.include_router(llm_router.router)
 app.include_router(llm_router.v1_router)
 app.include_router(agents.router)
+
+# Include dev router only if dev pages are enabled
+if os.getenv("ENABLE_DEV_PAGES") == "1":
+    from .routers import dev
+    app.include_router(dev.router)
 
 # Mount static files
 static_path = os.path.join(os.path.dirname(__file__), "static")

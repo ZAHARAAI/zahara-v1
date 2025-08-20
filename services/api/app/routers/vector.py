@@ -1,9 +1,11 @@
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
-from ..services.vector_service import VectorService
+
 from ..middleware.auth import get_current_user
 from ..models.user import User
+from ..services.vector_service import VectorService
 
 router = APIRouter(prefix="/vector", tags=["vector"])
 
@@ -30,10 +32,10 @@ async def create_collection(
     """Create a new vector collection"""
     vector_service = VectorService()
     result = await vector_service.create_collection(request.name, request.vector_size)
-    
+
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
-    
+
     return result
 
 @router.get("/collections")
@@ -41,10 +43,10 @@ async def list_collections(current_user: User = Depends(get_current_user)):
     """List all vector collections"""
     vector_service = VectorService()
     result = await vector_service.list_collections()
-    
+
     if result["status"] == "error":
         raise HTTPException(status_code=500, detail=result["message"])
-    
+
     return result
 
 @router.post("/embed")
@@ -59,10 +61,10 @@ async def add_vectors(
         request.vectors,
         request.payloads
     )
-    
+
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
-    
+
     return result
 
 @router.post("/search")
@@ -78,8 +80,8 @@ async def search_vectors(
         request.limit,
         request.score_threshold
     )
-    
+
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
-    
+
     return result
