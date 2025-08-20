@@ -14,27 +14,34 @@ jobs:
         python-version: "3.11"
     
     - name: Install dependencies
-      run: pip install ruff pytest requests
+      run: pip install ruff pytest pytest-asyncio httpx requests
     
     - name: Lint with ruff
       run: ruff check .
     
     - name: Build Docker images
-      run: |
-        docker build -t api ./services/api
-        docker build -t router ./services/router
+      run: make -C infra build
     
     - name: Start services for testing
       run: |
-        docker compose -f infra/docker-compose.yml up -d
+        # Use our Makefile commands for consistency
+        echo "Initializing infrastructure..."
+        make -C infra init
         
-        # Wait for services to be ready
-        timeout 60s bash -c 'until curl -sf http://localhost:8000/health; do sleep 2; done'
-        timeout 60s bash -c 'until curl -sf http://localhost:7000/health; do sleep 2; done'
+        echo "Starting all services..."
+        make -C infra up
+        
+        echo "Waiting for services to be ready..."
+        timeout 90s bash -c 'until curl -sf http://localhost:8000/health/; do echo "Waiting for API..."; sleep 5; done'
+        timeout 30s bash -c 'until curl -sf http://localhost:7000/health; do echo "Waiting for Router..."; sleep 2; done'
+        
+        echo "All services started successfully!"
+        make -C infra ps
+        make -C infra test
     
     - name: Run tests
       run: pytest -q
     
     - name: Cleanup
       if: always()
-      run: docker compose -f infra/docker-compose.yml down -v
+      run: make -C infra clean

@@ -295,10 +295,13 @@ GET /agents/list
 # Infrastructure Management (run from project root)
 make -C infra help   # Show all available commands
 make -C infra init   # Pull Docker images
+make -C infra build  # Build all Docker images
 make -C infra up     # Start all services
 make -C infra down   # Stop all services
 make -C infra logs   # View all logs (follow mode)
 make -C infra ps     # Show container status
+make -C infra test   # Run health checks
+make -C infra clean  # Stop and remove containers with volumes
 
 # Testing & Quality
 pytest tests/ -v     # Run tests

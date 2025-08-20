@@ -18,11 +18,11 @@ services:
       redis:
         condition: service_healthy
       qdrant:
-        condition: service_healthy
+        condition: service_started
     networks:
       - app-network
     restart: unless-stopped
-    healthcheck: { test: ["CMD","curl","-sf","http://localhost:8000/health"], interval: 10s, timeout: 3s, retries: 3 }
+    healthcheck: { test: ["CMD","curl","-sf","http://localhost:8000/health/"], interval: 10s, timeout: 3s, retries: 3 }
 
   # Router Service  
   router:
@@ -81,7 +81,7 @@ services:
     networks:
       - app-network
     restart: unless-stopped
-    healthcheck: { test: ["CMD","curl","-sf","http://localhost:6333/healthz"], interval: 10s, timeout: 3s, retries: 5 }
+    healthcheck: { test: ["CMD","curl","-sf","http://localhost:6333/"], interval: 10s, timeout: 5s, retries: 10, start_period: 20s }
 
   # Local LLM Service (Ollama) - ollama profile only
   ollama:
