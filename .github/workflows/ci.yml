@@ -1,0 +1,53 @@
+name: ci
+
+on: [pull_request]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    
+    - name: Install dependencies
+      run: |
+        # Install test dependencies
+        pip install ruff pytest pytest-asyncio httpx requests
+        # Install API service dependencies for testing
+        pip install -r services/api/requirements.txt
+        # Install Router service dependencies for testing
+        pip install -r services/router/requirements.txt
+    
+    - name: Lint with ruff
+      run: ruff check .
+    
+    - name: Build Docker images
+      run: make -C infra build
+    
+    - name: Start services for testing
+      run: |
+        # Use our Makefile commands for consistency
+        echo "Initializing infrastructure..."
+        make -C infra init
+        
+        echo "Starting all services..."
+        make -C infra up
+        
+        echo "Waiting for services to be ready..."
+        timeout 90s bash -c 'until curl -sf http://localhost:8000/health/; do echo "Waiting for API..."; sleep 5; done'
+        timeout 30s bash -c 'until curl -sf http://localhost:7000/health; do echo "Waiting for Router..."; sleep 2; done'
+        
+        echo "All services started successfully!"
+        make -C infra ps
+        make -C infra test
+    
+    - name: Run tests
+      run: pytest -q
+    
+    - name: Cleanup
+      if: always()
+      run: make -C infra clean
