@@ -1,5 +1,15 @@
 FROM python:3.11-slim
 
+# Docker labels for branding
+LABEL org.opencontainers.image.title="Zahara.ai API Service"
+LABEL org.opencontainers.image.description="Zahara.ai - Intelligent AI Platform API Service"
+LABEL org.opencontainers.image.vendor="Zahara.ai"
+LABEL org.opencontainers.image.url="https://zahara.ai"
+LABEL org.opencontainers.image.source="https://github.com/zahara-ai/zahara-v1"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL zahara.ai.service="api"
+LABEL zahara.ai.component="backend"
+
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1

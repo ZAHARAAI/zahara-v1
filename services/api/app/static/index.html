@@ -9,7 +9,7 @@
 <body>
     <div class="container">
         <header>
-            <h1>🚀 FastAPI Backend Dashboard</h1>
+            <h1>🤖 Zahara.ai Platform - Dev Mode</h1>
             <div class="theme-toggle">
                 <button id="theme-toggle">🌙</button>
             </div>
@@ -44,18 +44,46 @@
                 <button id="refresh-status" class="btn btn-primary">Refresh Status</button>
             </section>
 
-            <!-- LLM Chat Interface -->
+            <!-- Agent Testing Interface -->
             <section class="card">
-                <h2>💬 LLM Chat Interface</h2>
-                <div class="chat-container">
-                    <div class="chat-messages" id="chat-messages"></div>
-                    <div class="chat-input-container">
-                        <select id="model-select" class="form-control">
-                            <option value="tinyllama">TinyLlama</option>
-                            <option value="phi3">Phi-3-mini</option>
+                <h2>🤖 Agent Testing Interface</h2>
+                <div class="agent-test-container">
+                    <div class="agent-selection">
+                        <label for="agent-select">Select Agent:</label>
+                        <select id="agent-select" class="form-control">
+                            <option value="">Loading agents...</option>
                         </select>
-                        <input type="text" id="chat-input" placeholder="Type your message..." class="form-control">
-                        <button id="send-message" class="btn btn-primary">Send</button>
+                        <button id="refresh-agents" class="btn btn-secondary">Refresh</button>
+                    </div>
+                    <div class="agent-info" id="agent-info">
+                        <h4>Agent Details</h4>
+                        <div id="agent-details">Select an agent to see details</div>
+                    </div>
+                    <div class="chat-container">
+                        <div class="chat-messages" id="chat-messages"></div>
+                        <div class="chat-input-container">
+                            <input type="text" id="chat-input" placeholder="Type your message to test the agent..." class="form-control">
+                            <button id="send-message" class="btn btn-primary">Send</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Flowise Integration -->
+            <section class="card">
+                <h2>🎨 Flowise Flow Builder</h2>
+                <div class="flowise-container">
+                    <div class="flowise-status">
+                        <div class="status-indicator" id="flowise-status"></div>
+                        <span>Flowise Service</span>
+                    </div>
+                    <div class="flowise-actions">
+                        <a href="http://localhost:3000" target="_blank" class="btn btn-primary">Open Flowise UI</a>
+                        <button id="test-flowise" class="btn btn-secondary">Test Connection</button>
+                    </div>
+                    <div class="flowise-info">
+                        <p><strong>Credentials:</strong> admin / flowise_admin_123</p>
+                        <p><strong>URL:</strong> http://localhost:3000</p>
                     </div>
                 </div>
             </section>
@@ -83,6 +111,21 @@
                 </div>
             </section>
 
+            <!-- Vector Database Testing -->
+            <section class="card">
+                <h2>🔍 Vector Database Testing</h2>
+                <div class="vector-test-container">
+                    <div class="vector-actions">
+                        <button id="test-vector-sanity" class="btn btn-primary">Run Sanity Check</button>
+                        <button id="test-vector-search" class="btn btn-secondary">Test Search</button>
+                        <button id="view-collections" class="btn btn-secondary">View Collections</button>
+                    </div>
+                    <div class="vector-results" id="vector-results">
+                        <pre id="vector-output">Click a button above to test vector database operations</pre>
+                    </div>
+                </div>
+            </section>
+
             <!-- Quick Actions -->
             <section class="card">
                 <h2>⚡ Quick Actions</h2>
@@ -90,7 +133,9 @@
                     <a href="/docs" target="_blank" class="btn btn-secondary">API Documentation</a>
                     <a href="/redoc" target="_blank" class="btn btn-secondary">ReDoc</a>
                     <button id="test-auth" class="btn btn-secondary">Test Authentication</button>
-                    <button id="test-vector" class="btn btn-secondary">Test Vector Search</button>
+                    <button id="create-api-key" class="btn btn-secondary">Create API Key</button>
+                    <a href="http://localhost:7000/docs" target="_blank" class="btn btn-secondary">Router API</a>
+                    <button id="test-router" class="btn btn-secondary">Test Router</button>
                 </div>
             </section>
 

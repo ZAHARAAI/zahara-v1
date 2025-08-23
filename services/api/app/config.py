@@ -6,8 +6,11 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Application Settings
-    app_name: str = "FastAPI Backend"
+    app_name: str = "Zahara.ai API"
     app_version: str = "1.0.0"
+    app_description: str = "Zahara.ai - Intelligent AI Platform API"
+    company_name: str = "Zahara.ai"
+    company_url: str = "https://zahara.ai"
     debug: bool = True
     host: str = "0.0.0.0"
     port: int = 8000

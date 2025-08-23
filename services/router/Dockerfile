@@ -1,5 +1,15 @@
 FROM python:3.11-slim
 
+# Docker labels for branding
+LABEL org.opencontainers.image.title="Zahara.ai Router Service"
+LABEL org.opencontainers.image.description="Zahara.ai - Intelligent LLM Router and Load Balancer"
+LABEL org.opencontainers.image.vendor="Zahara.ai"
+LABEL org.opencontainers.image.url="https://zahara.ai"
+LABEL org.opencontainers.image.source="https://github.com/zahara-ai/zahara-v1"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL zahara.ai.service="router"
+LABEL zahara.ai.component="llm-routing"
+
 WORKDIR /app
 
 # Install system dependencies

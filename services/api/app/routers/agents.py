@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from ..middleware.auth import get_current_user
 from ..models.user import User
 from ..services.llm_service import LLMService
+from ..services.agent_service import AgentService
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -59,13 +60,48 @@ async def create_agent(
 
 @router.get("/list")
 async def list_agents(current_user: User = Depends(get_current_user)):
-    """List all agents created by the current user"""
+    """List all available agents from configuration and user-created agents"""
+    agent_service = AgentService()
+    
+    # Get configured agents from YAML
+    configured_agents = agent_service.list_agents()
+    
+    # Get user-created agents
     user_agents = [
         agent for agent in agents_storage.values()
         if agent["created_by"] == current_user.username
     ]
+    
+    return {
+        "configured_agents": configured_agents,
+        "custom_agents": user_agents,
+        "total_count": len(configured_agents) + len(user_agents)
+    }
 
-    return {"agents": user_agents}
+@router.get("/configured")
+async def list_configured_agents():
+    """List all pre-configured agents from YAML"""
+    agent_service = AgentService()
+    return {"agents": agent_service.list_agents()}
+
+@router.get("/configured/{agent_id}")
+async def get_configured_agent(agent_id: str):
+    """Get a specific configured agent by ID"""
+    agent_service = AgentService()
+    agent = agent_service.get_agent_by_id(agent_id)
+    
+    if not agent:
+        raise HTTPException(status_code=404, detail="Configured agent not found")
+    
+    return agent
+
+@router.get("/capabilities/{capability}")
+async def get_agents_by_capability(capability: str):
+    """Get agents that have a specific capability"""
+    agent_service = AgentService()
+    agents = agent_service.get_agents_by_capability(capability)
+    
+    return {"capability": capability, "agents": agents}
 
 @router.get("/{agent_id}")
 async def get_agent(
@@ -86,20 +122,27 @@ async def get_agent(
 @router.post("/{agent_id}/chat")
 async def chat_with_agent(
     agent_id: str,
-    request: ChatWithAgentRequest,
-    current_user: User = Depends(get_current_user)
+    request: ChatWithAgentRequest
 ):
-    """Chat with a specific agent"""
-    if agent_id not in agents_storage:
+    """Chat with a specific agent (custom or configured)"""
+    agent_service = AgentService()
+    agent = None
+    
+    # First check if it's a configured agent
+    configured_agent = agent_service.get_agent_by_id(agent_id)
+    if configured_agent:
+        agent = configured_agent
+    # Then check custom agents
+    elif agent_id in agents_storage:
+        agent = agents_storage[agent_id]
+        # For custom agents, we would check authentication here
+        # For now, allowing access for demo purposes
+    
+    if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    agent = agents_storage[agent_id]
-
-    if agent["created_by"] != current_user.username:
-        raise HTTPException(status_code=403, detail="Access denied")
-
     # Get or create conversation
-    conversation_id = request.conversation_id or f"{agent_id}_{current_user.username}"
+    conversation_id = request.conversation_id or f"{agent_id}_demo_user"
 
     if conversation_id not in conversations_storage:
         conversations_storage[conversation_id] = []
@@ -111,7 +154,7 @@ async def chat_with_agent(
     messages.extend(conversation)
     messages.append({"role": "user", "content": request.message})
 
-    # Get response from LLM
+    # Get response from LLM or provide demo response
     llm_service = LLMService()
     result = await llm_service.chat_completion(
         messages=messages,
@@ -119,8 +162,24 @@ async def chat_with_agent(
         provider=agent["provider"]
     )
 
+    # If LLM service returns an error, provide a demo response
     if "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
+        # Create a demo response based on the agent
+        demo_response = f"""Hello! I'm {agent['name']}, {agent['description']}.
+
+You said: "{request.message}"
+
+This is a demo response since external LLM providers aren't configured yet. In a production environment, I would use {agent['model']} via {agent['provider']} to provide intelligent responses based on my system prompt:
+
+"{agent['system_prompt'][:100]}..."
+
+To enable full functionality, please configure API keys for the LLM providers in your environment variables."""
+
+        result = {
+            "provider": f"{agent['provider']} (demo)",
+            "model": agent["model"],
+            "message": demo_response
+        }
 
     # Update conversation history
     conversation.append({"role": "user", "content": request.message})

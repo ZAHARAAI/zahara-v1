@@ -2,6 +2,7 @@ services:
   # API Service
   api:
     build: ../services/api
+    image: zahara-ai/api:latest
     container_name: zahara-api
     ports:
       - "8000:8000"
@@ -27,9 +28,14 @@ services:
   # Router Service  
   router:
     build: ../services/router
+    image: zahara-ai/router:latest
     container_name: zahara-router
     ports:
       - "7000:7000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
     networks:
       - app-network
     restart: unless-stopped
@@ -105,6 +111,32 @@ services:
           memory: 2G
     healthcheck: { test: ["CMD","curl","-sf","http://localhost:11434/api/tags"], interval: 30s, timeout: 10s, retries: 10, start_period: 60s }
 
+  # Flowise - Low-code LLM Flow Builder (flow-builder profile)
+  flowise:
+    image: flowiseai/flowise:1.8.2
+    container_name: zahara-flowise
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_PATH=/root/.flowise
+      - APIKEY_PATH=/root/.flowise
+      - SECRETKEY_PATH=/root/.flowise
+      - LOG_LEVEL=debug
+      - DEBUG=true
+      - FLOWISE_USERNAME=${FLOWISE_USERNAME:-admin}
+      - FLOWISE_PASSWORD=${FLOWISE_PASSWORD:-flowise_admin_123}
+      - FLOWISE_SECRETKEY_OVERWRITE=${SECRET_KEY:-zahara_flowise_secret_key}
+    volumes:
+      - flowise_data:/root/.flowise
+    networks:
+      - app-network
+    restart: unless-stopped
+    profiles: ["flow-builder"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: { test: ["CMD","curl","-sf","http://localhost:3000/api/v1/ping"], interval: 30s, timeout: 10s, retries: 10, start_period: 60s }
+
 volumes:
   postgres_data:
     driver: local
@@ -113,6 +145,8 @@ volumes:
   qdrant_data:
     driver: local
   ollama_data:
+    driver: local
+  flowise_data:
     driver: local
 
 networks:

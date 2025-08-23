@@ -65,9 +65,24 @@ async def register_user(user: UserCreate, db: Session = Depends(get_db)):
 @router.post("/login", response_model=Token)
 async def login_user(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     """Login user and return access token"""
+    # Input validation
+    if not form_data.username or not form_data.password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username and password are required"
+        )
+    
     user = db.query(User).filter(User.username == form_data.username).first()
 
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    # Always check password even if user doesn't exist to prevent timing attacks
+    password_correct = False
+    if user:
+        password_correct = verify_password(form_data.password, user.hashed_password)
+    else:
+        # Perform a dummy password verification to maintain consistent timing
+        verify_password(form_data.password, "$2b$12$dummy.hash.to.prevent.timing.attacks")
+
+    if not user or not password_correct:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",

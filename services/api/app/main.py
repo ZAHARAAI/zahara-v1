@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import settings
 from .database import Base, engine
 from .middleware.rate_limit import RateLimitMiddleware
-from .routers import agents, auth, health, llm_router, vector
+from .routers import agents, auth, health, llm_router, vector, version, api_keys
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -18,16 +18,30 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="A comprehensive FastAPI backend with PostgreSQL, Redis, Qdrant, and LLM integration",
-    debug=settings.debug
+    description=settings.app_description,
+    debug=settings.debug,
+    contact={
+        "name": settings.company_name,
+        "url": settings.company_url,
+    },
+    license_info={
+        "name": "MIT License",
+        "url": "https://github.com/zahara-ai/zahara-v1/blob/main/LICENSE",
+    },
 )
 
 # CORS middleware
+allowed_origins = ["*"] if settings.debug else [
+    "http://localhost:3000",
+    "http://localhost:8000",
+    "https://zahara.ai"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.debug else ["http://localhost:3000"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -57,6 +71,8 @@ app.include_router(vector.router)
 app.include_router(llm_router.router)
 app.include_router(llm_router.v1_router)
 app.include_router(agents.router)
+app.include_router(version.router)
+app.include_router(api_keys.router)
 
 # Include dev router only if dev pages are enabled
 if os.getenv("ENABLE_DEV_PAGES") == "1":
@@ -73,9 +89,11 @@ if os.path.exists(static_path):
 async def root():
     return {
         "message": f"Welcome to {settings.app_name}",
+        "company": settings.company_name,
         "version": settings.app_version,
         "docs": "/docs",
-        "dashboard": "/static/index.html"
+        "dashboard": "/static/index.html",
+        "website": settings.company_url
     }
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ jobs:
         make -C infra test
     
     - name: Run tests
-      run: pytest -q
+      run: pytest tests/ -v --tb=short
     
     - name: Cleanup
       if: always()
