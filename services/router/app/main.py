@@ -1,6 +1,6 @@
+import logging
 import os
 from typing import List, Optional
-import logging
 
 import httpx
 import uvicorn
@@ -75,8 +75,8 @@ class RouterConfig:
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
         self.openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
-        
-        logger.info(f"RouterConfig initialized:")
+
+        logger.info("RouterConfig initialized:")
         logger.info(f"  OpenAI key present: {bool(self.openai_api_key)}")
         logger.info(f"  Anthropic key present: {bool(self.anthropic_api_key)}")
         logger.info(f"  OpenRouter key present: {bool(self.openrouter_api_key)}")
