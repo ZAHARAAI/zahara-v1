@@ -3,16 +3,17 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
 # Add the parent directory to the path to import our app modules
 sys.path.append(str(Path(__file__).parent.parent))
 
 from app.database import Base
-from app.models import user, api_key  # Import all models here
+from app.models import (  # noqa: F401 - Import all models for Alembic autogenerate
+    api_key,
+    user,
+)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -71,7 +72,7 @@ def run_migrations_online() -> None:
     """
     configuration = config.get_section(config.config_ini_section)
     configuration["sqlalchemy.url"] = get_database_url()
-    
+
     connectable = engine_from_config(
         configuration,
         prefix="sqlalchemy.",

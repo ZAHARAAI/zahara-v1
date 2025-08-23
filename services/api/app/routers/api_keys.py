@@ -1,13 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
 from typing import List, Optional
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
 from ..database import get_db
-from ..services.api_key_service import APIKeyService
-from ..models.api_key import APIKey
 from ..middleware.auth import get_current_user
 from ..models.user import User
+from ..services.api_key_service import APIKeyService
 
 router = APIRouter(prefix="/api-keys", tags=["api-keys"])
 
@@ -31,7 +31,7 @@ class APIKeyResponse(BaseModel):
     last_used_at: Optional[str]
     request_count: int
     created_at: str
-    
+
     class Config:
         from_attributes = True
 
@@ -49,7 +49,7 @@ async def create_api_key(
 ):
     """Create a new API key"""
     api_key_service = APIKeyService()
-    
+
     try:
         api_key_record, plain_key = api_key_service.create_api_key(
             db=db,
@@ -59,7 +59,7 @@ async def create_api_key(
             can_write=request.can_write,
             can_admin=request.can_admin
         )
-        
+
         return CreateAPIKeyResponse(
             api_key_info=APIKeyResponse.from_orm(api_key_record),
             api_key=plain_key
@@ -78,7 +78,7 @@ async def list_api_keys(
     """List all API keys"""
     api_key_service = APIKeyService()
     api_keys = api_key_service.list_api_keys(db)
-    
+
     return [APIKeyResponse.from_orm(key) for key in api_keys]
 
 @router.get("/{key_id}", response_model=APIKeyResponse)
@@ -90,13 +90,13 @@ async def get_api_key(
     """Get a specific API key by ID"""
     api_key_service = APIKeyService()
     api_key = api_key_service.get_api_key_by_id(db, key_id)
-    
+
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="API key not found"
         )
-    
+
     return APIKeyResponse.from_orm(api_key)
 
 @router.patch("/{key_id}/deactivate")
@@ -107,7 +107,7 @@ async def deactivate_api_key(
 ):
     """Deactivate an API key"""
     api_key_service = APIKeyService()
-    
+
     if api_key_service.deactivate_api_key(db, key_id):
         return {"message": "API key deactivated successfully"}
     else:
@@ -124,7 +124,7 @@ async def delete_api_key(
 ):
     """Delete an API key"""
     api_key_service = APIKeyService()
-    
+
     if api_key_service.delete_api_key(db, key_id):
         return {"message": "API key deleted successfully"}
     else:

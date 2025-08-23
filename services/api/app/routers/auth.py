@@ -71,7 +71,7 @@ async def login_user(form_data: OAuth2PasswordRequestForm = Depends(), db: Sessi
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username and password are required"
         )
-    
+
     user = db.query(User).filter(User.username == form_data.username).first()
 
     # Always check password even if user doesn't exist to prevent timing attacks

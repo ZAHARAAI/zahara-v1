@@ -2,6 +2,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from qdrant_client.models import Distance, PointStruct, VectorParams
+
 try:
     from qdrant_client.exceptions import UnexpectedResponse
 except ImportError:
@@ -17,17 +18,17 @@ class VectorService:
         self.client = get_qdrant()
         self.agent_service = AgentService()
         self._ensure_default_collection()
-    
+
     def _ensure_default_collection(self):
         """Ensure the default collection exists"""
         try:
             vector_config = self.agent_service.get_vector_config()
             default_collection = vector_config.get("default_collection", "zahara_default")
             vector_size = vector_config.get("vector_size", 1536)
-            
+
             # Check if collection exists first
             try:
-                collection_info = self.client.get_collection(default_collection)
+                self.client.get_collection(default_collection)
                 print(f"Default collection '{default_collection}' already exists")
                 return  # Collection exists, nothing to do
             except Exception:
@@ -116,7 +117,7 @@ class VectorService:
             return {"status": "healthy", "collections_count": len(collections.collections)}
         except Exception as e:
             return {"status": "unhealthy", "error": str(e)}
-    
+
     async def sanity_check(self):
         """Perform a sanity check on the vector database"""
         try:
@@ -124,37 +125,37 @@ class VectorService:
             vector_config = self.agent_service.get_vector_config()
             default_collection = vector_config.get("default_collection", "zahara_default")
             vector_size = vector_config.get("vector_size", 1536)
-            
+
             # Check if default collection exists
             try:
-                collection_info = self.client.get_collection(default_collection)
+                self.client.get_collection(default_collection)
                 collection_exists = True
-            except:
+            except Exception:
                 collection_exists = False
-            
+
             # Test basic operations
             test_results = {}
-            
+
             # Test 1: Collection creation/access
             if not collection_exists:
                 create_result = await self.create_collection(default_collection, vector_size)
                 test_results["collection_creation"] = create_result
             else:
                 test_results["collection_access"] = {"status": "success", "message": "Default collection accessible"}
-            
+
             # Test 2: Vector insertion and search
             try:
                 # Insert a test vector
                 test_vector = [0.1] * vector_size
                 test_payload = {"test": True, "message": "Sanity check vector"}
-                
+
                 add_result = await self.add_vectors(
                     collection_name=default_collection,
                     vectors=[test_vector],
                     payloads=[test_payload]
                 )
                 test_results["vector_insertion"] = add_result
-                
+
                 # Test vector search
                 search_result = await self.search_vectors(
                     collection_name=default_collection,
@@ -162,20 +163,20 @@ class VectorService:
                     limit=1
                 )
                 test_results["vector_search"] = search_result
-                
+
             except Exception as e:
                 test_results["vector_operations"] = {"status": "error", "message": str(e)}
-            
+
             # Test 3: Collection listing
             list_result = await self.list_collections()
             test_results["collection_listing"] = list_result
-            
+
             # Overall health assessment
             all_passed = all(
-                result.get("status") == "success" 
+                result.get("status") == "success"
                 for result in test_results.values()
             )
-            
+
             return {
                 "status": "healthy" if all_passed else "degraded",
                 "default_collection": default_collection,
@@ -183,7 +184,7 @@ class VectorService:
                 "tests": test_results,
                 "summary": "All tests passed" if all_passed else "Some tests failed"
             }
-            
+
         except Exception as e:
             return {
                 "status": "unhealthy",

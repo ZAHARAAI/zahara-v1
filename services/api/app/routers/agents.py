@@ -1,12 +1,12 @@
-from typing import Optional, List
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..middleware.auth import get_current_user
 from ..models.user import User
-from ..services.llm_service import LLMService
 from ..services.agent_service import AgentService
+from ..services.llm_service import LLMService
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -62,16 +62,16 @@ async def create_agent(
 async def list_agents(current_user: User = Depends(get_current_user)):
     """List all available agents from configuration and user-created agents"""
     agent_service = AgentService()
-    
+
     # Get configured agents from YAML
     configured_agents = agent_service.list_agents()
-    
+
     # Get user-created agents
     user_agents = [
         agent for agent in agents_storage.values()
         if agent["created_by"] == current_user.username
     ]
-    
+
     return {
         "configured_agents": configured_agents,
         "custom_agents": user_agents,
@@ -89,10 +89,10 @@ async def get_configured_agent(agent_id: str):
     """Get a specific configured agent by ID"""
     agent_service = AgentService()
     agent = agent_service.get_agent_by_id(agent_id)
-    
+
     if not agent:
         raise HTTPException(status_code=404, detail="Configured agent not found")
-    
+
     return agent
 
 @router.get("/capabilities/{capability}")
@@ -100,7 +100,7 @@ async def get_agents_by_capability(capability: str):
     """Get agents that have a specific capability"""
     agent_service = AgentService()
     agents = agent_service.get_agents_by_capability(capability)
-    
+
     return {"capability": capability, "agents": agents}
 
 @router.get("/{agent_id}")
@@ -127,7 +127,7 @@ async def chat_with_agent(
     """Chat with a specific agent (custom or configured)"""
     agent_service = AgentService()
     agent = None
-    
+
     # First check if it's a configured agent
     configured_agent = agent_service.get_agent_by_id(agent_id)
     if configured_agent:
@@ -137,7 +137,7 @@ async def chat_with_agent(
         agent = agents_storage[agent_id]
         # For custom agents, we would check authentication here
         # For now, allowing access for demo purposes
-    
+
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 

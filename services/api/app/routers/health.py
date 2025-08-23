@@ -13,7 +13,7 @@ router = APIRouter(prefix="/health", tags=["health"])
 async def basic_health():
     """Basic health check"""
     return {
-        "status": "healthy", 
+        "status": "healthy",
         "message": "Zahara.ai API is running",
         "company": "Zahara.ai",
         "service": "api"
@@ -82,7 +82,7 @@ async def full_health_check(db: Session = Depends(get_db)):
         llm_service = LLMService()
         llm_result = await llm_service.health_check()
         results["llm"] = {"service": "llm", **llm_result}
-    except Exception as e:
+    except Exception:
         results["llm"] = {"service": "llm", "status": "unavailable", "note": "Ollama not configured (optional)"}
 
     # Overall status (LLM is optional, so exclude from health calculation)

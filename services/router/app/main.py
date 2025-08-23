@@ -1,11 +1,11 @@
 import os
+from typing import List, Optional
+
+import httpx
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
-import httpx
-import asyncio
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -46,7 +46,7 @@ async def root():
 async def health():
     """Health check endpoint"""
     return {
-        "status": "healthy", 
+        "status": "healthy",
         "service": "Zahara.ai Router",
         "company": "Zahara.ai",
         "version": "1.0.0"
@@ -70,23 +70,23 @@ class RouterConfig:
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
         self.openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
-        
+
     def has_provider_key(self, model: str) -> tuple[bool, str]:
         """Check if we have API keys for the requested model"""
         model_lower = model.lower()
-        
+
         # OpenAI models
         if any(provider in model_lower for provider in ['gpt', 'openai']):
             return bool(self.openai_api_key), "OpenAI"
-        
+
         # Anthropic models
         elif any(provider in model_lower for provider in ['claude', 'anthropic']):
             return bool(self.anthropic_api_key), "Anthropic"
-        
+
         # OpenRouter models (fallback for many providers)
         elif self.openrouter_api_key:
             return True, "OpenRouter"
-        
+
         return False, "Unknown"
 
 router_config = RouterConfig()
@@ -94,16 +94,16 @@ router_config = RouterConfig()
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
     """OpenAI-compatible chat completions endpoint with provider routing"""
-    
+
     # Check if we have API keys for the requested model
     has_key, provider = router_config.has_provider_key(request.model)
-    
+
     if not has_key:
         raise HTTPException(
             status_code=501,
             detail=f"Not implemented: No {provider} API keys configured for model '{request.model}'"
         )
-    
+
     # Route to appropriate provider
     try:
         if provider == "OpenAI":
@@ -130,23 +130,23 @@ async def route_to_openai(request: ChatCompletionRequest):
             "Authorization": f"Bearer {router_config.openai_api_key}",
             "Content-Type": "application/json"
         }
-        
+
         payload = {
             "model": request.model,
             "messages": [{"role": msg.role, "content": msg.content} for msg in request.messages],
             "temperature": request.temperature,
         }
-        
+
         if request.max_tokens:
             payload["max_tokens"] = request.max_tokens
-        
+
         try:
             response = await client.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers=headers,
                 json=payload
             )
-            
+
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
@@ -166,35 +166,35 @@ async def route_to_anthropic(request: ChatCompletionRequest):
     # Convert messages to Anthropic format
     system_msg = ""
     messages = []
-    
+
     for msg in request.messages:
         if msg.role == "system":
             system_msg = msg.content
         else:
             messages.append({"role": msg.role, "content": msg.content})
-    
+
     async with httpx.AsyncClient(timeout=30.0) as client:
         headers = {
             "x-api-key": router_config.anthropic_api_key,
             "Content-Type": "application/json",
             "anthropic-version": "2023-06-01"
         }
-        
+
         payload = {
             "model": request.model,
             "messages": messages,
             "max_tokens": request.max_tokens or 1024,
         }
-        
+
         if system_msg:
             payload["system"] = system_msg
-            
+
         response = await client.post(
             "https://api.anthropic.com/v1/messages",
             headers=headers,
             json=payload
         )
-        
+
         response.raise_for_status()
         return response.json()
 
@@ -207,22 +207,22 @@ async def route_to_openrouter(request: ChatCompletionRequest):
             "HTTP-Referer": "https://zahara.ai",
             "X-Title": "Zahara.ai"
         }
-        
+
         payload = {
             "model": request.model,
             "messages": [{"role": msg.role, "content": msg.content} for msg in request.messages],
             "temperature": request.temperature,
         }
-        
+
         if request.max_tokens:
             payload["max_tokens"] = request.max_tokens
-            
+
         response = await client.post(
             "https://openrouter.ai/api/v1/chat/completions",
             headers=headers,
             json=payload
         )
-        
+
         response.raise_for_status()
         return response.json()
 
@@ -230,27 +230,27 @@ async def route_to_openrouter(request: ChatCompletionRequest):
 async def list_models():
     """List available models based on configured API keys"""
     available_models = []
-    
+
     if router_config.openai_api_key:
         available_models.extend([
             {"id": "gpt-3.5-turbo", "provider": "OpenAI"},
             {"id": "gpt-4", "provider": "OpenAI"},
             {"id": "gpt-4-turbo", "provider": "OpenAI"}
         ])
-    
+
     if router_config.anthropic_api_key:
         available_models.extend([
             {"id": "claude-3-sonnet-20240229", "provider": "Anthropic"},
             {"id": "claude-3-haiku-20240307", "provider": "Anthropic"}
         ])
-        
+
     if router_config.openrouter_api_key:
         available_models.extend([
             {"id": "openai/gpt-3.5-turbo", "provider": "OpenRouter"},
             {"id": "anthropic/claude-3-sonnet", "provider": "OpenRouter"},
             {"id": "meta-llama/llama-2-70b-chat", "provider": "OpenRouter"}
         ])
-    
+
     return {
         "object": "list",
         "data": available_models

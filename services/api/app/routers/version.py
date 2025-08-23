@@ -1,6 +1,7 @@
 import os
 import subprocess
 from datetime import datetime
+
 from fastapi import APIRouter
 
 from ..config import settings
@@ -43,7 +44,7 @@ async def get_version():
     """Get application version information including git SHA and timestamp"""
     git_hash = get_git_commit_hash()
     git_timestamp = get_git_commit_timestamp()
-    
+
     return {
         "app_name": settings.app_name,
         "version": settings.app_version,
