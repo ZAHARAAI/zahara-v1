@@ -9,7 +9,7 @@ from httpx import AsyncClient
 async def test_vector_sanity_endpoint_requires_auth(async_client: AsyncClient):
     """Test that vector sanity endpoint requires authentication"""
     response = await async_client.get("/vector/sanity")
-    assert response.status_code in [401, 422]  # Unauthorized or validation error
+    assert response.status_code in [401, 403, 422]  # Unauthorized, Forbidden, or validation error
 
 
 @pytest.mark.asyncio

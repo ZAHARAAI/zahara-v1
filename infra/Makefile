@@ -4,7 +4,7 @@
 help:
 	@echo "Zahara Infrastructure Commands:"
 	@echo ""
-	@echo "  make init           - Pull Docker images"
+	@echo "  make init           - Build and pull Docker images"
 	@echo "  make build          - Build all Docker images"
 	@echo "  make up             - Start all services"
 	@echo "  make up-flowise     - Start all services including Flowise"
@@ -20,9 +20,10 @@ help:
 	@echo "  make flowise-logs   - Show Flowise logs"
 	@echo ""
 
-# Pull images
+# Build and pull images
 init:
-	docker compose pull
+	docker compose build
+	docker compose pull --ignore-pull-failures
 
 # Start all services
 up:

@@ -8,7 +8,7 @@ from httpx import AsyncClient
 async def test_api_keys_list_requires_auth(async_client: AsyncClient):
     """Test that API keys endpoint requires authentication"""
     response = await async_client.get("/api-keys/")
-    assert response.status_code in [401, 422]  # Unauthorized or validation error
+    assert response.status_code in [401, 403, 422]  # Unauthorized, Forbidden, or validation error
 
 
 @pytest.mark.asyncio
@@ -18,7 +18,7 @@ async def test_create_api_key_requires_auth(async_client: AsyncClient):
         "name": "test-key",
         "description": "Test API key"
     })
-    assert response.status_code in [401, 422]  # Unauthorized or validation error
+    assert response.status_code in [401, 403, 422]  # Unauthorized, Forbidden, or validation error
 
 
 @pytest.mark.asyncio

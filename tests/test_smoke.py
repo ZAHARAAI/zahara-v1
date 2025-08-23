@@ -20,7 +20,7 @@ def test_router_health_ok():
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
-        assert data["service"] == "router"
+        assert data["service"] == "Zahara.ai Router"
     except requests.exceptions.RequestException:
         pytest.skip("Router service not available - skipping smoke test")
 

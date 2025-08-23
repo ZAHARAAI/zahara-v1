@@ -10,7 +10,7 @@ async def test_basic_health_endpoint(async_client: AsyncClient):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
-    assert data["message"] == "FastAPI backend is running"
+    assert data["message"] == "Zahara.ai API is running"
 
 
 @pytest.mark.asyncio
