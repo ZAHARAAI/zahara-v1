@@ -1,11 +1,16 @@
 import os
 from typing import List, Optional
+import logging
 
 import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -70,6 +75,11 @@ class RouterConfig:
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
         self.openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+        
+        logger.info(f"RouterConfig initialized:")
+        logger.info(f"  OpenAI key present: {bool(self.openai_api_key)}")
+        logger.info(f"  Anthropic key present: {bool(self.anthropic_api_key)}")
+        logger.info(f"  OpenRouter key present: {bool(self.openrouter_api_key)}")
 
     def has_provider_key(self, model: str) -> tuple[bool, str]:
         """Check if we have API keys for the requested model"""
@@ -94,6 +104,8 @@ router_config = RouterConfig()
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
     """OpenAI-compatible chat completions endpoint with provider routing"""
+    logger.info(f"Received chat completion request for model: {request.model}")
+    logger.info(f"Request messages: {request.messages}")
 
     # Check if we have API keys for the requested model
     has_key, provider = router_config.has_provider_key(request.model)
@@ -118,6 +130,9 @@ async def chat_completions(request: ChatCompletionRequest):
                 detail=f"Provider {provider} not yet implemented"
             )
     except Exception as e:
+        import traceback
+        error_details = f"Provider error: {str(e)}\nTraceback: {traceback.format_exc()}"
+        logger.error(f"ERROR in chat_completions: {error_details}")
         raise HTTPException(
             status_code=502,
             detail=f"Provider error: {str(e)}"
@@ -125,6 +140,7 @@ async def chat_completions(request: ChatCompletionRequest):
 
 async def route_to_openai(request: ChatCompletionRequest):
     """Route request to OpenAI API"""
+    logger.info(f"Routing to OpenAI for model: {request.model}")
     async with httpx.AsyncClient(timeout=30.0) as client:
         headers = {
             "Authorization": f"Bearer {router_config.openai_api_key}",
@@ -151,14 +167,25 @@ async def route_to_openai(request: ChatCompletionRequest):
             return response.json()
         except httpx.HTTPStatusError as e:
             # Re-raise with more context
+            error_msg = f"OpenAI API error: {e.response.text}"
+            logger.error(f"ERROR in route_to_openai (HTTP): {error_msg}")
             raise HTTPException(
                 status_code=e.response.status_code,
-                detail=f"OpenAI API error: {e.response.text}"
+                detail=error_msg
             )
         except httpx.RequestError as e:
+            error_msg = f"Network error connecting to OpenAI: {str(e)}"
+            logger.error(f"ERROR in route_to_openai (Network): {error_msg}")
             raise HTTPException(
                 status_code=502,
-                detail=f"Network error connecting to OpenAI: {str(e)}"
+                detail=error_msg
+            )
+        except Exception as e:
+            error_msg = f"Unexpected error in OpenAI routing: {str(e)}"
+            logger.error(f"ERROR in route_to_openai (Unexpected): {error_msg}")
+            raise HTTPException(
+                status_code=502,
+                detail=error_msg
             )
 
 async def route_to_anthropic(request: ChatCompletionRequest):
