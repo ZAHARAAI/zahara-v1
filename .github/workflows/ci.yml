@@ -7,7 +7,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
       actions: read
     
     steps:
@@ -49,43 +48,84 @@ jobs:
         make -C infra ps
         make -C infra test
     
+    # Run tests before security scanning
+    - name: Run tests
+      run: pytest tests/ -v --tb=short
+    
+    # Security scanning - FAIL on CRITICAL vulnerabilities
     - name: Run Trivy vulnerability scanner - API
       uses: aquasecurity/trivy-action@master
       with:
         image-ref: 'zahara-ai/api:latest'
-        format: 'sarif'
-        output: 'api-trivy-results.sarif'
-        severity: 'CRITICAL'
-        exit-code: '1'  # Fail build on critical vulnerabilities
-        skip-update: true
+        format: 'table'
+        output: 'api-trivy-results.txt'
+        severity: 'CRITICAL'  # Only CRITICAL vulnerabilities
+        exit-code: '1'        # Fail workflow on CRITICAL vulnerabilities
     
     - name: Run Trivy vulnerability scanner - Router
       uses: aquasecurity/trivy-action@master
       with:
         image-ref: 'zahara-ai/router:latest'
-        format: 'sarif'
-        output: 'router-trivy-results.sarif'
-        severity: 'CRITICAL'
-        exit-code: '1'  # Fail build on critical vulnerabilities
-        skip-update: true
+        format: 'table'
+        output: 'router-trivy-results.txt'
+        severity: 'CRITICAL'  # Only CRITICAL vulnerabilities  
+        exit-code: '1'        # Fail workflow on CRITICAL vulnerabilities
     
-    - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
+    # Display API scan results in GitHub Actions summary
+    - name: Display API security scan results
       if: always()
-      continue-on-error: true  # Don't fail if upload fails
-      with:
-        sarif_file: 'api-trivy-results.sarif'
+      run: |
+        echo "# API Image Security Scan Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Scanned **zahara-ai/api:latest** for CRITICAL vulnerabilities" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        if [ -f "api-trivy-results.txt" ]; then
+          cat api-trivy-results.txt >> $GITHUB_STEP_SUMMARY
+        else
+          echo "No API scan results found" >> $GITHUB_STEP_SUMMARY
+        fi
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
     
-    - name: Upload security reports as artifacts
+    # Display Router scan results in GitHub Actions summary
+    - name: Display Router security scan results
+      if: always()
+      run: |
+        echo "# Router Image Security Scan Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Scanned **zahara-ai/router:latest** for CRITICAL vulnerabilities" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        if [ -f "router-trivy-results.txt" ]; then
+          cat router-trivy-results.txt >> $GITHUB_STEP_SUMMARY
+        else
+          echo "No Router scan results found" >> $GITHUB_STEP_SUMMARY
+        fi
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+    
+    # Display overall security summary
+    - name: Display security scan summary
+      if: always()
+      run: |
+        echo "# Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Status" >> $GITHUB_STEP_SUMMARY
+        echo "- Workflow will **PASS** if no CRITICAL vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+        echo "- Workflow will **FAIL** if any CRITICAL vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Artifacts" >> $GITHUB_STEP_SUMMARY
+        echo "- Detailed scan results available as downloadable artifacts below" >> $GITHUB_STEP_SUMMARY
+        echo "- \`api-trivy-results.txt\` - API image scan details" >> $GITHUB_STEP_SUMMARY
+        echo "- \`router-trivy-results.txt\` - Router image scan details" >> $GITHUB_STEP_SUMMARY
+    
+    # Upload scan results as artifacts
+    - name: Upload security scan results as artifacts
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: security-reports-${{ github.run_id }}
-        path: '*-trivy-results.sarif'
+        name: security-scan-results-${{ github.run_id }}
+        path: '*-trivy-results.txt'
         retention-days: 30
-    
-    - name: Run tests
-      run: pytest tests/ -v --tb=short
     
     - name: Cleanup
       if: always()
