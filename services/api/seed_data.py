@@ -35,13 +35,10 @@ async def seed_database():
 
         # Create a default admin user
         admin_user = User(
+            username="admin",
             email="admin@zahara.ai",
             hashed_password=hashlib.sha256("admin123".encode()).hexdigest(),  # Simple hash for demo
-            full_name="Zahara Admin",
-            is_active=True,
-            is_superuser=True,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            is_active=True
         )
 
         db.add(admin_user)
@@ -51,11 +48,13 @@ async def seed_database():
         print(f"✅ Created admin user: {admin_user.email}")
 
         # Generate a plaintext API key
-        api_key_service = APIKeyService(db)
-        plaintext_key, api_key_record = api_key_service.generate_api_key(
-            owner_id=admin_user.id,
+        api_key_service = APIKeyService()
+        api_key_record, plaintext_key = api_key_service.create_api_key(
+            db=db,
             name="Default API Key",
-            description="Initial API key for testing and development"
+            description="Initial API key for testing and development",
+            can_read=True,
+            can_write=True
         )
 
         print("🔑 API Key Generated Successfully!")

@@ -12,6 +12,7 @@ help:
 	@echo "  make logs           - Show logs from all services"
 	@echo "  make ps             - Show status of all services"
 	@echo "  make test           - Run health checks"
+	@echo "  make seed           - Generate initial API key (run once)"
 	@echo "  make clean          - Stop and remove containers with volumes"
 	@echo ""
 	@echo "Flowise Commands:"
@@ -67,6 +68,11 @@ flowise-down:
 # Show Flowise logs
 flowise-logs:
 	docker compose logs flow-builder -f
+
+# Generate initial API key
+seed:
+	@echo "🌱 Generating initial API key..."
+	docker compose exec api bash -c "cd /app && python seed_data.py"
 
 # Clean up containers and volumes
 clean:
