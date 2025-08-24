@@ -12,7 +12,12 @@ router = APIRouter(prefix="/health", tags=["health"])
 @router.get("/")
 async def basic_health():
     """Basic health check"""
-    return {"status": "healthy", "message": "FastAPI backend is running"}
+    return {
+        "status": "healthy",
+        "message": "Zahara.ai API is running",
+        "company": "Zahara.ai",
+        "service": "api"
+    }
 
 @router.get("/database")
 async def database_health(db: Session = Depends(get_db)):
@@ -48,6 +53,11 @@ async def llm_health():
     return {"service": "llm", **result}
 
 @router.get("/all")
+async def all_health_check(db: Session = Depends(get_db)):
+    """Comprehensive health check for all services (alias for /full)"""
+    return await full_health_check(db)
+
+@router.get("/full")
 async def full_health_check(db: Session = Depends(get_db)):
     """Comprehensive health check for all services"""
     results = {}
@@ -72,18 +82,26 @@ async def full_health_check(db: Session = Depends(get_db)):
     qdrant_result = await vector_service.health_check()
     results["qdrant"] = {"service": "qdrant", **qdrant_result}
 
-    # Check LLM
-    llm_service = LLMService()
-    llm_result = await llm_service.health_check()
-    results["llm"] = {"service": "llm", **llm_result}
+    # Check LLM (optional - Ollama not required for core functionality)
+    try:
+        llm_service = LLMService()
+        llm_result = await llm_service.health_check()
+        results["llm"] = {"service": "llm", **llm_result}
+    except Exception:
+        results["llm"] = {"service": "llm", "status": "unavailable", "note": "Ollama not configured (optional)"}
 
-    # Overall status
+    # Overall status (LLM is optional, so exclude from health calculation)
+    core_services = ["database", "redis", "qdrant"]
     all_healthy = all(
-        result.get("status") == "healthy"
-        for result in results.values()
+        results[service].get("status") == "healthy"
+        for service in core_services
+        if service in results
     )
 
     return {
+        "status": "healthy" if all_healthy else "degraded",
         "overall_status": "healthy" if all_healthy else "degraded",
+        "company": "Zahara.ai",
+        "platform": "Zahara.ai Intelligent AI Platform",
         "services": results
     }

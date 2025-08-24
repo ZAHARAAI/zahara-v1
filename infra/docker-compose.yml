@@ -2,6 +2,7 @@ services:
   # API Service
   api:
     build: ../services/api
+    image: ${IMAGE_PREFIX:-zahara-ai}/api:latest
     container_name: zahara-api
     ports:
       - "8000:8000"
@@ -27,9 +28,14 @@ services:
   # Router Service  
   router:
     build: ../services/router
+    image: ${IMAGE_PREFIX:-zahara-ai}/router:latest
     container_name: zahara-router
     ports:
       - "7000:7000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
     networks:
       - app-network
     restart: unless-stopped
@@ -105,6 +111,37 @@ services:
           memory: 2G
     healthcheck: { test: ["CMD","curl","-sf","http://localhost:11434/api/tags"], interval: 30s, timeout: 10s, retries: 10, start_period: 60s }
 
+  # Flowise - Low-code LLM Flow Builder (flowise profile) - Option A Fork Integration
+  flow-builder:
+    image: ghcr.io/zaharaai/flowise:${FLOWISE_COMMIT_SHA:-af1464f7c2b9a608a2763f5d696d6670e8f51a7e}
+    # Note: For production, use digest pinning: ghcr.io/zaharaai/flowise@sha256:actual-digest-hash
+    container_name: zahara-flowise
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - FLOWISE_USERNAME=${FLOWISE_USERNAME:-admin}
+      - FLOWISE_PASSWORD=${FLOWISE_PASSWORD:-admin123}
+      - DATABASE_PATH=/root/.flowise
+      - APIKEY_PATH=/root/.flowise
+      - LOG_LEVEL=info
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:8000
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/v1/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    volumes:
+      - flowise_data:/root/.flowise
+    profiles: ["flowise"]
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - app-network
+
 volumes:
   postgres_data:
     driver: local
@@ -113,6 +150,8 @@ volumes:
   qdrant_data:
     driver: local
   ollama_data:
+    driver: local
+  flowise_data:
     driver: local
 
 networks:

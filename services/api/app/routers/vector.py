@@ -85,3 +85,12 @@ async def search_vectors(
         raise HTTPException(status_code=400, detail=result["message"])
 
     return result
+
+@router.post("/debug/vector-sanity")
+async def vector_sanity_check(current_user: User = Depends(get_current_user)):
+    """Perform a comprehensive sanity check on the vector database"""
+    vector_service = VectorService()
+    result = await vector_service.sanity_check()
+
+    # Return the result regardless of status for diagnostic purposes
+    return result
