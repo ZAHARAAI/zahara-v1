@@ -8,7 +8,7 @@ class AgentService:
     """Service for managing AI agents from YAML configuration"""
 
     def __init__(self):
-        self.config_path = Path(__file__).parent.parent / "config" / "agents.yaml"
+        self.config_path = Path(__file__).parent.parent.parent.parent / "specs" / "agent.example.yaml"
         self._config = None
         self._load_config()
 

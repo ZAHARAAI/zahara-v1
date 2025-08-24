@@ -7,7 +7,7 @@ help:
 	@echo "  make init           - Build and pull Docker images"
 	@echo "  make build          - Build all Docker images"
 	@echo "  make up             - Start all services"
-	@echo "  make up-flowise     - Start all services including Flowise"
+	@echo "  make up-flowise     - Start all services including Flowise (Option A Fork)"
 	@echo "  make down           - Stop all services"  
 	@echo "  make logs           - Show logs from all services"
 	@echo "  make ps             - Show status of all services"
@@ -52,21 +52,21 @@ test:
 	@curl -sf http://localhost:8000/health/ && echo "✅ API health check passed"
 	@curl -sf http://localhost:7000/health && echo "✅ Router health check passed"
 
-# Start all services including Flowise
+# Start all services including Flowise (Option A Fork)
 up-flowise:
-	docker compose --profile flow-builder up -d
+	docker compose --profile flowise up -d
 
-# Start only Flowise service
+# Start only Flowise service (Option A Fork)
 flowise-up:
-	docker compose --profile flow-builder up flowise -d
+	docker compose --profile flowise up flow-builder -d
 
 # Stop Flowise service
 flowise-down:
-	docker compose stop flowise
+	docker compose stop flow-builder
 
 # Show Flowise logs
 flowise-logs:
-	docker compose logs flowise -f
+	docker compose logs flow-builder -f
 
 # Clean up containers and volumes
 clean:

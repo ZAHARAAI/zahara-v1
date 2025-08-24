@@ -86,7 +86,7 @@ async def search_vectors(
 
     return result
 
-@router.get("/sanity")
+@router.post("/debug/vector-sanity")
 async def vector_sanity_check(current_user: User = Depends(get_current_user)):
     """Perform a comprehensive sanity check on the vector database"""
     vector_service = VectorService()

@@ -2,7 +2,7 @@ services:
   # API Service
   api:
     build: ../services/api
-    image: zahara-ai/api:latest
+    image: ${IMAGE_PREFIX:-zahara-ai}/api:latest
     container_name: zahara-api
     ports:
       - "8000:8000"
@@ -28,7 +28,7 @@ services:
   # Router Service  
   router:
     build: ../services/router
-    image: zahara-ai/router:latest
+    image: ${IMAGE_PREFIX:-zahara-ai}/router:latest
     container_name: zahara-router
     ports:
       - "7000:7000"
@@ -111,31 +111,35 @@ services:
           memory: 2G
     healthcheck: { test: ["CMD","curl","-sf","http://localhost:11434/api/tags"], interval: 30s, timeout: 10s, retries: 10, start_period: 60s }
 
-  # Flowise - Low-code LLM Flow Builder (flow-builder profile)
-  flowise:
-    image: flowiseai/flowise:1.8.2
+  # Flowise - Low-code LLM Flow Builder (flowise profile) - Option A Fork Integration
+  flow-builder:
+    image: ghcr.io/zaharaai/flowise:${FLOWISE_COMMIT_SHA:-af1464f7c2b9a608a2763f5d696d6670e8f51a7e}
     container_name: zahara-flowise
     ports:
       - "3000:3000"
     environment:
+      - PORT=3000
+      - FLOWISE_USERNAME=${FLOWISE_USERNAME:-admin}
+      - FLOWISE_PASSWORD=${FLOWISE_PASSWORD:-admin123}
       - DATABASE_PATH=/root/.flowise
       - APIKEY_PATH=/root/.flowise
-      - SECRETKEY_PATH=/root/.flowise
-      - LOG_LEVEL=debug
-      - DEBUG=true
-      - FLOWISE_USERNAME=${FLOWISE_USERNAME:-admin}
-      - FLOWISE_PASSWORD=${FLOWISE_PASSWORD:-flowise_admin_123}
-      - FLOWISE_SECRETKEY_OVERWRITE=${SECRET_KEY:-zahara_flowise_secret_key}
+      - LOG_LEVEL=info
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:8000
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/v1/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     volumes:
       - flowise_data:/root/.flowise
+    profiles: ["flowise"]
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
     networks:
       - app-network
-    restart: unless-stopped
-    profiles: ["flow-builder"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck: { test: ["CMD","curl","-sf","http://localhost:3000/api/v1/ping"], interval: 30s, timeout: 10s, retries: 10, start_period: 60s }
 
 volumes:
   postgres_data:

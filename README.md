@@ -95,14 +95,17 @@ curl -X POST http://localhost:8000/api-keys/ \
   }'
 ```
 
-### Optional: Enable Flowise Flow Builder
+### Optional: Enable Flowise Flow Builder (Option A Fork Integration)
 
 ```bash
-# Start with Flowise included
-make -C infra up-flowise
+# Start with Flowise included (uses security-scanned fork)
+docker compose --profile flowise up -d
 
 # Access Flowise at http://localhost:3000
-# Username: admin, Password: flowise_admin_123
+# Username: admin, Password: admin123
+
+# Flowise uses pinned secure fork: ghcr.io/zaharaai/flowise:af1464f7c2b9a608a2763f5d696d6670e8f51a7e
+# Security: Trivy scanned, SBOM generated, contract tested
 ```
 
 ## 🏗️ Architecture
@@ -115,7 +118,7 @@ make -C infra up-flowise
 - **Qdrant**: Vector database (port 6333) - Embeddings and similarity search
 
 ### Optional Services
-- **Flowise**: Visual flow builder (port 3000) - `--profile flow-builder`
+- **Flowise**: Visual flow builder (port 3000) - `--profile flowise` (Option A Fork: security-scanned)
 - **Ollama**: Local LLM service (port 11434) - `--profile ollama` (dev only)
 
 ### System Diagram

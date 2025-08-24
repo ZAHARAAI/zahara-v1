@@ -35,47 +35,15 @@ class AgentResponse(BaseModel):
 agents_storage = {}
 conversations_storage = {}
 
-@router.post("/create")
-async def create_agent(
-    request: CreateAgentRequest,
-    current_user: User = Depends(get_current_user)
-):
-    """Create a new AI agent"""
-    import uuid
-
-    agent_id = str(uuid.uuid4())
-    agent = {
-        "id": agent_id,
-        "name": request.name,
-        "description": request.description,
-        "system_prompt": request.system_prompt,
-        "model": request.model,
-        "provider": request.provider,
-        "created_by": current_user.username
-    }
-
-    agents_storage[agent_id] = agent
-
-    return agent
-
-@router.get("/list")
-async def list_agents(current_user: User = Depends(get_current_user)):
-    """List all available agents from configuration and user-created agents"""
+@router.get("/")
+async def list_agents():
+    """List all available agents from configuration (GET /agents)"""
     agent_service = AgentService()
-
-    # Get configured agents from YAML
-    configured_agents = agent_service.list_agents()
-
-    # Get user-created agents
-    user_agents = [
-        agent for agent in agents_storage.values()
-        if agent["created_by"] == current_user.username
-    ]
-
+    agents = agent_service.list_agents()
+    
     return {
-        "configured_agents": configured_agents,
-        "custom_agents": user_agents,
-        "total_count": len(configured_agents) + len(user_agents)
+        "agents": agents,
+        "total_count": len(agents)
     }
 
 @router.get("/configured")
@@ -103,21 +71,60 @@ async def get_agents_by_capability(capability: str):
 
     return {"capability": capability, "agents": agents}
 
-@router.get("/{agent_id}")
-async def get_agent(
-    agent_id: str,
+@router.get("/{name}")
+async def get_agent_by_name(name: str):
+    """Get a specific agent by name (GET /agents/{name})"""
+    agent_service = AgentService()
+    agent = agent_service.get_agent_by_id(name)  # Using ID as name for now
+    
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+    
+    return agent
+
+# Legacy endpoints for backward compatibility
+@router.post("/create")
+async def create_agent(
+    request: CreateAgentRequest,
     current_user: User = Depends(get_current_user)
 ):
-    """Get a specific agent"""
-    if agent_id not in agents_storage:
-        raise HTTPException(status_code=404, detail="Agent not found")
+    """Create a new AI agent"""
+    import uuid
 
-    agent = agents_storage[agent_id]
+    agent_id = str(uuid.uuid4())
+    agent = {
+        "id": agent_id,
+        "name": request.name,
+        "description": request.description,
+        "system_prompt": request.system_prompt,
+        "model": request.model,
+        "provider": request.provider,
+        "created_by": current_user.username
+    }
 
-    if agent["created_by"] != current_user.username:
-        raise HTTPException(status_code=403, detail="Access denied")
+    agents_storage[agent_id] = agent
 
     return agent
+
+@router.get("/list")
+async def list_agents_legacy(current_user: User = Depends(get_current_user)):
+    """List all available agents from configuration and user-created agents (legacy)"""
+    agent_service = AgentService()
+
+    # Get configured agents from YAML
+    configured_agents = agent_service.list_agents()
+
+    # Get user-created agents
+    user_agents = [
+        agent for agent in agents_storage.values()
+        if agent["created_by"] == current_user.username
+    ]
+
+    return {
+        "configured_agents": configured_agents,
+        "custom_agents": user_agents,
+        "total_count": len(configured_agents) + len(user_agents)
+    }
 
 @router.post("/{agent_id}/chat")
 async def chat_with_agent(

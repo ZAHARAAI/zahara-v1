@@ -9,10 +9,16 @@ from fastapi.staticfiles import StaticFiles
 from .config import settings
 from .database import Base, engine
 from .middleware.rate_limit import RateLimitMiddleware
+from .middleware.observability import ObservabilityMiddleware
 from .routers import agents, api_keys, auth, health, llm_router, vector, version
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
+# Create database tables (skip during testing)
+if not os.getenv("TESTING"):
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        # Log error but don't fail startup
+        print(f"Warning: Could not create database tables: {e}")
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -45,9 +51,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Observability middleware (should be first to capture all requests)
+app.add_middleware(ObservabilityMiddleware)
+
 # Rate limiting middleware
-rate_limiter = RateLimitMiddleware()
-app.middleware("http")(rate_limiter)
+app.add_middleware(RateLimitMiddleware)
 
 # Exception handlers
 @app.exception_handler(404)

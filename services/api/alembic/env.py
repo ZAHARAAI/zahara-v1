@@ -36,7 +36,11 @@ target_metadata = Base.metadata
 
 def get_database_url():
     """Get database URL from environment or config"""
-    return os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+    # For migrations, use localhost instead of docker hostname
+    db_url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+    if db_url and "postgres:5432" in db_url and "localhost" not in db_url:
+        db_url = db_url.replace("postgres:5432", "localhost:5432")
+    return db_url
 
 
 def run_migrations_offline() -> None:

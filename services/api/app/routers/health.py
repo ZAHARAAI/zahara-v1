@@ -53,6 +53,11 @@ async def llm_health():
     return {"service": "llm", **result}
 
 @router.get("/all")
+async def all_health_check(db: Session = Depends(get_db)):
+    """Comprehensive health check for all services (alias for /full)"""
+    return await full_health_check(db)
+
+@router.get("/full")
 async def full_health_check(db: Session = Depends(get_db)):
     """Comprehensive health check for all services"""
     results = {}
@@ -94,6 +99,7 @@ async def full_health_check(db: Session = Depends(get_db)):
     )
 
     return {
+        "status": "healthy" if all_healthy else "degraded",
         "overall_status": "healthy" if all_healthy else "degraded",
         "company": "Zahara.ai",
         "platform": "Zahara.ai Intelligent AI Platform",
