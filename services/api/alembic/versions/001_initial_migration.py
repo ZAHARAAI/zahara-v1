@@ -1,13 +1,12 @@
 """Initial migration: users and api_keys
 
 Revision ID: 001
-Revises: 
+Revises:
 Create Date: 2024-01-01 00:00:00.000000
 
 """
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = '001'
@@ -31,7 +30,7 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)
     op.create_index(op.f('ix_users_id'), 'users', ['id'], unique=False)
-    
+
     op.create_table('api_keys',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('key_hash', sa.String(length=255), nullable=False),

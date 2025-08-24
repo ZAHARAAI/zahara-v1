@@ -12,29 +12,27 @@ from datetime import datetime
 # Add the current directory to the path so we can import our modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from app.database import get_db, engine
-from app.models.user import User
-from app.models.api_key import APIKey
-from app.services.api_key_service import APIKeyService
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-import secrets
 import hashlib
+
+from app.database import get_db
+from app.models.user import User
+from app.services.api_key_service import APIKeyService
+
 
 async def seed_database():
     """Seed the database with initial data"""
     print("🌱 Starting database seeding...")
-    
+
     # Create a database session
     db = next(get_db())
-    
+
     try:
         # Check if we already have users
         existing_user = db.query(User).first()
         if existing_user:
             print("✅ Database already seeded. Skipping...")
             return
-        
+
         # Create a default admin user
         admin_user = User(
             email="admin@zahara.ai",
@@ -45,13 +43,13 @@ async def seed_database():
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
-        
+
         db.add(admin_user)
         db.commit()
         db.refresh(admin_user)
-        
+
         print(f"✅ Created admin user: {admin_user.email}")
-        
+
         # Generate a plaintext API key
         api_key_service = APIKeyService(db)
         plaintext_key, api_key_record = api_key_service.generate_api_key(
@@ -59,10 +57,10 @@ async def seed_database():
             name="Default API Key",
             description="Initial API key for testing and development"
         )
-        
+
         print("🔑 API Key Generated Successfully!")
         print("=" * 60)
-        print(f"🚨 IMPORTANT: Save this API key - it will only be shown once!")
+        print("🚨 IMPORTANT: Save this API key - it will only be shown once!")
         print(f"API Key: {plaintext_key}")
         print("=" * 60)
         print(f"Key Name: {api_key_record.name}")
@@ -73,18 +71,18 @@ async def seed_database():
         print("💡 Use this key in the Authorization header: Authorization: Bearer <key>")
         print("💡 Or use the X-API-Key header: X-API-Key: <key>")
         print("=" * 60)
-        
+
         # Also save to a file for convenience (but warn about security)
         with open("api_key.txt", "w") as f:
             f.write(f"API_KEY={plaintext_key}\n")
             f.write(f"# Generated on {datetime.utcnow().isoformat()}\n")
             f.write(f"# Owner: {admin_user.email}\n")
             f.write(f"# Key ID: {api_key_record.id}\n")
-        
+
         print("📁 API key also saved to 'api_key.txt' (delete after use for security)")
-        
+
         print("✅ Database seeding completed successfully!")
-        
+
     except Exception as e:
         print(f"❌ Error during seeding: {e}")
         db.rollback()

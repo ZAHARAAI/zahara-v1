@@ -1,5 +1,5 @@
-import time
 import logging
+import time
 
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
@@ -7,7 +7,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from ..config import settings
 from ..database import get_redis
-from ..services.api_key_service import APIKeyService
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +24,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         auth_header = request.headers.get("authorization", "")
         if auth_header.startswith("Bearer "):
             return auth_header[7:]  # Remove "Bearer " prefix
-        
+
         # Check X-API-Key header
         api_key = request.headers.get("x-api-key", "")
         if api_key:
             return api_key
-        
+
         return None
 
     def _get_client_ip(self, request: Request) -> str:
@@ -50,7 +49,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Get API key from request
         api_key = self._get_api_key_from_request(request)
-        
+
         # Determine rate limiting key
         if api_key:
             # Primary: Rate limit by API key

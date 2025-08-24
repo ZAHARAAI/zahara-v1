@@ -7,7 +7,6 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from .middleware.observability import ObservabilityMiddleware
 
@@ -99,28 +98,28 @@ class RouterConfig:
     def get_available_models(self) -> List[dict]:
         """Get list of available models based on configured API keys"""
         models = []
-        
+
         if self.openai_api_key:
             models.extend([
                 {"id": "gpt-3.5-turbo", "provider": "OpenAI"},
                 {"id": "gpt-4", "provider": "OpenAI"},
                 {"id": "gpt-4-turbo", "provider": "OpenAI"},
             ])
-        
+
         if self.anthropic_api_key:
             models.extend([
                 {"id": "claude-3-haiku-20240307", "provider": "Anthropic"},
                 {"id": "claude-3-sonnet-20240229", "provider": "Anthropic"},
                 {"id": "claude-3-opus-20240229", "provider": "Anthropic"},
             ])
-        
+
         if self.openrouter_api_key:
             models.extend([
                 {"id": "openrouter/auto", "provider": "OpenRouter"},
                 {"id": "meta-llama/llama-2-70b-chat", "provider": "OpenRouter"},
                 {"id": "mistralai/mixtral-8x7b-instruct", "provider": "OpenRouter"},
             ])
-        
+
         return models
 
 router_config = RouterConfig()
@@ -150,13 +149,13 @@ async def health():
 async def list_models():
     """List available models based on configured API keys"""
     models = router_config.get_available_models()
-    
+
     if not models:
         raise HTTPException(
             status_code=501,
             detail="Not implemented: No API keys configured for any providers"
         )
-    
+
     return {
         "object": "list",
         "data": models
@@ -182,7 +181,7 @@ async def chat_completions(request: ChatCompletionRequest):
 
     try:
         logger.info(f"Routing to {provider} for model: {request.model}")
-        
+
         # Use LiteLLM for the actual completion with timeout
         response = await litellm.acompletion(
             model=request.model,
@@ -193,7 +192,7 @@ async def chat_completions(request: ChatCompletionRequest):
             timeout=30.0,  # 30 second timeout
             max_retries=2,  # Retry up to 2 times on failure
         )
-        
+
         logger.info(f"Successfully received response from {provider}")
         return response
 

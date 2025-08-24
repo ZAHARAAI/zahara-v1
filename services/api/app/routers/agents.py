@@ -40,7 +40,7 @@ async def list_agents():
     """List all available agents from configuration (GET /agents)"""
     agent_service = AgentService()
     agents = agent_service.list_agents()
-    
+
     return {
         "agents": agents,
         "total_count": len(agents)
@@ -76,10 +76,10 @@ async def get_agent_by_name(name: str):
     """Get a specific agent by name (GET /agents/{name})"""
     agent_service = AgentService()
     agent = agent_service.get_agent_by_id(name)  # Using ID as name for now
-    
+
     if not agent:
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
-    
+
     return agent
 
 # Legacy endpoints for backward compatibility

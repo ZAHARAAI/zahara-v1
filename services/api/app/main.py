@@ -8,8 +8,8 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .database import Base, engine
-from .middleware.rate_limit import RateLimitMiddleware
 from .middleware.observability import ObservabilityMiddleware
+from .middleware.rate_limit import RateLimitMiddleware
 from .routers import agents, api_keys, auth, health, llm_router, vector, version
 
 # Create database tables (skip during testing)
