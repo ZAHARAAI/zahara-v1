@@ -4,5 +4,5 @@ python-multipart==0.0.6
 httpx==0.25.2
 python-dotenv==1.0.0
 pydantic-settings==2.0.3
-litellm==1.17.9
+litellm==1.40.16
 
