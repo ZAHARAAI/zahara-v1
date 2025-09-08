@@ -17,6 +17,8 @@ jobs:
       contents: read
       actions: read
       packages: write
+      pull-requests: write
+      issues: write
     
     steps:
     - uses: actions/checkout@v4
@@ -288,21 +290,22 @@ jobs:
 
     - name: Comment PR with preview URL
       if: github.event_name == 'pull_request'
-      uses: actions/github-script@v7
+      uses: peter-evans/create-or-update-comment@v4
       with:
-        script: |
-          const prNumber = context.issue.number;
-          const siteName = process.env.NETLIFY_SITE_NAME || 'zahara-agent-clinic';
-          const previewUrl = `https://pr-${prNumber}--${siteName}.netlify.app`;
+        issue-number: ${{ github.event.pull_request.number }}
+        body: |
+          ## 🚀 Preview Deployment Ready!
           
-          github.rest.issues.createComment({
-            issue_number: prNumber,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: `Preview deployment ready!\n\n**Frontend URL:** ${previewUrl}\n**Status:** All tests passed\n**Backend Tests:** Passed\n**Frontend Tests:** Passed\n**E2E Tests:** Passed\n**Security Scan:** Passed\n**Docker Images:** Built (not pushed on PR)\n\n_This preview will be updated automatically when you push new commits._`
-          });
-      env:
-        NETLIFY_SITE_NAME: ${{ secrets.NETLIFY_SITE_NAME }}
+          **Frontend URL:** https://pr-${{ github.event.pull_request.number }}--${{ secrets.NETLIFY_SITE_NAME || 'zahara-agent-clinic' }}.netlify.app
+          
+          ### ✅ Test Results
+          - **Backend Tests:** Passed
+          - **Frontend Tests:** Passed  
+          - **E2E Tests:** Passed
+          - **Security Scan:** Passed
+          - **Docker Images:** Built (not pushed on PR)
+          
+          _This preview will be updated automatically when you push new commits._
 
     - name: Create final deployment summary
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
