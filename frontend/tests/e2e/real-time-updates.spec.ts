@@ -175,7 +175,7 @@ test.describe('Real-time Updates', () => {
         await new Promise(resolve => setTimeout(resolve, 2000));
         const response = await route.fetch();
         await route.fulfill({ response });
-      } catch (error) {
+      } catch {
         // If test ends, just continue without error
         await route.continue();
       }
