@@ -325,9 +325,6 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
             if "model_info" in response_body:
                 model_info = response_body["model_info"]  # Available but not used yet
                 print(model_info)
-                # This would contain usage data if available
-                # For now, return 0 since usage is not in current response format
-                pass
 
             # Check for OpenAI-style usage format
             if "usage" in response_body:
