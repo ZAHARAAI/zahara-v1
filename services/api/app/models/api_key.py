@@ -10,7 +10,9 @@ class APIKey(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, index=True)
     key_hash = Column(String(255), nullable=False, unique=True, index=True)
-    key_prefix = Column(String(20), nullable=False, index=True)  # First 8 chars for identification
+    key_prefix = Column(
+        String(20), nullable=False, index=True
+    )  # First 8 chars for identification
     is_active = Column(Boolean, default=True, nullable=False)
     description = Column(Text, nullable=True)
 

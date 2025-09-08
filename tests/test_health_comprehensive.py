@@ -12,6 +12,7 @@ from services.api.app.main import app
 
 client = TestClient(app)
 
+
 def test_health_endpoint_returns_200():
     """Test that /health endpoint returns 200 OK"""
     response = client.get("/health/")
@@ -22,6 +23,7 @@ def test_health_endpoint_returns_200():
     assert "service" in data
     assert "message" in data
 
+
 def test_health_endpoint_without_trailing_slash():
     """Test that /health endpoint works without trailing slash"""
     response = client.get("/health")
@@ -30,8 +32,9 @@ def test_health_endpoint_without_trailing_slash():
     data = response.json()
     assert data["status"] == "healthy"
 
-@patch('services.api.app.database.get_redis')
-@patch('services.api.app.database.get_db')
+
+@patch("services.api.app.database.get_redis")
+@patch("services.api.app.database.get_db")
 def test_full_health_check_returns_200(mock_get_db, mock_get_redis):
     """Test that /health/full endpoint returns 200 when services are available"""
     # Mock database connection
@@ -52,27 +55,38 @@ def test_full_health_check_returns_200(mock_get_db, mock_get_redis):
     assert data["status"] in ["healthy", "degraded"]
     assert "services" in data
 
+
 def test_protected_endpoint_returns_401_without_key():
     """Test that protected endpoints return 401 without API key"""
     # Test traces endpoint (requires API key auth)
     response = client.get("/traces/")
-    assert response.status_code in [401, 403, 422, 500], f"Expected auth error or server error, got {response.status_code}"
+    assert response.status_code in [401, 403, 422, 500], (
+        f"Expected auth error or server error, got {response.status_code}"
+    )
 
     # Test vector sanity endpoint (requires auth)
     response = client.post("/vector/debug/vector-sanity")
-    assert response.status_code in [401, 403, 422, 500], f"Expected auth error or server error, got {response.status_code}"
+    assert response.status_code in [401, 403, 422, 500], (
+        f"Expected auth error or server error, got {response.status_code}"
+    )
+
 
 def test_protected_endpoint_returns_401_with_invalid_key():
     """Test that protected endpoints return 401 with invalid API key"""
     headers = {"Authorization": "Bearer invalid_key_12345"}
 
     response = client.get("/traces/", headers=headers)
-    assert response.status_code in [401, 403, 422, 500], f"Expected auth error or server error, got {response.status_code}"
+    assert response.status_code in [401, 403, 422, 500], (
+        f"Expected auth error or server error, got {response.status_code}"
+    )
 
     # Test with X-API-Key header
     headers = {"X-API-Key": "invalid_key_12345"}
     response = client.post("/vector/debug/vector-sanity", headers=headers)
-    assert response.status_code in [401, 403, 422, 500], f"Expected auth error or server error, got {response.status_code}"
+    assert response.status_code in [401, 403, 422, 500], (
+        f"Expected auth error or server error, got {response.status_code}"
+    )
+
 
 def test_protected_endpoint_works_with_demo_key():
     """Test that protected endpoints work with valid demo API key"""
@@ -81,15 +95,20 @@ def test_protected_endpoint_works_with_demo_key():
     # Test traces endpoint with demo key
     response = client.get("/traces/", headers=headers)
     # Should not be 401 with valid demo key
-    assert response.status_code != 401, f"Demo key should be valid, got {response.status_code}"
-    assert response.status_code in [200, 422, 500], f"Expected valid response, got {response.status_code}"
+    assert response.status_code != 401, (
+        f"Demo key should be valid, got {response.status_code}"
+    )
+    assert response.status_code in [200, 422, 500], (
+        f"Expected valid response, got {response.status_code}"
+    )
 
-@patch('services.api.app.database.get_redis')
+
+@patch("services.api.app.database.get_redis")
 def test_rate_limit_returns_429_at_limit(mock_get_redis):
     """Test that rate limiting returns 429 when limit is exceeded"""
     # Mock Redis to simulate rate limit exceeded
     mock_redis = MagicMock()
-    mock_redis.get.return_value = b'100'  # Simulate high request count
+    mock_redis.get.return_value = b"100"  # Simulate high request count
     mock_get_redis.return_value = mock_redis
 
     # Make request that should be rate limited
@@ -101,14 +120,18 @@ def test_rate_limit_returns_429_at_limit(mock_get_redis):
 
     if response.status_code == 429:
         data = response.json()
-        assert "rate limit" in data.get("error", "").lower() or "rate limit" in data.get("detail", "").lower()
+        assert (
+            "rate limit" in data.get("error", "").lower()
+            or "rate limit" in data.get("detail", "").lower()
+        )
 
-@patch('services.api.app.database.get_redis')
+
+@patch("services.api.app.database.get_redis")
 def test_rate_limit_headers_present(mock_get_redis):
     """Test that rate limit headers are present in responses"""
     # Mock Redis for normal operation
     mock_redis = MagicMock()
-    mock_redis.get.return_value = b'1'  # Low request count
+    mock_redis.get.return_value = b"1"  # Low request count
     mock_redis.pipeline.return_value.execute.return_value = None
     mock_get_redis.return_value = mock_redis
 
@@ -119,6 +142,7 @@ def test_rate_limit_headers_present(mock_get_redis):
     if "X-RateLimit-Limit" in response.headers:
         assert "X-RateLimit-Remaining" in response.headers
         assert "X-RateLimit-Reset" in response.headers
+
 
 def test_api_key_based_rate_limiting():
     """Test that rate limiting works differently for API keys vs IP"""
@@ -137,6 +161,7 @@ def test_api_key_based_rate_limiting():
     # Both should work, but rate limiting should be tracked separately
     # Actual rate limit testing would require making many requests
 
+
 @pytest.mark.asyncio
 @pytest.mark.timeout(10)
 async def test_health_endpoint_performance():
@@ -150,11 +175,13 @@ async def test_health_endpoint_performance():
     assert response.status_code == 200
     assert (end_time - start_time) < 1.0  # Should respond within 1 second
 
+
 def test_health_endpoint_content_type():
     """Test that health endpoint returns proper content type"""
     response = client.get("/health/")
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/json"
+
 
 def test_cors_headers_present():
     """Test that CORS headers are present in responses"""
@@ -163,5 +190,7 @@ def test_cors_headers_present():
 
     # CORS headers should be present due to middleware
     # The exact headers depend on CORS configuration
-    assert "access-control-allow-origin" in [h.lower() for h in response.headers.keys()] or \
-           response.status_code == 200  # CORS might not be needed for same-origin requests
+    assert (
+        "access-control-allow-origin" in [h.lower() for h in response.headers.keys()]
+        or response.status_code == 200
+    )  # CORS might not be needed for same-origin requests

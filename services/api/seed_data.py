@@ -37,8 +37,10 @@ async def seed_database():
         admin_user = User(
             username="admin",
             email="admin@zahara.ai",
-            hashed_password=hashlib.sha256("admin123".encode()).hexdigest(),  # Simple hash for demo
-            is_active=True
+            hashed_password=hashlib.sha256(
+                "admin123".encode()
+            ).hexdigest(),  # Simple hash for demo
+            is_active=True,
         )
 
         db.add(admin_user)
@@ -54,7 +56,7 @@ async def seed_database():
             name="Default API Key",
             description="Initial API key for testing and development",
             can_read=True,
-            can_write=True
+            can_write=True,
         )
 
         print("🔑 API Key Generated Successfully!")
@@ -65,9 +67,13 @@ async def seed_database():
         print(f"Key Name: {api_key_record.name}")
         print(f"Key ID: {api_key_record.id}")
         print(f"Owner: {admin_user.email}")
-        print(f"Permissions: Read={api_key_record.can_read}, Write={api_key_record.can_write}")
+        print(
+            f"Permissions: Read={api_key_record.can_read}, Write={api_key_record.can_write}"
+        )
         print("=" * 60)
-        print("💡 Use this key in the Authorization header: Authorization: Bearer <key>")
+        print(
+            "💡 Use this key in the Authorization header: Authorization: Bearer <key>"
+        )
         print("💡 Or use the X-API-Key header: X-API-Key: <key>")
         print("=" * 60)
 
@@ -89,9 +95,11 @@ async def seed_database():
     finally:
         db.close()
 
+
 def main():
     """Main function to run the seeding"""
     asyncio.run(seed_database())
+
 
 if __name__ == "__main__":
     main()

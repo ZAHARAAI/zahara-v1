@@ -2,12 +2,9 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 # Add services/api to Python path for imports
 api_path = Path(__file__).parent.parent / "services" / "api"
@@ -15,7 +12,9 @@ sys.path.insert(0, str(api_path))
 
 # Set test environment variables before importing app
 # Always use Docker Compose service endpoints - Docker Compose should be running for tests
-os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres")
+os.environ.setdefault(
+    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres"
+)
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
 os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
 os.environ.setdefault("SECRET_KEY", "test_secret_key")
@@ -31,8 +30,7 @@ os.environ.pop("ANTHROPIC_API_KEY", None)
 os.environ.pop("GROQ_API_KEY", None)
 
 # Import app after setting environment variables
-from app.main import app
-from app.models.api_key import APIKey
+from app.main import app  # noqa: E402
 from app.services.api_key_service import APIKeyService  # noqa: E402
 
 
@@ -48,15 +46,15 @@ def event_loop():
 def test_api_key():
     """Create a test API key for the entire test session."""
     try:
+        import hashlib
+
         from app.database import get_db
         from app.models.user import User
-        import hashlib
-        from datetime import datetime
-        
+
         # Get database session
         db_gen = get_db()
         db = next(db_gen)
-        
+
         try:
             # Create or get test user
             test_user = db.query(User).filter(User.email == "test@zahara.ai").first()
@@ -65,12 +63,12 @@ def test_api_key():
                     username="test_user",
                     email="test@zahara.ai",
                     hashed_password=hashlib.sha256("test123".encode()).hexdigest(),
-                    is_active=True
+                    is_active=True,
                 )
                 db.add(test_user)
                 db.commit()
                 db.refresh(test_user)
-            
+
             # Create test API key
             api_key_service = APIKeyService()
             api_key_record, plaintext_key = api_key_service.create_api_key(
@@ -79,25 +77,27 @@ def test_api_key():
                 description="API key for automated testing session",
                 can_read=True,
                 can_write=True,
-                can_admin=True
+                can_admin=True,
             )
-            
+
             # Set the API key in environment for other tests to use
             os.environ["TEST_API_KEY"] = plaintext_key
-            
+
             print(f"✅ Created test API key: {plaintext_key[:20]}...")
-            
+
             yield plaintext_key
-            
+
         except Exception as e:
             print(f"Warning: Could not create test API key: {e}")
             # Fallback to demo key
-            demo_key = os.getenv("DEMO_API_KEY", "zhr_demo_clinic_2024_observability_key")
+            demo_key = os.getenv(
+                "DEMO_API_KEY", "zhr_demo_clinic_2024_observability_key"
+            )
             os.environ["TEST_API_KEY"] = demo_key
             yield demo_key
         finally:
             db.close()
-            
+
     except Exception as e:
         print(f"Error in test_api_key fixture: {e}")
         # Fallback to demo key

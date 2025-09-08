@@ -14,17 +14,27 @@ from services.api.app.main import app
 
 client = TestClient(app)
 
+
 def test_endpoints_return_401_without_authentication():
     """Test that protected endpoints return 401 without authentication"""
 
     # Test traces endpoint (requires API key auth)
     response = client.get("/traces/")
-    assert response.status_code in [401, 403, 422, 500]  # 500 = server error but auth worked
+    assert response.status_code in [
+        401,
+        403,
+        422,
+        500,
+    ]  # 500 = server error but auth worked
 
     # Test vector sanity endpoint (requires auth)
     response = client.post("/vector/debug/vector-sanity")
-    assert response.status_code in [401, 403, 422, 500]  # 500 = server error but auth worked
-
+    assert response.status_code in [
+        401,
+        403,
+        422,
+        500,
+    ]  # 500 = server error but auth worked
 
 
 def test_endpoints_return_401_with_invalid_api_key_header():
@@ -36,6 +46,7 @@ def test_endpoints_return_401_with_invalid_api_key_header():
 
     response = client.get("/traces/", headers=headers)
     assert response.status_code in [401, 403, 422, 500]
+
 
 def test_malformed_authorization_header():
     """Test that malformed Authorization headers are handled properly"""
@@ -55,6 +66,7 @@ def test_malformed_authorization_header():
     response = client.get("/traces/", headers=headers)
     assert response.status_code in [401, 403, 422, 500]
 
+
 def test_valid_demo_api_key_allows_access():
     """Test that valid demo API key allows access to protected endpoints"""
     headers = {"X-API-Key": "zhr_demo_clinic_2024_observability_key"}
@@ -63,8 +75,13 @@ def test_valid_demo_api_key_allows_access():
     response = client.get("/traces/", headers=headers)
     # Should not be 401 (unauthorized) with valid demo key
     # May be 200 (success), 422 (validation), or 500 (server error)
-    assert response.status_code != 401, f"Demo API key should be valid, got {response.status_code}"
-    assert response.status_code in [200, 422, 500], f"Expected valid response codes, got {response.status_code}"
+    assert response.status_code != 401, (
+        f"Demo API key should be valid, got {response.status_code}"
+    )
+    assert response.status_code in [200, 422, 500], (
+        f"Expected valid response codes, got {response.status_code}"
+    )
+
 
 def test_api_key_permissions_read_only():
     """Test that read-only API keys cannot access write endpoints"""
@@ -73,7 +90,13 @@ def test_api_key_permissions_read_only():
 
     # Attempt to access protected endpoint
     response = client.get("/traces/", headers=headers)
-    assert response.status_code in [401, 403, 422, 500]  # Should be forbidden or unauthorized
+    assert response.status_code in [
+        401,
+        403,
+        422,
+        500,
+    ]  # Should be forbidden or unauthorized
+
 
 def test_api_key_permissions_write_access():
     """Test that valid API keys can access endpoints"""
@@ -83,15 +106,20 @@ def test_api_key_permissions_write_access():
     # Attempt to access protected endpoint
     response = client.get("/traces/", headers=headers)
     # Should not be 401 with valid demo key
-    assert response.status_code != 401, f"Demo key should be valid, got {response.status_code}"
-    assert response.status_code in [200, 422, 500], f"Expected valid response, got {response.status_code}"
+    assert response.status_code != 401, (
+        f"Demo key should be valid, got {response.status_code}"
+    )
+    assert response.status_code in [200, 422, 500], (
+        f"Expected valid response, got {response.status_code}"
+    )
 
-@patch('services.api.app.database.get_redis')
+
+@patch("services.api.app.database.get_redis")
 def test_rate_limiting_by_api_key(mock_get_redis):
     """Test that rate limiting works per API key"""
     # Mock Redis to simulate rate limit exceeded for specific API key
     mock_redis = MagicMock()
-    mock_redis.get.return_value = b'100'  # High request count
+    mock_redis.get.return_value = b"100"  # High request count
     mock_redis.pipeline.return_value.execute.return_value = None
     mock_get_redis.return_value = mock_redis
 
@@ -103,12 +131,13 @@ def test_rate_limiting_by_api_key(mock_get_redis):
     # Depending on middleware configuration, this might or might not be rate limited
     assert response.status_code in [200, 429]
 
-@patch('services.api.app.database.get_redis')
+
+@patch("services.api.app.database.get_redis")
 def test_rate_limiting_by_ip_fallback(mock_get_redis):
     """Test that rate limiting falls back to IP when no API key is provided"""
     # Mock Redis to simulate rate limit exceeded for IP
     mock_redis = MagicMock()
-    mock_redis.get.return_value = b'100'  # High request count
+    mock_redis.get.return_value = b"100"  # High request count
     mock_redis.pipeline.return_value.execute.return_value = None
     mock_get_redis.return_value = mock_redis
 
@@ -117,6 +146,7 @@ def test_rate_limiting_by_ip_fallback(mock_get_redis):
 
     # Depending on middleware configuration, this might or might not be rate limited
     assert response.status_code in [200, 429]
+
 
 def test_different_api_keys_have_separate_rate_limits():
     """Test that different API keys have separate rate limit buckets"""
@@ -132,6 +162,7 @@ def test_different_api_keys_have_separate_rate_limits():
     assert response1.status_code == 200
     assert response2.status_code == 200
 
+
 def test_inactive_api_key_rejected():
     """Test that inactive API keys are rejected"""
     # This would require database setup with inactive API key
@@ -140,6 +171,7 @@ def test_inactive_api_key_rejected():
     response = client.get("/traces/", headers=headers)
     assert response.status_code in [401, 403, 500]
 
+
 def test_expired_api_key_rejected():
     """Test that expired API keys are rejected"""
     # This would require database setup with expired API key
@@ -147,6 +179,7 @@ def test_expired_api_key_rejected():
 
     response = client.get("/traces/", headers=headers)
     assert response.status_code in [401, 403, 500]
+
 
 def test_api_key_usage_tracking():
     """Test that API key usage is tracked (last_used_at, request_count)"""
@@ -159,10 +192,14 @@ def test_api_key_usage_tracking():
     # Should not crash, regardless of auth success/failure
     assert response.status_code in [200, 401, 403]
 
-@pytest.mark.parametrize("endpoint,method,payload", [
-    ("/traces/", "GET", None),
-    ("/vector/debug/vector-sanity", "POST", None),
-])
+
+@pytest.mark.parametrize(
+    "endpoint,method,payload",
+    [
+        ("/traces/", "GET", None),
+        ("/vector/debug/vector-sanity", "POST", None),
+    ],
+)
 def test_multiple_protected_endpoints_require_auth(endpoint, method, payload):
     """Test that multiple protected endpoints require authentication"""
     if method == "POST":

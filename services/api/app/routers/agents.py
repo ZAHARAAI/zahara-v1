@@ -10,6 +10,7 @@ from ..services.llm_service import LLMService
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
+
 class CreateAgentRequest(BaseModel):
     name: str
     description: str
@@ -17,9 +18,11 @@ class CreateAgentRequest(BaseModel):
     model: Optional[str] = None
     provider: str = "local"
 
+
 class ChatWithAgentRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None
+
 
 class AgentResponse(BaseModel):
     id: str
@@ -30,10 +33,12 @@ class AgentResponse(BaseModel):
     provider: str
     created_by: str
 
+
 # In-memory storage for demo purposes
 # In production, you'd want to store this in the database
 agents_storage = {}
 conversations_storage = {}
+
 
 @router.get("/")
 async def list_agents():
@@ -41,16 +46,15 @@ async def list_agents():
     agent_service = AgentService()
     agents = agent_service.list_agents()
 
-    return {
-        "agents": agents,
-        "total_count": len(agents)
-    }
+    return {"agents": agents, "total_count": len(agents)}
+
 
 @router.get("/configured")
 async def list_configured_agents():
     """List all pre-configured agents from YAML"""
     agent_service = AgentService()
     return {"agents": agent_service.list_agents()}
+
 
 @router.get("/configured/{agent_id}")
 async def get_configured_agent(agent_id: str):
@@ -63,6 +67,7 @@ async def get_configured_agent(agent_id: str):
 
     return agent
 
+
 @router.get("/capabilities/{capability}")
 async def get_agents_by_capability(capability: str):
     """Get agents that have a specific capability"""
@@ -70,6 +75,7 @@ async def get_agents_by_capability(capability: str):
     agents = agent_service.get_agents_by_capability(capability)
 
     return {"capability": capability, "agents": agents}
+
 
 @router.get("/{name}")
 async def get_agent_by_name(name: str):
@@ -82,11 +88,11 @@ async def get_agent_by_name(name: str):
 
     return agent
 
+
 # Legacy endpoints for backward compatibility
 @router.post("/create")
 async def create_agent(
-    request: CreateAgentRequest,
-    current_user: User = Depends(get_current_user)
+    request: CreateAgentRequest, current_user: User = Depends(get_current_user)
 ):
     """Create a new AI agent"""
     import uuid
@@ -99,12 +105,13 @@ async def create_agent(
         "system_prompt": request.system_prompt,
         "model": request.model,
         "provider": request.provider,
-        "created_by": current_user.username
+        "created_by": current_user.username,
     }
 
     agents_storage[agent_id] = agent
 
     return agent
+
 
 @router.get("/list")
 async def list_agents_legacy(current_user: User = Depends(get_current_user)):
@@ -116,21 +123,20 @@ async def list_agents_legacy(current_user: User = Depends(get_current_user)):
 
     # Get user-created agents
     user_agents = [
-        agent for agent in agents_storage.values()
+        agent
+        for agent in agents_storage.values()
         if agent["created_by"] == current_user.username
     ]
 
     return {
         "configured_agents": configured_agents,
         "custom_agents": user_agents,
-        "total_count": len(configured_agents) + len(user_agents)
+        "total_count": len(configured_agents) + len(user_agents),
     }
 
+
 @router.post("/{agent_id}/chat")
-async def chat_with_agent(
-    agent_id: str,
-    request: ChatWithAgentRequest
-):
+async def chat_with_agent(agent_id: str, request: ChatWithAgentRequest):
     """Chat with a specific agent (custom or configured)"""
     agent_service = AgentService()
     agent = None
@@ -164,28 +170,26 @@ async def chat_with_agent(
     # Get response from LLM or provide demo response
     llm_service = LLMService()
     result = await llm_service.chat_completion(
-        messages=messages,
-        model=agent["model"],
-        provider=agent["provider"]
+        messages=messages, model=agent["model"], provider=agent["provider"]
     )
 
     # If LLM service returns an error, provide a demo response
     if "error" in result:
         # Create a demo response based on the agent
-        demo_response = f"""Hello! I'm {agent['name']}, {agent['description']}.
+        demo_response = f"""Hello! I'm {agent["name"]}, {agent["description"]}.
 
 You said: "{request.message}"
 
-This is a demo response since external LLM providers aren't configured yet. In a production environment, I would use {agent['model']} via {agent['provider']} to provide intelligent responses based on my system prompt:
+This is a demo response since external LLM providers aren't configured yet. In a production environment, I would use {agent["model"]} via {agent["provider"]} to provide intelligent responses based on my system prompt:
 
-"{agent['system_prompt'][:100]}..."
+"{agent["system_prompt"][:100]}..."
 
 To enable full functionality, please configure API keys for the LLM providers in your environment variables."""
 
         result = {
             "provider": f"{agent['provider']} (demo)",
             "model": agent["model"],
-            "message": demo_response
+            "message": demo_response,
         }
 
     # Update conversation history
@@ -203,15 +207,13 @@ To enable full functionality, please configure API keys for the LLM providers in
         "response": result["message"],
         "model_info": {
             "provider": result.get("provider"),
-            "model": result.get("model")
-        }
+            "model": result.get("model"),
+        },
     }
 
+
 @router.delete("/{agent_id}")
-async def delete_agent(
-    agent_id: str,
-    current_user: User = Depends(get_current_user)
-):
+async def delete_agent(agent_id: str, current_user: User = Depends(get_current_user)):
     """Delete an agent"""
     if agent_id not in agents_storage:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -225,7 +227,8 @@ async def delete_agent(
 
     # Clean up conversations for this agent
     conversations_to_delete = [
-        conv_id for conv_id in conversations_storage.keys()
+        conv_id
+        for conv_id in conversations_storage.keys()
         if conv_id.startswith(agent_id)
     ]
 

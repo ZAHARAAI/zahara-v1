@@ -12,24 +12,27 @@ router = APIRouter(prefix="/llm", tags=["llm"])
 # OpenAI-compatible router for standard endpoints
 v1_router = APIRouter(prefix="/v1", tags=["openai-compatible"])
 
+
 class ChatMessage(BaseModel):
     role: str
     content: str
+
 
 class ChatCompletionRequest(BaseModel):
     messages: List[ChatMessage]
     model: Optional[str] = None
     provider: str = "local"
 
+
 class TextGenerationRequest(BaseModel):
     prompt: str
     model: Optional[str] = None
     provider: str = "local"
 
+
 @router.post("/chat")
 async def chat_completion(
-    request: ChatCompletionRequest,
-    current_user: User = Depends(get_current_user)
+    request: ChatCompletionRequest, current_user: User = Depends(get_current_user)
 ):
     """Generate chat completion"""
     llm_service = LLMService()
@@ -38,9 +41,7 @@ async def chat_completion(
     messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
 
     result = await llm_service.chat_completion(
-        messages=messages,
-        model=request.model,
-        provider=request.provider
+        messages=messages, model=request.model, provider=request.provider
     )
 
     if "error" in result:
@@ -48,18 +49,16 @@ async def chat_completion(
 
     return result
 
+
 @router.post("/generate")
 async def generate_text(
-    request: TextGenerationRequest,
-    current_user: User = Depends(get_current_user)
+    request: TextGenerationRequest, current_user: User = Depends(get_current_user)
 ):
     """Generate text completion"""
     llm_service = LLMService()
 
     result = await llm_service.generate_text(
-        prompt=request.prompt,
-        model=request.model,
-        provider=request.provider
+        prompt=request.prompt, model=request.model, provider=request.provider
     )
 
     if "error" in result:
@@ -67,10 +66,10 @@ async def generate_text(
 
     return result
 
+
 @router.get("/models")
 async def get_models(
-    provider: str = "local",
-    current_user: User = Depends(get_current_user)
+    provider: str = "local", current_user: User = Depends(get_current_user)
 ):
     """Get available models for a provider"""
     llm_service = LLMService()
@@ -88,12 +87,14 @@ class OpenAIChatMessage(BaseModel):
     role: str
     content: str
 
+
 class OpenAIChatCompletionRequest(BaseModel):
     model: str
     messages: List[OpenAIChatMessage]
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = None
     stream: Optional[bool] = False
+
 
 @v1_router.post("/chat/completions")
 async def openai_chat_completions(request: OpenAIChatCompletionRequest):
@@ -103,14 +104,21 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
 
     # If no valid API keys are configured and trying to use non-local models, return 501
     def is_valid_api_key(key):
-        return key and key not in [None, "", "your_openai_key_here", "your_openrouter_key_here"]
+        return key and key not in [
+            None,
+            "",
+            "your_openai_key_here",
+            "your_openrouter_key_here",
+        ]
 
-    if (request.model not in ["tinyllama", "llama2", "llama3", "codellama"] and
-        not is_valid_api_key(llm_service.openai_api_key) and
-        not is_valid_api_key(llm_service.openrouter_api_key)):
+    if (
+        request.model not in ["tinyllama", "llama2", "llama3", "codellama"]
+        and not is_valid_api_key(llm_service.openai_api_key)
+        and not is_valid_api_key(llm_service.openrouter_api_key)
+    ):
         raise HTTPException(
             status_code=501,
-            detail="Not implemented: No provider API keys configured for this model"
+            detail="Not implemented: No provider API keys configured for this model",
         )
 
     # Convert to our internal format
@@ -125,9 +133,7 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
         provider = "openrouter"
 
     result = await llm_service.chat_completion(
-        messages=messages,
-        model=request.model,
-        provider=provider
+        messages=messages, model=request.model, provider=provider
     )
 
     if "error" in result:
@@ -141,17 +147,14 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
         "object": "chat.completion",
         "created": 1677652288,
         "model": request.model,
-        "choices": [{
-            "index": 0,
-            "message": {
-                "role": "assistant",
-                "content": result.get("message", "")
-            },
-            "finish_reason": "stop"
-        }],
-        "usage": result.get("usage", {
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "total_tokens": 0
-        })
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": result.get("message", "")},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": result.get(
+            "usage", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        ),
     }

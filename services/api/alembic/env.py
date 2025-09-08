@@ -1,4 +1,3 @@
-import os
 import sys
 from logging.config import fileConfig
 from pathlib import Path
@@ -38,7 +37,7 @@ def get_database_url():
     """Get database URL from environment or config"""
     # Import here to avoid circular imports
     from app.config import Settings
-    
+
     settings = Settings()
     return settings.effective_database_url
 
@@ -84,9 +83,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()

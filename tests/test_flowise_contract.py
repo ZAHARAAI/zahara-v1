@@ -1,4 +1,3 @@
-
 import pytest
 import requests
 
@@ -47,16 +46,26 @@ class TestFlowiseContract:
             assert response.status_code == 200
 
             content = response.text.lower()
-            
+
             # Check for Flowise-specific elements that indicate it's working
             # The canvas element might be dynamically loaded, so check for other indicators
-            flowise_indicators = ["flowise", "chatflow", "workflow", "ai agents", "build ai"]
-            
-            found_indicators = [indicator for indicator in flowise_indicators if indicator in content]
-            
+            flowise_indicators = [
+                "flowise",
+                "chatflow",
+                "workflow",
+                "ai agents",
+                "build ai",
+            ]
+
+            found_indicators = [
+                indicator for indicator in flowise_indicators if indicator in content
+            ]
+
             # We need at least one Flowise indicator to confirm it's working
-            assert len(found_indicators) > 0, f"No Flowise indicators found. Content preview: {content[:500]}"
-            
+            assert len(found_indicators) > 0, (
+                f"No Flowise indicators found. Content preview: {content[:500]}"
+            )
+
             # Try to access a canvas-like endpoint if it exists
             try:
                 canvas_response = requests.get(f"{flowise_url}/canvas", timeout=5)
@@ -67,6 +76,6 @@ class TestFlowiseContract:
             except requests.exceptions.RequestException:
                 # Canvas endpoint might not exist in this version, that's okay
                 pass
-                
+
         except requests.exceptions.ConnectionError:
             pytest.skip("Flowise service not available - this is an optional service")

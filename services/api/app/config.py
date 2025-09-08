@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     postgres_host: str = "postgres"  # Default to Docker service name
     postgres_port: int = 5432
     database_url: Optional[str] = None  # Allow override via DATABASE_URL env var
-    
+
     @property
     def effective_database_url(self) -> str:
         """Get the effective database URL, preferring DATABASE_URL env var if set"""
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     redis_host: str = "redis"  # Default to Docker service name
     redis_port: int = 6379
     redis_password: Optional[str] = None
-    
+
     @property
     def redis_url(self) -> str:
         if self.redis_password:
@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     qdrant_host: str = "qdrant"  # Default to Docker service name
     qdrant_port: int = 6333
     qdrant_api_key: str = ""
-    
+
     @property
     def qdrant_url(self) -> str:
         return f"http://{self.qdrant_host}:{self.qdrant_port}"
@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     # Rate Limiting
     rate_limit_requests: int = 100
     rate_limit_window: int = 60
-    
+
     # Authentication
     demo_api_key: str = "zhr_demo_clinic_2024_observability_key"
     api_key_bypass_in_dev: bool = True
@@ -88,9 +88,7 @@ class Settings(BaseSettings):
         if not self.qdrant_url:
             self.qdrant_url = f"http://{self.qdrant_host}:{self.qdrant_port}"
 
-    model_config = ConfigDict(
-        env_file=".env.local",
-        case_sensitive=False
-    )
+    model_config = ConfigDict(env_file=".env.local", case_sensitive=False)
+
 
 settings = Settings()

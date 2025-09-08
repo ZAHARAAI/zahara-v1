@@ -1,4 +1,5 @@
 """Unit tests for API health endpoints"""
+
 import pytest
 from httpx import AsyncClient
 
