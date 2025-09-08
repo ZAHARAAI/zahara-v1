@@ -37,7 +37,7 @@ jobs:
     - name: Install Python dependencies
       run: |
         # Install test dependencies
-        pip install ruff pytest pytest-asyncio httpx requests
+        pip install ruff pytest pytest-asyncio pytest-timeout httpx requests
         # Install API service dependencies for testing
         pip install -r services/api/requirements.txt
         # Install Router service dependencies for testing
@@ -65,15 +65,28 @@ jobs:
         npm run build
         npm run test
     
-    - name: Start services and run integration tests
+    - name: Start services and verify health
       run: |
-        # Use our Makefile CI pipeline for consistency
-        echo "Running complete CI pipeline..."
-        make -C infra ci
+        # Start all services using Makefile
+        echo "Building and starting all services..."
+        cd infra
+        make build
+        make up
+        
+        # Wait for services to be ready
+        echo "Waiting for services to be healthy..."
+        timeout 90s bash -c 'until curl -sf http://localhost:8000/health/; do echo "Waiting for API..."; sleep 5; done'
+        timeout 30s bash -c 'until curl -sf http://localhost:7000/health; do echo "Waiting for Router..."; sleep 2; done'
+        timeout 30s bash -c 'until curl -sf http://localhost:3001; do echo "Waiting for Frontend..."; sleep 2; done'
+        
+        # Run health checks
+        make test
     
     # Run Python tests
     - name: Run Python tests
-      run: pytest tests/ -v --tb=short
+      run: |
+        # Run tests (dependencies already installed)
+        pytest tests/ -v --tb=short
     
     # Run E2E tests
     - name: Run E2E tests
@@ -234,7 +247,7 @@ jobs:
     - name: Create deployment summary
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       run: |
-        echo "## 🐳 Docker Images Built & Pushed to GHCR" >> $GITHUB_STEP_SUMMARY
+        echo "## Docker Images Built & Pushed to GHCR" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### API Image" >> $GITHUB_STEP_SUMMARY
         echo "**Registry:** ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
@@ -286,17 +299,7 @@ jobs:
             issue_number: prNumber,
             owner: context.repo.owner,
             repo: context.repo.repo,
-            body: `🚀 **Preview deployment ready!**
-            
-**Frontend URL:** ${previewUrl}
-**Status:** ✅ All tests passed
-**Backend Tests:** ✅ Passed
-**Frontend Tests:** ✅ Passed  
-**E2E Tests:** ✅ Passed
-**Security Scan:** ✅ Passed
-**Docker Images:** ✅ Built (not pushed on PR)
-
-_This preview will be updated automatically when you push new commits._`
+            body: `Preview deployment ready!\n\n**Frontend URL:** ${previewUrl}\n**Status:** All tests passed\n**Backend Tests:** Passed\n**Frontend Tests:** Passed\n**E2E Tests:** Passed\n**Security Scan:** Passed\n**Docker Images:** Built (not pushed on PR)\n\n_This preview will be updated automatically when you push new commits._`
           });
       env:
         NETLIFY_SITE_NAME: ${{ secrets.NETLIFY_SITE_NAME }}
@@ -304,16 +307,16 @@ _This preview will be updated automatically when you push new commits._`
     - name: Create final deployment summary
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       run: |
-        echo "## 🚀 Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
+        echo "## Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Frontend (Netlify)" >> $GITHUB_STEP_SUMMARY
         echo "**URL:** https://${{ secrets.NETLIFY_SITE_NAME }}.netlify.app" >> $GITHUB_STEP_SUMMARY
-        echo "**Status:** ✅ Deployed" >> $GITHUB_STEP_SUMMARY
+        echo "**Status:** Deployed" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Backend Services (GHCR)" >> $GITHUB_STEP_SUMMARY
         echo "**API:** ghcr.io/${{ env.IMAGE_NAME }}-api:latest" >> $GITHUB_STEP_SUMMARY
         echo "**Router:** ghcr.io/${{ env.IMAGE_NAME }}-router:latest" >> $GITHUB_STEP_SUMMARY
-        echo "**Status:** ✅ Images pushed to GHCR" >> $GITHUB_STEP_SUMMARY
+        echo "**Status:** Images pushed to GHCR" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Deployment ID:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
     

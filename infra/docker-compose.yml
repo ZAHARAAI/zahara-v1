@@ -1,5 +1,4 @@
 services:
-  # API Service
   api:
     build:
       context: ../services/api
@@ -139,7 +138,7 @@ services:
     healthcheck: { test: ["CMD","curl","-sf","http://localhost:11434/api/tags"], interval: 30s, timeout: 10s, retries: 10, start_period: 60s }
 
   # Flowise - Low-code LLM Flow Builder (flowise profile) - Using official image for testing
-   flow-builder:
+  flow-builder:
     image: ghcr.io/zaharaai/flowise:${FLOWISE_COMMIT_SHA:-af1464f7c2b9a608a2763f5d696d6670e8f51a7e}
     # Note: For production, use digest pinning: ghcr.io/zaharaai/flowise@sha256:
     container_name: zahara-flowise
