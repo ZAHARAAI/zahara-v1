@@ -16,24 +16,39 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # Database Settings
-    postgres_user: str = "fastapi_user"
-    postgres_password: str = "secure_password_123"
-    postgres_db: str = "fastapi_db"
-    postgres_host: str = "postgres"
+    postgres_user: str = "postgres"
+    postgres_password: str = "postgres"
+    postgres_db: str = "postgres"
+    postgres_host: str = "postgres"  # Default to Docker service name
     postgres_port: int = 5432
-    database_url: str = ""
+    database_url: Optional[str] = None  # Allow override via DATABASE_URL env var
+    
+    @property
+    def effective_database_url(self) -> str:
+        """Get the effective database URL, preferring DATABASE_URL env var if set"""
+        if self.database_url:
+            return self.database_url
+        return f"postgresql://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
 
     # Redis Settings
-    redis_host: str = "redis"
+    redis_host: str = "redis"  # Default to Docker service name
     redis_port: int = 6379
     redis_password: Optional[str] = None
-    redis_url: str = ""
+    
+    @property
+    def redis_url(self) -> str:
+        if self.redis_password:
+            return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}"
+        return f"redis://{self.redis_host}:{self.redis_port}"
 
     # Qdrant Settings
-    qdrant_host: str = "qdrant"
+    qdrant_host: str = "qdrant"  # Default to Docker service name
     qdrant_port: int = 6333
-    qdrant_api_key: str = "qdrant_secure_key_123"
-    qdrant_url: str = ""
+    qdrant_api_key: str = ""
+    
+    @property
+    def qdrant_url(self) -> str:
+        return f"http://{self.qdrant_host}:{self.qdrant_port}"
 
     # LLM Settings
     local_llm_url: str = "http://ollama:11434"
@@ -49,6 +64,11 @@ class Settings(BaseSettings):
     # Rate Limiting
     rate_limit_requests: int = 100
     rate_limit_window: int = 60
+    
+    # Authentication
+    demo_api_key: str = "zhr_demo_clinic_2024_observability_key"
+    api_key_bypass_in_dev: bool = True
+    dev_mode: bool = True
 
     # Flowise Settings
     flowise_host: str = "flowise"

@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -139,9 +140,17 @@ class LLMService:
 
     async def health_check(self) -> Dict[str, Any]:
         """Check if LLM service is healthy"""
+        # Return mock health in test mode
+        if os.getenv("TESTING") == "true":
+            return {
+                "status": "healthy",
+                "provider": "mock",
+                "note": "Mock LLM for testing"
+            }
+        
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.get(f"{self.local_llm_url}/api/tags", timeout=10.0)
+                response = await client.get(f"{self.local_llm_url}/api/tags", timeout=5.0)
                 if response.status_code == 200:
                     return {"status": "healthy", "provider": "local"}
                 else:

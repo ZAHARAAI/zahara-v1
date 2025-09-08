@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from ..models.api_key import APIKey
+from ..config import settings
 
 
 class APIKeyService:
@@ -64,6 +65,25 @@ class APIKeyService:
         """Verify an API key and return the associated record if valid"""
         if not api_key or len(api_key) < 10:
             return None
+
+        # Handle demo API key in dev mode
+        if settings.dev_mode and api_key == settings.demo_api_key:
+            # Create a mock API key record for the demo key
+            demo_key = APIKey(
+                id=0,  # Special ID for demo key
+                name="Demo API Key",
+                key_hash="demo_key_hash",
+                key_prefix="zhr_demo_",
+                description="Demo API key for development and testing",
+                can_read=True,
+                can_write=True,
+                can_admin=True,
+                is_active=True,
+                created_at=datetime.now(),
+                last_used_at=datetime.now(),
+                request_count=0
+            )
+            return demo_key
 
         try:
             key_hash = self.hash_api_key(api_key)

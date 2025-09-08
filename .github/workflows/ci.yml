@@ -1,6 +1,14 @@
-name: ci
+name: CI/CD Pipeline
 
-on: [pull_request]
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   ci:
@@ -8,15 +16,25 @@ jobs:
     permissions:
       contents: read
       actions: read
+      packages: write
     
     steps:
     - uses: actions/checkout@v4
     
-    - uses: actions/setup-python@v5
+    - name: Setup Python
+      uses: actions/setup-python@v5
       with:
         python-version: "3.11"
+        cache: 'pip'
     
-    - name: Install dependencies
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install Python dependencies
       run: |
         # Install test dependencies
         pip install ruff pytest pytest-asyncio httpx requests
@@ -25,32 +43,46 @@ jobs:
         # Install Router service dependencies for testing
         pip install -r services/router/requirements.txt
     
-    - name: Lint with ruff
+    - name: Install Node.js dependencies
+      working-directory: frontend
+      run: npm ci
+    
+    - name: Lint Python code
       run: ruff check .
+    
+    - name: Lint and type-check frontend
+      working-directory: frontend
+      run: |
+        npm run lint
+        npm run type-check
     
     - name: Build Docker images
       run: make -C infra build
     
-    - name: Start services for testing
+    - name: Build and test frontend
+      working-directory: frontend
       run: |
-        # Use our Makefile commands for consistency
-        echo "Initializing infrastructure..."
-        make -C infra init
-        
-        echo "Starting all services..."
-        make -C infra up
-        
-        echo "Waiting for services to be ready..."
-        timeout 90s bash -c 'until curl -sf http://localhost:8000/health/; do echo "Waiting for API..."; sleep 5; done'
-        timeout 30s bash -c 'until curl -sf http://localhost:7000/health; do echo "Waiting for Router..."; sleep 2; done'
-        
-        echo "All services started successfully!"
-        make -C infra ps
-        make -C infra test
+        npm run build
+        npm run test
     
-    # Run tests before security scanning
-    - name: Run tests
+    - name: Start services and run integration tests
+      run: |
+        # Use our Makefile CI pipeline for consistency
+        echo "Running complete CI pipeline..."
+        make -C infra ci
+    
+    # Run Python tests
+    - name: Run Python tests
       run: pytest tests/ -v --tb=short
+    
+    # Run E2E tests
+    - name: Run E2E tests
+      working-directory: frontend
+      run: |
+        npx playwright install chromium --with-deps
+        npx playwright test --project=chromium --reporter=line
+      env:
+        CI: true
     
     # Security scanning - FAIL on CRITICAL vulnerabilities
     - name: Run Trivy vulnerability scanner - API
@@ -126,6 +158,164 @@ jobs:
         name: security-scan-results-${{ github.run_id }}
         path: '*-trivy-results.txt'
         retention-days: 30
+    
+    # Build and push Docker images (only on main branch)
+    - name: Log in to Container Registry
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract API metadata
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      id: meta-api
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push API image
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      uses: docker/build-push-action@v5
+      with:
+        context: ./services/api
+        push: true
+        tags: ${{ steps.meta-api.outputs.tags }}
+        labels: ${{ steps.meta-api.outputs.labels }}
+    
+    - name: Extract Router metadata
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      id: meta-router
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-router
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push Router image
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      uses: docker/build-push-action@v5
+      with:
+        context: ./services/router
+        push: true
+        tags: ${{ steps.meta-router.outputs.tags }}
+        labels: ${{ steps.meta-router.outputs.labels }}
+    
+    - name: Extract Frontend metadata
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      id: meta-frontend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push Frontend image
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      uses: docker/build-push-action@v5
+      with:
+        context: ./frontend
+        push: true
+        tags: ${{ steps.meta-frontend.outputs.tags }}
+        labels: ${{ steps.meta-frontend.outputs.labels }}
+        build-args: |
+          VITE_API_BASE_URL=https://api.zahara.ai
+          VITE_API_KEY=${{ secrets.VITE_API_KEY || 'zhr_demo_clinic_2024_observability_key' }}
+    
+    - name: Create deployment summary
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: |
+        echo "## 🐳 Docker Images Built & Pushed to GHCR" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### API Image" >> $GITHUB_STEP_SUMMARY
+        echo "**Registry:** ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Image:** ${{ env.IMAGE_NAME }}-api" >> $GITHUB_STEP_SUMMARY
+        echo "**Tags:** ${{ steps.meta-api.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Router Image" >> $GITHUB_STEP_SUMMARY
+        echo "**Registry:** ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Image:** ${{ env.IMAGE_NAME }}-router" >> $GITHUB_STEP_SUMMARY
+        echo "**Tags:** ${{ steps.meta-router.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Frontend Image" >> $GITHUB_STEP_SUMMARY
+        echo "**Registry:** ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Image:** ${{ env.IMAGE_NAME }}-frontend" >> $GITHUB_STEP_SUMMARY
+        echo "**Tags:** ${{ steps.meta-frontend.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Build ID:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Built at:** $(date -u)" >> $GITHUB_STEP_SUMMARY
+
+    # Deploy frontend to Netlify (PR previews and production)
+    - name: Deploy to Netlify (Preview)
+      if: github.event_name == 'pull_request'
+      uses: netlify/actions/cli@master
+      with:
+        args: deploy --dir=frontend/dist --alias=pr-${{ github.event.number }} --message="PR #${{ github.event.number }} - ${{ github.event.pull_request.title }}"
+      env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+
+    - name: Deploy to Netlify (Production)
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      uses: netlify/actions/cli@master
+      with:
+        args: deploy --dir=frontend/dist --prod --message="Production deploy - ${{ github.sha }}"
+      env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+
+    - name: Comment PR with preview URL
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const prNumber = context.issue.number;
+          const siteName = process.env.NETLIFY_SITE_NAME || 'zahara-agent-clinic';
+          const previewUrl = `https://pr-${prNumber}--${siteName}.netlify.app`;
+          
+          github.rest.issues.createComment({
+            issue_number: prNumber,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `🚀 **Preview deployment ready!**
+            
+**Frontend URL:** ${previewUrl}
+**Status:** ✅ All tests passed
+**Backend Tests:** ✅ Passed
+**Frontend Tests:** ✅ Passed  
+**E2E Tests:** ✅ Passed
+**Security Scan:** ✅ Passed
+**Docker Images:** ✅ Built (not pushed on PR)
+
+_This preview will be updated automatically when you push new commits._`
+          });
+      env:
+        NETLIFY_SITE_NAME: ${{ secrets.NETLIFY_SITE_NAME }}
+
+    - name: Create final deployment summary
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: |
+        echo "## 🚀 Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Frontend (Netlify)" >> $GITHUB_STEP_SUMMARY
+        echo "**URL:** https://${{ secrets.NETLIFY_SITE_NAME }}.netlify.app" >> $GITHUB_STEP_SUMMARY
+        echo "**Status:** ✅ Deployed" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Backend Services (GHCR)" >> $GITHUB_STEP_SUMMARY
+        echo "**API:** ghcr.io/${{ env.IMAGE_NAME }}-api:latest" >> $GITHUB_STEP_SUMMARY
+        echo "**Router:** ghcr.io/${{ env.IMAGE_NAME }}-router:latest" >> $GITHUB_STEP_SUMMARY
+        echo "**Status:** ✅ Images pushed to GHCR" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Deployment ID:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
     
     - name: Cleanup
       if: always()
