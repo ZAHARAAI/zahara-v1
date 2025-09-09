@@ -41,8 +41,8 @@ jobs:
 
     - name: Verify Netlify credentials
       run: |
-        if [ -z "${{ secrets.NETLIFY_AUTH_TOKEN }}" ]; then
-          echo "❌ NETLIFY_AUTH_TOKEN secret is not set"
+        if [ -z "${{ secrets.NETLIFY_AUTH_TOKENS }}" ]; then
+          echo "❌ NETLIFY_AUTH_TOKENS secret is not set"
           exit 1
         fi
         if [ -z "${{ secrets.NETLIFY_SITE_ID }}" ]; then
@@ -70,7 +70,7 @@ jobs:
       with:
         args: deploy --dir=frontend/dist --alias=pr-${{ github.event.number }} --message="PR #${{ github.event.number }} - ${{ github.event.pull_request.title }}"
       env:
-        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        NETLIFY_AUTH_TOKENS: ${{ secrets.NETLIFY_AUTH_TOKENS }}
         NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
         VITE_DEMO_MODE: true
         VITE_API_BASE_URL: https://api.zahara.ai
@@ -143,8 +143,8 @@ jobs:
 
     - name: Verify Netlify credentials
       run: |
-        if [ -z "${{ secrets.NETLIFY_AUTH_TOKEN }}" ]; then
-          echo "❌ NETLIFY_AUTH_TOKEN secret is not set"
+        if [ -z "${{ secrets.NETLIFY_AUTH_TOKENS }}" ]; then
+          echo "❌ NETLIFY_AUTH_TOKENS secret is not set"
           exit 1
         fi
         if [ -z "${{ secrets.NETLIFY_SITE_ID }}" ]; then
@@ -172,7 +172,7 @@ jobs:
       with:
         args: deploy --dir=frontend/dist --prod --message="Production deploy - ${{ github.sha }}"
       env:
-        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        NETLIFY_AUTH_TOKENS: ${{ secrets.NETLIFY_AUTH_TOKENS }}
         NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
         VITE_DEMO_MODE: true
         VITE_API_BASE_URL: https://api.zahara.ai
