@@ -1,4 +1,5 @@
 """Tests for development mode functionality"""
+
 import os
 
 import pytest
@@ -31,6 +32,7 @@ async def test_dev_endpoints_enabled_with_env_var():
     import importlib
 
     import app.main
+
     importlib.reload(app.main)
 
     try:

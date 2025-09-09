@@ -1,9 +1,11 @@
 """Tests for version endpoint"""
+
 import pytest
 from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(10)
 async def test_version_endpoint(async_client: AsyncClient):
     """Test the version endpoint returns proper version information"""
     response = await async_client.get("/version/")

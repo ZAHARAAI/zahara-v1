@@ -1,4 +1,5 @@
 """Tests for YAML-based agents configuration"""
+
 import pytest
 from httpx import AsyncClient
 

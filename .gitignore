@@ -209,3 +209,66 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Zahara.ai Agent Clinic specific
+# Frontend build artifacts and cache
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+frontend/coverage/
+frontend/.vite/
+frontend/debug-*.png
+frontend/simple-test*.png
+
+# Backend temporary files
+services/api/api_key.txt
+services/api/__pycache__/
+services/api/app/__pycache__/
+services/api/alembic/versions/__pycache__/
+
+# Database files (in case they get created)
+*.db
+*.sqlite
+*.sqlite3
+postgres_data/
+redis_data/
+qdrant_data/
+flowise_data/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+test-results/
+playwright-report/
+junit.xml
+
+# Docker volumes (if not using named volumes)
+volumes/
+
+# Logs
+*.log
+logs/
+log/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Netlify
+.netlify/
+build/
+dist/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~

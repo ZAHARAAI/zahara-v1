@@ -1,0 +1,38 @@
+[build]
+  # Directory to change to before starting a build
+  base = "frontend"
+  
+  # Directory that contains the deploy-ready HTML files and assets
+  publish = "dist"
+  
+  # Default build command
+  command = "npm run build"
+
+# Redirect all requests to index.html for SPA routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Headers for security and CORS
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Environment variables for preview deployments (Demo Mode)
+[context.deploy-preview.environment]
+  VITE_API_BASE_URL = "https://api.zahara.ai"
+  VITE_API_KEY = "zhr_demo_clinic_2024_observability_key"
+  VITE_DEMO_MODE = "true"
+  VITE_NODE_ENV = "preview"
+
+# Environment variables for production (Demo Mode for MVP)
+[context.production.environment]
+  VITE_API_BASE_URL = "https://api.zahara.ai"
+  VITE_API_KEY = "zhr_demo_clinic_2024_observability_key"
+  VITE_DEMO_MODE = "true"
+  VITE_NODE_ENV = "production"

@@ -1,4 +1,3 @@
-import os
 import sys
 from logging.config import fileConfig
 from pathlib import Path
@@ -36,11 +35,11 @@ target_metadata = Base.metadata
 
 def get_database_url():
     """Get database URL from environment or config"""
-    # For migrations, use localhost instead of docker hostname
-    db_url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
-    if db_url and "postgres:5432" in db_url and "localhost" not in db_url:
-        db_url = db_url.replace("postgres:5432", "localhost:5432")
-    return db_url
+    # Import here to avoid circular imports
+    from app.config import Settings
+
+    settings = Settings()
+    return settings.effective_database_url
 
 
 def run_migrations_offline() -> None:
@@ -84,9 +83,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()

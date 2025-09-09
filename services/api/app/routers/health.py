@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -9,6 +8,7 @@ from ..services.vector_service import VectorService
 
 router = APIRouter(prefix="/health", tags=["health"])
 
+
 @router.get("/")
 async def basic_health():
     """Basic health check"""
@@ -16,8 +16,9 @@ async def basic_health():
         "status": "healthy",
         "message": "Zahara.ai API is running",
         "company": "Zahara.ai",
-        "service": "api"
+        "service": "api",
     }
+
 
 @router.get("/database")
 async def database_health(db: Session = Depends(get_db)):
@@ -27,6 +28,7 @@ async def database_health(db: Session = Depends(get_db)):
         return {"status": "healthy", "service": "postgresql"}
     except Exception as e:
         return {"status": "unhealthy", "service": "postgresql", "error": str(e)}
+
 
 @router.get("/redis")
 async def redis_health():
@@ -38,12 +40,14 @@ async def redis_health():
     except Exception as e:
         return {"status": "unhealthy", "service": "redis", "error": str(e)}
 
+
 @router.get("/qdrant")
 async def qdrant_health():
     """Check Qdrant connectivity"""
     vector_service = VectorService()
     result = await vector_service.health_check()
     return {"service": "qdrant", **result}
+
 
 @router.get("/llm")
 async def llm_health():
@@ -52,10 +56,12 @@ async def llm_health():
     result = await llm_service.health_check()
     return {"service": "llm", **result}
 
+
 @router.get("/all")
 async def all_health_check(db: Session = Depends(get_db)):
     """Comprehensive health check for all services (alias for /full)"""
     return await full_health_check(db)
+
 
 @router.get("/full")
 async def full_health_check(db: Session = Depends(get_db)):
@@ -67,7 +73,11 @@ async def full_health_check(db: Session = Depends(get_db)):
         db.execute(text("SELECT 1"))
         results["database"] = {"status": "healthy", "service": "postgresql"}
     except Exception as e:
-        results["database"] = {"status": "unhealthy", "service": "postgresql", "error": str(e)}
+        results["database"] = {
+            "status": "unhealthy",
+            "service": "postgresql",
+            "error": str(e),
+        }
 
     # Check Redis
     try:
@@ -88,7 +98,11 @@ async def full_health_check(db: Session = Depends(get_db)):
         llm_result = await llm_service.health_check()
         results["llm"] = {"service": "llm", **llm_result}
     except Exception:
-        results["llm"] = {"service": "llm", "status": "unavailable", "note": "Ollama not configured (optional)"}
+        results["llm"] = {
+            "service": "llm",
+            "status": "unavailable",
+            "note": "Ollama not configured (optional)",
+        }
 
     # Overall status (LLM is optional, so exclude from health calculation)
     core_services = ["database", "redis", "qdrant"]
@@ -103,5 +117,5 @@ async def full_health_check(db: Session = Depends(get_db)):
         "overall_status": "healthy" if all_healthy else "degraded",
         "company": "Zahara.ai",
         "platform": "Zahara.ai Intelligent AI Platform",
-        "services": results
+        "services": results,
     }

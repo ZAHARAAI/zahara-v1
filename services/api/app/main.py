@@ -10,7 +10,17 @@ from .config import settings
 from .database import Base, engine
 from .middleware.observability import ObservabilityMiddleware
 from .middleware.rate_limit import RateLimitMiddleware
-from .routers import agents, api_keys, auth, health, llm_router, vector, version
+from .routers import (
+    agents,
+    api_keys,
+    auth,
+    flowise,
+    health,
+    llm_router,
+    traces,
+    vector,
+    version,
+)
 
 # Create database tables (skip during testing)
 if not os.getenv("TESTING"):
@@ -37,11 +47,11 @@ app = FastAPI(
 )
 
 # CORS middleware
-allowed_origins = ["*"] if settings.debug else [
-    "http://localhost:3000",
-    "http://localhost:8000",
-    "https://zahara.ai"
-]
+allowed_origins = (
+    ["*"]
+    if settings.debug
+    else ["http://localhost:3000", "http://localhost:8000", "https://zahara.ai"]
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -57,20 +67,29 @@ app.add_middleware(ObservabilityMiddleware)
 # Rate limiting middleware
 app.add_middleware(RateLimitMiddleware)
 
+
 # Exception handlers
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc):
     return JSONResponse(
         status_code=404,
-        content={"error": "Not found", "detail": "The requested resource was not found"}
+        content={
+            "error": "Not found",
+            "detail": "The requested resource was not found",
+        },
     )
+
 
 @app.exception_handler(500)
 async def internal_error_handler(request: Request, exc):
     return JSONResponse(
         status_code=500,
-        content={"error": "Internal server error", "detail": "An unexpected error occurred"}
+        content={
+            "error": "Internal server error",
+            "detail": "An unexpected error occurred",
+        },
     )
+
 
 # Include routers
 app.include_router(health.router)
@@ -81,16 +100,20 @@ app.include_router(llm_router.v1_router)
 app.include_router(agents.router)
 app.include_router(version.router)
 app.include_router(api_keys.router)
+app.include_router(traces.router)
+app.include_router(flowise.router)
 
 # Include dev router only if dev pages are enabled
 if os.getenv("ENABLE_DEV_PAGES") == "1":
     from .routers import dev
+
     app.include_router(dev.router)
 
 # Mount static files
 static_path = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_path):
     app.mount("/static", StaticFiles(directory=static_path), name="static")
+
 
 # Root endpoint
 @app.get("/")
@@ -101,13 +124,11 @@ async def root():
         "version": settings.app_version,
         "docs": "/docs",
         "dashboard": "/static/index.html",
-        "website": settings.company_url
+        "website": settings.company_url,
     }
+
 
 if __name__ == "__main__":
     uvicorn.run(
-        "app.main:app",
-        host=settings.host,
-        port=settings.port,
-        reload=settings.debug
+        "app.main:app", host=settings.host, port=settings.port, reload=settings.debug
     )

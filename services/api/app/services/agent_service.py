@@ -8,7 +8,9 @@ class AgentService:
     """Service for managing AI agents from YAML configuration"""
 
     def __init__(self):
-        self.config_path = Path(__file__).parent.parent.parent.parent / "specs" / "agent.example.yaml"
+        self.config_path = (
+            Path(__file__).parent.parent.parent.parent / "specs" / "agent.example.yaml"
+        )
         self._config = None
         self._load_config()
 
@@ -16,7 +18,7 @@ class AgentService:
         """Load agents configuration from YAML file"""
         try:
             if self.config_path.exists():
-                with open(self.config_path, 'r', encoding='utf-8') as file:
+                with open(self.config_path, "r", encoding="utf-8") as file:
                     self._config = yaml.safe_load(file)
             else:
                 # Fallback to default configuration if file doesn't exist
@@ -38,15 +40,15 @@ class AgentService:
                     "provider": "openai",
                     "default": True,
                     "capabilities": ["general_assistance"],
-                    "settings": {"temperature": 0.7, "max_tokens": 1000}
+                    "settings": {"temperature": 0.7, "max_tokens": 1000},
                 }
             ],
             "vector_collections": {
                 "default_collection": "zahara_default",
                 "embedding_model": "text-embedding-ada-002",
                 "vector_size": 1536,
-                "similarity_threshold": 0.7
-            }
+                "similarity_threshold": 0.7,
+            },
         }
 
     def list_agents(self) -> List[Dict[str, Any]]:
@@ -87,7 +89,14 @@ class AgentService:
 
     def validate_agent_config(self, agent_config: Dict[str, Any]) -> tuple[bool, str]:
         """Validate an agent configuration"""
-        required_fields = ["id", "name", "description", "system_prompt", "model", "provider"]
+        required_fields = [
+            "id",
+            "name",
+            "description",
+            "system_prompt",
+            "model",
+            "provider",
+        ]
 
         for field in required_fields:
             if field not in agent_config:

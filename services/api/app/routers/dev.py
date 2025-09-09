@@ -11,7 +11,7 @@ async def dev_test():
     return {
         "message": "Development mode is enabled",
         "status": "dev",
-        "env": "development"
+        "env": "development",
     }
 
 
@@ -21,5 +21,5 @@ async def dev_health():
     return {
         "status": "healthy",
         "mode": "development",
-        "dev_pages_enabled": os.getenv("ENABLE_DEV_PAGES", "0") == "1"
+        "dev_pages_enabled": os.getenv("ENABLE_DEV_PAGES", "0") == "1",
     }

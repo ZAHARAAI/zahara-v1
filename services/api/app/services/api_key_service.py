@@ -6,6 +6,7 @@ from typing import List, Optional
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..models.api_key import APIKey
 
 
@@ -34,7 +35,7 @@ class APIKeyService:
         description: str = None,
         can_read: bool = True,
         can_write: bool = False,
-        can_admin: bool = False
+        can_admin: bool = False,
     ) -> tuple[APIKey, str]:
         """Create a new API key and return both the model and the plain key"""
 
@@ -51,7 +52,7 @@ class APIKeyService:
             description=description,
             can_read=can_read,
             can_write=can_write,
-            can_admin=can_admin
+            can_admin=can_admin,
         )
 
         db.add(api_key)
@@ -65,13 +66,33 @@ class APIKeyService:
         if not api_key or len(api_key) < 10:
             return None
 
+        # Handle demo API key in dev mode
+        if settings.dev_mode and api_key == settings.demo_api_key:
+            # Create a mock API key record for the demo key
+            demo_key = APIKey(
+                id=0,  # Special ID for demo key
+                name="Demo API Key",
+                key_hash="demo_key_hash",
+                key_prefix="zhr_demo_",
+                description="Demo API key for development and testing",
+                can_read=True,
+                can_write=True,
+                can_admin=True,
+                is_active=True,
+                created_at=datetime.now(),
+                last_used_at=datetime.now(),
+                request_count=0,
+            )
+            return demo_key
+
         try:
             key_hash = self.hash_api_key(api_key)
 
-            api_key_record = db.query(APIKey).filter(
-                APIKey.key_hash == key_hash,
-                APIKey.is_active
-            ).first()
+            api_key_record = (
+                db.query(APIKey)
+                .filter(APIKey.key_hash == key_hash, APIKey.is_active)
+                .first()
+            )
 
             if api_key_record:
                 # Update usage statistics in a separate transaction to avoid locks
@@ -125,7 +146,7 @@ def verify_api_key_dependency(api_key: str, db: Session) -> APIKey:
     if not api_key_record:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or inactive API key"
+            detail="Invalid or inactive API key",
         )
 
     return api_key_record

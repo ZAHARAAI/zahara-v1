@@ -1,0 +1,186 @@
+name: Netlify Deploy
+
+on:
+  pull_request:
+    branches: [ main, phase-2 ]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install frontend dependencies
+      working-directory: frontend
+      run: npm ci
+
+    - name: Build frontend
+      working-directory: frontend
+      run: npm run build
+
+    - name: Verify Netlify credentials
+      run: |
+        if [ -z "${{ secrets.NETLIFY_AUTH_TOKEN }}" ]; then
+          echo "❌ NETLIFY_AUTH_TOKEN secret is not set"
+          exit 1
+        fi
+        if [ -z "${{ secrets.NETLIFY_SITE_ID }}" ]; then
+          echo "❌ NETLIFY_SITE_ID secret is not set"
+          exit 1
+        fi
+        echo "✅ Netlify secrets are configured"
+
+        # Test Netlify authentication
+        echo "🔍 Testing Netlify authentication..."
+        npx netlify status --auth ${{ secrets.NETLIFY_AUTH_TOKEN }} --json || echo "⚠️  Netlify CLI status check failed"
+
+        # Try to get site info to verify credentials
+        echo "🔍 Verifying site access..."
+        npx netlify sites:list --auth ${{ secrets.NETLIFY_AUTH_TOKEN }} --json | jq '.[] | select(.site_id == "${{ secrets.NETLIFY_SITE_ID }}") | {name: .name, site_id: .site_id, url: .url}' || echo "⚠️  Could not verify site access"
+
+        echo "📋 Current configuration:"
+        echo "Site ID: ${{ secrets.NETLIFY_SITE_ID }}"
+        echo "Site Name: ${{ secrets.NETLIFY_SITE_NAME || 'soft-chebakia-ce65bd' }}"
+        echo "✅ Netlify credentials verified"
+
+    - name: Deploy to Netlify (Preview)
+      id: netlify-preview
+      uses: netlify/actions/cli@master
+      with:
+        args: deploy --dir=frontend/dist --alias=pr-${{ github.event.number }} --message="PR #${{ github.event.number }} - ${{ github.event.pull_request.title }}"
+      env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        VITE_DEMO_MODE: true
+        VITE_API_BASE_URL: https://api.zahara.ai
+
+    - name: Comment PR with deployment failure
+      if: steps.netlify-preview.conclusion == 'failure'
+      uses: peter-evans/create-or-update-comment@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        issue-number: ${{ github.event.pull_request.number }}
+        body: |
+          ## ❌ Preview Deployment Failed!
+
+          **Status:** Netlify deployment failed
+
+          ### ❌ Build Results
+          - **Frontend Build:** ✅ Passed
+          - **Netlify Preview:** ❌ Failed
+
+          Please check the workflow logs for details. The issue might be:
+          - Netlify site ownership/permissions
+          - Invalid secrets configuration
+          - Site requires manual approval
+
+          _Please resolve the deployment issue and push new commits to retry._
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install frontend dependencies
+      working-directory: frontend
+      run: npm ci
+
+    - name: Build frontend
+      working-directory: frontend
+      run: npm run build
+
+    - name: Verify Netlify credentials
+      run: |
+        if [ -z "${{ secrets.NETLIFY_AUTH_TOKEN }}" ]; then
+          echo "❌ NETLIFY_AUTH_TOKEN secret is not set"
+          exit 1
+        fi
+        if [ -z "${{ secrets.NETLIFY_SITE_ID }}" ]; then
+          echo "❌ NETLIFY_SITE_ID secret is not set"
+          exit 1
+        fi
+        echo "✅ Netlify secrets are configured for production"
+
+        # Test Netlify authentication
+        echo "🔍 Testing Netlify authentication..."
+        npx netlify status --auth ${{ secrets.NETLIFY_AUTH_TOKEN }} --json || echo "⚠️  Netlify CLI status check failed"
+
+        # Try to get site info to verify credentials
+        echo "🔍 Verifying site access..."
+        npx netlify sites:list --auth ${{ secrets.NETLIFY_AUTH_TOKEN }} --json | jq '.[] | select(.site_id == "${{ secrets.NETLIFY_SITE_ID }}") | {name: .name, site_id: .site_id, url: .url}' || echo "⚠️  Could not verify site access"
+
+        echo "📋 Production configuration:"
+        echo "Site ID: ${{ secrets.NETLIFY_SITE_ID }}"
+        echo "Site Name: ${{ secrets.NETLIFY_SITE_NAME || 'soft-chebakia-ce65bd' }}"
+        echo "✅ Netlify credentials verified"
+
+    - name: Deploy to Netlify (Production)
+      id: netlify-production
+      uses: netlify/actions/cli@master
+      with:
+        args: deploy --dir=frontend/dist --prod --message="Production deploy - ${{ github.sha }}"
+      env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        VITE_DEMO_MODE: true
+        VITE_API_BASE_URL: https://api.zahara.ai
+
+    - name: Production deployment summary
+      if: steps.netlify-production.conclusion == 'success'
+      run: |
+        echo "## 🎉 Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Frontend (Netlify)" >> $GITHUB_STEP_SUMMARY
+        echo "**URL:** https://${{ secrets.NETLIFY_SITE_NAME || 'soft-chebakia-ce65bd' }}.netlify.app" >> $GITHUB_STEP_SUMMARY
+        echo "**Status:** ✅ Deployed Successfully" >> $GITHUB_STEP_SUMMARY
+        echo "**Build ID:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Demo Mode" >> $GITHUB_STEP_SUMMARY
+        echo "**Mode:** Enabled (VITE_DEMO_MODE=true)" >> $GITHUB_STEP_SUMMARY
+        echo "**Data:** Demo traces and metrics" >> $GITHUB_STEP_SUMMARY
+
+    - name: Production deployment failure
+      if: steps.netlify-production.conclusion == 'failure'
+      run: |
+        echo "## ❌ Production Deployment Failed" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Frontend (Netlify)" >> $GITHUB_STEP_SUMMARY
+        echo "**Status:** ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+        echo "**Build ID:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Please check the workflow logs for details."

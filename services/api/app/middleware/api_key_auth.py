@@ -10,6 +10,7 @@ from ..services.api_key_service import APIKeyService
 
 security = HTTPBearer(auto_error=False)
 
+
 class APIKeyAuth:
     """API Key authentication middleware"""
 
@@ -20,7 +21,7 @@ class APIKeyAuth:
         self,
         request: Request,
         credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db),
     ) -> Optional[APIKey]:
         """Authenticate request using API key from Authorization header"""
 
@@ -41,8 +42,7 @@ class APIKeyAuth:
             # For endpoints that require API key, raise 401
             if self.requires_api_key(request.url.path):
                 raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="API key required"
+                    status_code=status.HTTP_401_UNAUTHORIZED, detail="API key required"
                 )
             return None
 
@@ -51,14 +51,14 @@ class APIKeyAuth:
         if not api_key_record:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or inactive API key"
+                detail="Invalid or inactive API key",
             )
 
         # Check permissions based on request method and path
         if not self.check_permissions(request, api_key_record):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions for this operation"
+                detail="Insufficient permissions for this operation",
             )
 
         return api_key_record
@@ -112,17 +112,23 @@ class APIKeyAuth:
 
         # Read operations require read permission
         if method in ["GET", "HEAD", "OPTIONS"]:
-            return api_key_record.can_read or api_key_record.can_write or api_key_record.can_admin
+            return (
+                api_key_record.can_read
+                or api_key_record.can_write
+                or api_key_record.can_admin
+            )
 
         return False
+
 
 # Global instance
 api_key_auth = APIKeyAuth()
 
+
 # Dependency for endpoints that require API key authentication
 def require_api_key(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> APIKey:
     """Dependency that requires a valid API key"""
     api_key_service = APIKeyService()
@@ -134,8 +140,7 @@ def require_api_key(
 
     if not api_key:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API key required"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="API key required"
         )
 
     # Verify API key
@@ -143,7 +148,7 @@ def require_api_key(
     if not api_key_record:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or inactive API key"
+            detail="Invalid or inactive API key",
         )
 
     return api_key_record

@@ -9,14 +9,17 @@ from ..services.vector_service import VectorService
 
 router = APIRouter(prefix="/vector", tags=["vector"])
 
+
 class CreateCollectionRequest(BaseModel):
     name: str
     vector_size: int = 384
+
 
 class AddVectorsRequest(BaseModel):
     collection_name: str
     vectors: List[List[float]]
     payloads: Optional[List[Dict[str, Any]]] = None
+
 
 class SearchVectorsRequest(BaseModel):
     collection_name: str
@@ -24,10 +27,10 @@ class SearchVectorsRequest(BaseModel):
     limit: int = 10
     score_threshold: float = 0.0
 
+
 @router.post("/collections")
 async def create_collection(
-    request: CreateCollectionRequest,
-    current_user: User = Depends(get_current_user)
+    request: CreateCollectionRequest, current_user: User = Depends(get_current_user)
 ):
     """Create a new vector collection"""
     vector_service = VectorService()
@@ -37,6 +40,7 @@ async def create_collection(
         raise HTTPException(status_code=400, detail=result["message"])
 
     return result
+
 
 @router.get("/collections")
 async def list_collections(current_user: User = Depends(get_current_user)):
@@ -49,17 +53,15 @@ async def list_collections(current_user: User = Depends(get_current_user)):
 
     return result
 
+
 @router.post("/embed")
 async def add_vectors(
-    request: AddVectorsRequest,
-    current_user: User = Depends(get_current_user)
+    request: AddVectorsRequest, current_user: User = Depends(get_current_user)
 ):
     """Add vectors to a collection"""
     vector_service = VectorService()
     result = await vector_service.add_vectors(
-        request.collection_name,
-        request.vectors,
-        request.payloads
+        request.collection_name, request.vectors, request.payloads
     )
 
     if result["status"] == "error":
@@ -67,10 +69,10 @@ async def add_vectors(
 
     return result
 
+
 @router.post("/search")
 async def search_vectors(
-    request: SearchVectorsRequest,
-    current_user: User = Depends(get_current_user)
+    request: SearchVectorsRequest, current_user: User = Depends(get_current_user)
 ):
     """Search for similar vectors"""
     vector_service = VectorService()
@@ -78,13 +80,14 @@ async def search_vectors(
         request.collection_name,
         request.query_vector,
         request.limit,
-        request.score_threshold
+        request.score_threshold,
     )
 
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
 
     return result
+
 
 @router.post("/debug/vector-sanity")
 async def vector_sanity_check(current_user: User = Depends(get_current_user)):

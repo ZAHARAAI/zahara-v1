@@ -1,7 +1,8 @@
 services:
-  # API Service
   api:
-    build: ../services/api
+    build:
+      context: ../services/api
+      dockerfile: Dockerfile
     image: ${IMAGE_PREFIX:-zahara-ai}/api:latest
     container_name: zahara-api
     ports:
@@ -25,9 +26,11 @@ services:
     restart: unless-stopped
     healthcheck: { test: ["CMD","curl","-sf","http://localhost:8000/health/"], interval: 10s, timeout: 3s, retries: 3 }
 
-  # Router Service  
+  # Router Service
   router:
-    build: ../services/router
+    build:
+      context: ../services/router
+      dockerfile: Dockerfile
     image: ${IMAGE_PREFIX:-zahara-ai}/router:latest
     container_name: zahara-router
     ports:
@@ -40,6 +43,29 @@ services:
       - app-network
     restart: unless-stopped
     healthcheck: { test: ["CMD","curl","-sf","http://localhost:7000/health"], interval: 10s, timeout: 3s, retries: 3 }
+
+  # Frontend Service
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      target: development
+    image: ${IMAGE_PREFIX:-zahara-ai}/frontend:latest
+    container_name: zahara-frontend
+    ports:
+      - "3001:3000"
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8000}
+      - VITE_API_KEY=${VITE_API_KEY:-zhr_demo_clinic_2024_observability_key}
+      - VITE_DEMO_API_KEY=${VITE_DEMO_API_KEY:-zhr_demo_clinic_2024_observability_key}
+      - VITE_DEV_MODE=${VITE_DEV_MODE:-true}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck: { test: ["CMD","curl","-sf","http://localhost:3000/health.html"], interval: 10s, timeout: 3s, retries: 3 }
 
   # PostgreSQL Database
   postgres:
@@ -111,10 +137,10 @@ services:
           memory: 2G
     healthcheck: { test: ["CMD","curl","-sf","http://localhost:11434/api/tags"], interval: 30s, timeout: 10s, retries: 10, start_period: 60s }
 
-  # Flowise - Low-code LLM Flow Builder (flowise profile) - Option A Fork Integration
+  # Flowise - Low-code LLM Flow Builder (flowise profile) - Using official image for testing
   flow-builder:
     image: ghcr.io/zaharaai/flowise:${FLOWISE_COMMIT_SHA:-af1464f7c2b9a608a2763f5d696d6670e8f51a7e}
-    # Note: For production, use digest pinning: ghcr.io/zaharaai/flowise@sha256:actual-digest-hash
+    # Note: For production, use digest pinning: ghcr.io/zaharaai/flowise@sha256:
     container_name: zahara-flowise
     ports:
       - "3000:3000"

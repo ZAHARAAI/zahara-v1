@@ -15,6 +15,17 @@ help:
 	@echo "  make seed           - Generate initial API key (run once)"
 	@echo "  make clean          - Stop and remove containers with volumes"
 	@echo ""
+	@echo "Testing Commands:"
+	@echo "  make test-all       - Run all tests (health + Python + frontend)"
+	@echo "  make test-python    - Run Python tests"
+	@echo "  make test-python-flowise - Run Python tests with Flowise service"
+	@echo "  make test-frontend  - Run frontend tests"
+	@echo "  make test-e2e       - Run E2E tests"
+	@echo ""
+	@echo "Workflows:"
+	@echo "  make dev            - Development workflow (up + test + test-python)"
+	@echo "  make ci             - CI workflow (build + up + test + test-python)"
+	@echo ""
 	@echo "Flowise Commands:"
 	@echo "  make flowise-up     - Start only Flowise service"
 	@echo "  make flowise-down   - Stop Flowise service"
@@ -46,12 +57,14 @@ ps:
 build:
 	docker build -t zahara-ai/api:latest ../services/api
 	docker build -t zahara-ai/router:latest ../services/router
+	docker build -t zahara-ai/frontend:latest ../frontend
 
 # Test health endpoints
 test:
 	@echo "Testing health endpoints..."
 	@curl -sf http://localhost:8000/health/ && echo "✅ API health check passed"
 	@curl -sf http://localhost:7000/health && echo "✅ Router health check passed"
+	@curl -sf http://localhost:3001 && echo "✅ Frontend health check passed"
 
 # Start all services including Flowise (Option A Fork)
 up-flowise:
@@ -77,3 +90,40 @@ seed:
 # Clean up containers and volumes
 clean:
 	docker compose down -v
+
+# Full test suite
+test-all: test test-python test-frontend
+
+# Run Python tests with database setup
+test-python:
+	@echo "🧪 Running Python tests..."
+	@echo "Ensuring database is migrated..."
+	docker compose exec api alembic upgrade head || echo "Migration may have already been applied"
+	cd .. && python -m pytest tests/ -v --tb=short --timeout=30
+
+# Run Python tests with Flowise
+test-python-flowise:
+	@echo "🧪 Running Python tests with Flowise..."
+	docker compose --profile flowise up -d
+	@echo "Waiting for Flowise to start..."
+	@powershell -Command "Start-Sleep -Seconds 30"
+	cd .. && python -m pytest tests/ -v --tb=short --timeout=30
+	docker compose stop flow-builder
+
+# Run frontend tests
+test-frontend:
+	@echo "🧪 Running frontend tests..."
+	cd ../frontend && npm test
+
+# Run E2E tests
+test-e2e:
+	@echo "🧪 Running E2E tests..."
+	cd ../frontend && npm run test:e2e
+
+# Development workflow - start services and run tests
+dev: up test test-python
+	@echo "🎉 Development environment ready!"
+
+# CI workflow - build, start, test everything
+ci: build up test test-python
+	@echo "🎉 CI pipeline completed successfully!"

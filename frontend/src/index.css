@@ -1,0 +1,302 @@
+@import "tailwindcss";
+
+/* Zahara.ai Theme Configuration using CSS Variables */
+@theme {
+  --color-zahara-orange: #FF6B35;
+  --color-zahara-black: #000000;
+  --color-zahara-dark: #1a1a1a;
+  --color-zahara-card: #2a2a2a;
+  --color-zahara-card-light: #333333;
+  --color-zahara-text: #FFFFFF;
+  --color-zahara-text-secondary: #B0B0B0;
+  --color-zahara-text-muted: #CCCCCC;
+  
+  --font-family-sans: Inter, Roboto, system-ui, sans-serif;
+  
+  --shadow-zahara: 0 4px 6px -1px rgba(255, 107, 53, 0.1);
+  --shadow-zahara-lg: 0 10px 15px -3px rgba(255, 107, 53, 0.1);
+}
+
+/* Define custom color utilities */
+@layer utilities {
+  /* Background colors */
+  .bg-zahara-dark { background-color: var(--color-zahara-dark); }
+  .bg-zahara-card { background-color: var(--color-zahara-card); }
+  .bg-zahara-card-light { background-color: var(--color-zahara-card-light); }
+  .bg-zahara-orange { background-color: var(--color-zahara-orange); }
+  .bg-zahara-black { background-color: var(--color-zahara-black); }
+  
+  /* Text colors */
+  .text-zahara-text { color: var(--color-zahara-text); }
+  .text-zahara-text-secondary { color: var(--color-zahara-text-secondary); }
+  .text-zahara-text-muted { color: var(--color-zahara-text-muted); }
+  .text-zahara-orange { color: var(--color-zahara-orange); }
+  
+  /* Border colors */
+  .border-zahara-card-light { border-color: var(--color-zahara-card-light); }
+  .border-zahara-orange { border-color: var(--color-zahara-orange); }
+  .border-zahara-card { border-color: var(--color-zahara-card); }
+  
+  /* Box shadows */
+  .shadow-zahara { box-shadow: var(--shadow-zahara); }
+  .shadow-zahara-lg { box-shadow: var(--shadow-zahara-lg); }
+  
+  /* Hover states */
+  .hover\\:bg-zahara-card-light:hover { background-color: var(--color-zahara-card-light); }
+  .hover\\:bg-opacity-90:hover { background-color: rgb(from var(--color-zahara-orange) r g b / 0.9); }
+  .hover\\:text-zahara-text:hover { color: var(--color-zahara-text); }
+  
+  /* Focus states */
+  .focus\\:ring-zahara-orange:focus {
+    box-shadow: 0 0 0 2px var(--color-zahara-orange), 0 0 0 4px var(--color-zahara-dark);
+    outline: none;
+  }
+  .focus\\:border-zahara-orange:focus { border-color: var(--color-zahara-orange); }
+  .focus\\:ring-offset-zahara-dark:focus { 
+    box-shadow: 0 0 0 2px var(--color-zahara-dark), 0 0 0 4px var(--color-zahara-orange);
+  }
+  
+  /* Placeholder colors */
+  .placeholder-zahara-text-secondary::placeholder { color: var(--color-zahara-text-secondary); }
+  
+  /* Animation classes */
+  .animate-count-up {
+    animation: count-up 1.5s ease-out;
+  }
+  
+  .animate-shimmer {
+    animation: shimmer 2s infinite;
+  }
+  
+  .animate-pulse-orange {
+    animation: pulse-orange 2s infinite;
+  }
+  
+  /* Gradient overlays */
+  .gradient-overlay {
+    background: linear-gradient(
+      135deg,
+      rgba(255, 107, 53, 0.1) 0%,
+      rgba(26, 26, 26, 0.8) 100%
+    );
+  }
+  
+  /* Text gradients */
+  .text-gradient {
+    background: linear-gradient(135deg, var(--color-zahara-orange) 0%, #FF8A65 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}
+
+/* Custom Zahara.ai styling */
+@layer base {
+  html {
+    font-family: var(--font-family-sans);
+  }
+  
+  body {
+    background-color: var(--color-zahara-dark);
+    color: var(--color-zahara-text);
+    margin: 0;
+    line-height: 1.5;
+    font-weight: 400;
+    color-scheme: dark;
+  }
+  
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@layer components {
+  /* Skeleton loader shimmer effect */
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--color-zahara-card) 25%,
+      var(--color-zahara-card-light) 50%,
+      var(--color-zahara-card) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+  }
+  
+  /* Custom scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background-color: var(--color-zahara-card);
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--color-zahara-orange);
+    border-radius: 999px;
+  }
+  
+  /* Button variants */
+  .btn-primary {
+    background-color: var(--color-zahara-orange);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  
+  .btn-primary:hover {
+    background-color: rgb(255 107 53 / 0.9);
+  }
+  
+  .btn-primary:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--color-zahara-orange), 0 0 0 4px var(--color-zahara-dark);
+  }
+  
+  .btn-secondary {
+    background-color: var(--color-zahara-card);
+    color: var(--color-zahara-text);
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    border: 1px solid var(--color-zahara-card-light);
+  }
+  
+  .btn-secondary:hover {
+    background-color: var(--color-zahara-card-light);
+  }
+  
+  .btn-secondary:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--color-zahara-orange), 0 0 0 4px var(--color-zahara-dark);
+  }
+  
+  /* Input styles */
+  .input-primary {
+    background-color: var(--color-zahara-card);
+    border: 1px solid var(--color-zahara-card-light);
+    color: var(--color-zahara-text);
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    transition: all 0.2s;
+  }
+  
+  .input-primary::placeholder {
+    color: var(--color-zahara-text-secondary);
+  }
+  
+  .input-primary:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--color-zahara-orange);
+    border-color: var(--color-zahara-orange);
+  }
+  
+  /* Card styles */
+  .card {
+    background-color: var(--color-zahara-card);
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-zahara-card-light);
+    box-shadow: var(--shadow-zahara);
+  }
+  
+  /* Status badge styles */
+  .badge-ok {
+    background-color: var(--color-zahara-orange);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  
+  .badge-error {
+    background-color: #EF4444;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  
+  .badge-rate-limit {
+    background-color: #F59E0B;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+}
+
+/* Keyframe animations */
+@keyframes count-up {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@keyframes wave {
+  0%, 100% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-wave {
+  position: relative;
+  overflow: hidden;
+}
+
+.animate-wave::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 107, 53, 0.2),
+    transparent
+  );
+  animation: wave 2s infinite;
+}
+
+@keyframes pulse-orange {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 107, 53, 0);
+  }
+}

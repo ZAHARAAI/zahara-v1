@@ -65,5 +65,7 @@ testpaths = ["tests", "."]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --strict-markers"
+addopts = "-v --strict-markers --timeout=30 --timeout-method=thread"
 asyncio_mode = "auto"
+timeout = 30
+timeout_method = "thread"
