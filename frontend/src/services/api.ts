@@ -86,7 +86,7 @@ class ApiService {
 
   // Demo mode methods
   isDemoModeEnabled(): boolean {
-    console.log("DEmo ==== MODE running 3")
+    console.log("DEmo ==== MODE running 4")
     return this.isDemoMode;
   }
 
