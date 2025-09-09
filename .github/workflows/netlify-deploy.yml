@@ -49,6 +49,15 @@ jobs:
           echo "❌ NETLIFY_SITE_ID secret is not set"
           exit 1
         fi
+        echo "✅ Netlify secrets are configured"
+
+        # Test Netlify authentication
+        echo "🔍 Testing Netlify authentication..."
+        npx netlify status --json || echo "⚠️  Netlify CLI status check failed"
+
+        echo "📋 Current configuration:"
+        echo "Site ID: ${{ secrets.NETLIFY_SITE_ID }}"
+        echo "Site Name: ${{ secrets.NETLIFY_SITE_NAME || 'soft-chebakia-ce65bd' }}"
         echo "✅ Netlify credentials verified"
 
     - name: Deploy to Netlify (Preview)
@@ -138,6 +147,15 @@ jobs:
           echo "❌ NETLIFY_SITE_ID secret is not set"
           exit 1
         fi
+        echo "✅ Netlify secrets are configured for production"
+
+        # Test Netlify authentication
+        echo "🔍 Testing Netlify authentication..."
+        npx netlify status --json || echo "⚠️  Netlify CLI status check failed"
+
+        echo "📋 Production configuration:"
+        echo "Site ID: ${{ secrets.NETLIFY_SITE_ID }}"
+        echo "Site Name: ${{ secrets.NETLIFY_SITE_NAME || 'soft-chebakia-ce65bd' }}"
         echo "✅ Netlify credentials verified"
 
     - name: Deploy to Netlify (Production)
