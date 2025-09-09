@@ -269,61 +269,20 @@ jobs:
         echo "**Build ID:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
         echo "**Built at:** $(date -u)" >> $GITHUB_STEP_SUMMARY
 
-    # Deploy frontend to Netlify (PR previews and production)
-    - name: Deploy to Netlify (Preview)
-      if: github.event_name == 'pull_request'
-      uses: netlify/actions/cli@master
-      with:
-        args: deploy --dir=frontend/dist --alias=pr-${{ github.event.number }} --message="PR #${{ github.event.number }} - ${{ github.event.pull_request.title }}"
-      env:
-        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-        VITE_DEMO_MODE: true
-        VITE_API_BASE_URL: https://api.zahara.ai
-        
-    - name: Deploy to Netlify (Production)
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-      uses: netlify/actions/cli@master
-      with:
-        args: deploy --dir=frontend/dist --prod --message="Production deploy - ${{ github.sha }}"
-      env:
-        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-        VITE_DEMO_MODE: true
-        VITE_API_BASE_URL: https://api.zahara.ai
-
-    - name: Comment PR with preview URL
-      if: github.event_name == 'pull_request'
-      uses: peter-evans/create-or-update-comment@v4
-      with:
-        issue-number: ${{ github.event.pull_request.number }}
-        body: |
-          ## 🚀 Preview Deployment Ready!
-          
-          **Frontend URL:** https://pr-${{ github.event.pull_request.number }}--${{ secrets.NETLIFY_SITE_NAME || 'zahara-agent-clinic' }}.netlify.app
-          
-          ### ✅ Test Results
-          - **Backend Tests:** Passed
-          - **Frontend Tests:** Passed  
-          - **E2E Tests:** Passed
-          - **Security Scan:** Passed
-          - **Docker Images:** Built (not pushed on PR)
-          
-          _This preview will be updated automatically when you push new commits._
 
     - name: Create final deployment summary
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       run: |
         echo "## Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Frontend (Netlify)" >> $GITHUB_STEP_SUMMARY
-        echo "**URL:** https://${{ secrets.NETLIFY_SITE_NAME }}.netlify.app" >> $GITHUB_STEP_SUMMARY
-        echo "**Status:** Deployed" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Backend Services (GHCR)" >> $GITHUB_STEP_SUMMARY
         echo "**API:** ghcr.io/${{ env.IMAGE_NAME }}-api:latest" >> $GITHUB_STEP_SUMMARY
         echo "**Router:** ghcr.io/${{ env.IMAGE_NAME }}-router:latest" >> $GITHUB_STEP_SUMMARY
         echo "**Status:** Images pushed to GHCR" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Frontend (Netlify)" >> $GITHUB_STEP_SUMMARY
+        echo "**Status:** Handled by separate \`netlify-deploy.yml\` workflow" >> $GITHUB_STEP_SUMMARY
+        echo "**URL:** https://${{ secrets.NETLIFY_SITE_NAME || 'soft-chebakia-ce65bd' }}.netlify.app" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Deployment ID:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
     
