@@ -1,13 +1,18 @@
 import axios, { type AxiosInstance, type AxiosError } from 'axios';
 import type { Trace, TraceListResponse, DashboardMetrics, FlowiseExecution } from '../types/trace';
 import type { ApiResponse, ApiError, ExportRequest } from '../types/api';
+import { generateDemoTraces, generateDemoDashboardMetrics } from '../utils/demoData';
 import toast from 'react-hot-toast';
 
 class ApiService {
   private client: AxiosInstance;
   private apiKey: string;
+  private isDemoMode: boolean;
 
   constructor() {
+    // Check if demo mode is enabled
+    this.isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
+    
     // Default to demo API key as specified in requirements
     this.apiKey = import.meta.env.VITE_API_KEY || 'zhr_demo_clinic_2024_observability_key';
     
@@ -79,6 +84,15 @@ class ApiService {
     return this.apiKey;
   }
 
+  // Demo mode methods
+  isDemoModeEnabled(): boolean {
+    return this.isDemoMode;
+  }
+
+  setDemoMode(enabled: boolean): void {
+    this.isDemoMode = enabled;
+  }
+
   // Trace endpoints
   async getTraces(params?: {
     page?: number;
@@ -89,6 +103,11 @@ class ApiService {
     search?: string;
     dateRange?: { start: string; end: string };
   }): Promise<TraceListResponse> {
+    // Return demo data if demo mode is enabled
+    if (this.isDemoMode) {
+      return this.getDemoTraces(params);
+    }
+
     const response = await this.client.get<TraceListResponse>('/traces', {
       params: {
         page: params?.page || 1,
@@ -108,17 +127,38 @@ class ApiService {
   }
 
   async getTrace(traceId: string): Promise<Trace> {
+    // Return demo data if demo mode is enabled
+    if (this.isDemoMode) {
+      const demoTraces = generateDemoTraces(100);
+      const trace = demoTraces.find(t => t.trace_id === traceId);
+      if (!trace) {
+        throw new Error(`Trace ${traceId} not found`);
+      }
+      return trace;
+    }
+
     const response = await this.client.get<ApiResponse<Trace>>(`/traces/${traceId}`);
     return response.data.data;
   }
 
   async getTraceSpans(traceId: string): Promise<Trace['spans']> {
+    // Return demo data if demo mode is enabled
+    if (this.isDemoMode) {
+      const trace = await this.getTrace(traceId);
+      return trace.spans;
+    }
+
     const response = await this.client.get<ApiResponse<Trace['spans']>>(`/traces/${traceId}/spans`);
     return response.data.data;
   }
 
   // Metrics endpoints
   async getDashboardMetrics(): Promise<DashboardMetrics> {
+    // Return demo data if demo mode is enabled
+    if (this.isDemoMode) {
+      return generateDemoDashboardMetrics();
+    }
+
     const response = await this.client.get<ApiResponse<DashboardMetrics>>('/traces/metrics/aggregate');
     return response.data.data;
   }
@@ -142,8 +182,91 @@ class ApiService {
 
   // Health check
   async healthCheck(): Promise<{ status: string; timestamp: string }> {
+    // Return demo health status if demo mode is enabled
+    if (this.isDemoMode) {
+      return {
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+      };
+    }
+
     const response = await this.client.get<ApiResponse<{ status: string; timestamp: string }>>('/health');
     return response.data.data;
+  }
+
+  // Demo data generator with filtering and pagination
+  private getDemoTraces(params?: {
+    page?: number;
+    limit?: number;
+    status?: string[];
+    models?: string[];
+    operations?: string[];
+    search?: string;
+    dateRange?: { start: string; end: string };
+  }): TraceListResponse {
+    let demoTraces = generateDemoTraces(100);
+    
+    // Apply filters to demo data
+    if (params?.status?.length) {
+      demoTraces = demoTraces.filter(trace => 
+        params.status!.includes(trace.status)
+      );
+    }
+    
+    if (params?.models?.length) {
+      demoTraces = demoTraces.filter(trace => 
+        params.models!.includes(trace.model)
+      );
+    }
+    
+    if (params?.operations?.length) {
+      demoTraces = demoTraces.filter(trace => 
+        params.operations!.includes(trace.operation)
+      );
+    }
+    
+    if (params?.search) {
+      const searchTerm = params.search.toLowerCase();
+      demoTraces = demoTraces.filter(trace => 
+        trace.trace_id.toLowerCase().includes(searchTerm) ||
+        trace.operation.toLowerCase().includes(searchTerm) ||
+        trace.model.toLowerCase().includes(searchTerm)
+      );
+    }
+    
+    if (params?.dateRange) {
+      const start = new Date(params.dateRange.start);
+      const end = new Date(params.dateRange.end);
+      demoTraces = demoTraces.filter(trace => {
+        const traceDate = new Date(trace.timestamp);
+        return traceDate >= start && traceDate <= end;
+      });
+    }
+    
+    // Apply pagination
+    const page = params?.page || 1;
+    const limit = params?.limit || 25;
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const paginatedTraces = demoTraces.slice(startIndex, endIndex);
+    
+    return {
+      traces: paginatedTraces,
+      pagination: {
+        page,
+        limit,
+        total: demoTraces.length,
+        hasNext: endIndex < demoTraces.length,
+        hasPrev: page > 1,
+      },
+      filters: {
+        status: params?.status,
+        models: params?.models,
+        operations: params?.operations,
+        dateRange: params?.dateRange,
+        search: params?.search,
+      },
+    };
   }
 
 }

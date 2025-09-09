@@ -23,13 +23,16 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
 
-# Environment variables for preview deployments
+# Environment variables for preview deployments (Demo Mode)
 [context.deploy-preview.environment]
-  VITE_API_BASE_URL = "https://zahara-api-staging.herokuapp.com"
+  VITE_API_BASE_URL = "https://api.zahara.ai"
   VITE_API_KEY = "zhr_demo_clinic_2024_observability_key"
-  VITE_DEV_MODE = "false"
+  VITE_DEMO_MODE = "true"
+  VITE_NODE_ENV = "preview"
 
+# Environment variables for production (Demo Mode for MVP)
 [context.production.environment]
   VITE_API_BASE_URL = "https://api.zahara.ai"
   VITE_API_KEY = "zhr_demo_clinic_2024_observability_key"
-  VITE_DEV_MODE = "false"
+  VITE_DEMO_MODE = "true"
+  VITE_NODE_ENV = "production"
