@@ -53,11 +53,11 @@ jobs:
 
         # Test Netlify authentication
         echo "🔍 Testing Netlify authentication..."
-        npx netlify status --json || echo "⚠️  Netlify CLI status check failed"
+        npx netlify status --auth ${{ secrets.NETLIFY_AUTH_TOKEN }} --json || echo "⚠️  Netlify CLI status check failed"
 
         # Try to get site info to verify credentials
         echo "🔍 Verifying site access..."
-        npx netlify sites:list --json | jq '.[] | select(.site_id == "${{ secrets.NETLIFY_SITE_ID }}") | {name: .name, site_id: .site_id, url: .url}' || echo "⚠️  Could not verify site access"
+        npx netlify sites:list --auth ${{ secrets.NETLIFY_AUTH_TOKEN }} --json | jq '.[] | select(.site_id == "${{ secrets.NETLIFY_SITE_ID }}") | {name: .name, site_id: .site_id, url: .url}' || echo "⚠️  Could not verify site access"
 
         echo "📋 Current configuration:"
         echo "Site ID: ${{ secrets.NETLIFY_SITE_ID }}"
@@ -70,7 +70,7 @@ jobs:
       with:
         args: deploy --dir=frontend/dist --alias=pr-${{ github.event.number }} --message="PR #${{ github.event.number }} - ${{ github.event.pull_request.title }}"
       env:
-        NETLIFY_AUTH_TOKENS: ${{ secrets.NETLIFY_AUTH_TOKENS }}
+        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
         NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
         VITE_DEMO_MODE: true
         VITE_API_BASE_URL: https://api.zahara.ai
@@ -155,11 +155,11 @@ jobs:
 
         # Test Netlify authentication
         echo "🔍 Testing Netlify authentication..."
-        npx netlify status --json || echo "⚠️  Netlify CLI status check failed"
+        npx netlify status --auth ${{ secrets.NETLIFY_AUTH_TOKEN }} --json || echo "⚠️  Netlify CLI status check failed"
 
         # Try to get site info to verify credentials
         echo "🔍 Verifying site access..."
-        npx netlify sites:list --json | jq '.[] | select(.site_id == "${{ secrets.NETLIFY_SITE_ID }}") | {name: .name, site_id: .site_id, url: .url}' || echo "⚠️  Could not verify site access"
+        npx netlify sites:list --auth ${{ secrets.NETLIFY_AUTH_TOKEN }} --json | jq '.[] | select(.site_id == "${{ secrets.NETLIFY_SITE_ID }}") | {name: .name, site_id: .site_id, url: .url}' || echo "⚠️  Could not verify site access"
 
         echo "📋 Production configuration:"
         echo "Site ID: ${{ secrets.NETLIFY_SITE_ID }}"
@@ -172,7 +172,7 @@ jobs:
       with:
         args: deploy --dir=frontend/dist --prod --message="Production deploy - ${{ github.sha }}"
       env:
-        NETLIFY_AUTH_TOKENS: ${{ secrets.NETLIFY_AUTH_TOKENS }}
+        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
         NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
         VITE_DEMO_MODE: true
         VITE_API_BASE_URL: https://api.zahara.ai
