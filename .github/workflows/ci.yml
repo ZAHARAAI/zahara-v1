@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main, dev ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, phase-2 ]
 
 env:
   REGISTRY: ghcr.io
@@ -278,7 +278,9 @@ jobs:
       env:
         NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
         NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-
+        VITE_DEMO_MODE: true
+        VITE_API_BASE_URL: https://api.zahara.ai
+        
     - name: Deploy to Netlify (Production)
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       uses: netlify/actions/cli@master
@@ -287,6 +289,8 @@ jobs:
       env:
         NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
         NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        VITE_DEMO_MODE: true
+        VITE_API_BASE_URL: https://api.zahara.ai
 
     - name: Comment PR with preview URL
       if: github.event_name == 'pull_request'
