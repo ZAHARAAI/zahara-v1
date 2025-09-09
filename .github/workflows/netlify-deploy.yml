@@ -15,6 +15,10 @@ jobs:
   deploy-preview:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
 
     steps:
     - name: Checkout code
@@ -62,6 +66,7 @@ jobs:
       if: steps.netlify-preview.conclusion == 'success'
       uses: peter-evans/create-or-update-comment@v4
       with:
+        token: ${{ secrets.GITHUB_TOKEN }}
         issue-number: ${{ github.event.pull_request.number }}
         body: |
           ## 🚀 Preview Deployment Ready! (Fast Deploy)
@@ -78,6 +83,7 @@ jobs:
       if: steps.netlify-preview.conclusion == 'failure'
       uses: peter-evans/create-or-update-comment@v4
       with:
+        token: ${{ secrets.GITHUB_TOKEN }}
         issue-number: ${{ github.event.pull_request.number }}
         body: |
           ## ❌ Preview Deployment Failed!
@@ -98,6 +104,10 @@ jobs:
   deploy-production:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
 
     steps:
     - name: Checkout code
