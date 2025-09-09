@@ -55,6 +55,10 @@ jobs:
         echo "🔍 Testing Netlify authentication..."
         npx netlify status --json || echo "⚠️  Netlify CLI status check failed"
 
+        # Try to get site info to verify credentials
+        echo "🔍 Verifying site access..."
+        npx netlify sites:list --json | jq '.[] | select(.site_id == "${{ secrets.NETLIFY_SITE_ID }}") | {name: .name, site_id: .site_id, url: .url}' || echo "⚠️  Could not verify site access"
+
         echo "📋 Current configuration:"
         echo "Site ID: ${{ secrets.NETLIFY_SITE_ID }}"
         echo "Site Name: ${{ secrets.NETLIFY_SITE_NAME || 'soft-chebakia-ce65bd' }}"
@@ -152,6 +156,10 @@ jobs:
         # Test Netlify authentication
         echo "🔍 Testing Netlify authentication..."
         npx netlify status --json || echo "⚠️  Netlify CLI status check failed"
+
+        # Try to get site info to verify credentials
+        echo "🔍 Verifying site access..."
+        npx netlify sites:list --json | jq '.[] | select(.site_id == "${{ secrets.NETLIFY_SITE_ID }}") | {name: .name, site_id: .site_id, url: .url}' || echo "⚠️  Could not verify site access"
 
         echo "📋 Production configuration:"
         echo "Site ID: ${{ secrets.NETLIFY_SITE_ID }}"
