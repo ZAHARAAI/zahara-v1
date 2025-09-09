@@ -75,23 +75,6 @@ jobs:
         VITE_DEMO_MODE: true
         VITE_API_BASE_URL: https://api.zahara.ai
 
-    - name: Comment PR with preview URL
-      if: steps.netlify-preview.conclusion == 'success'
-      uses: peter-evans/create-or-update-comment@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        issue-number: ${{ github.event.pull_request.number }}
-        body: |
-          ## 🚀 Preview Deployment Ready! (Fast Deploy)
-
-          **Frontend URL:** https://pr-${{ github.event.pull_request.number }}--${{ secrets.NETLIFY_SITE_NAME || 'soft-chebakia-ce65bd' }}.netlify.app
-
-          ### ✅ Quick Build Results
-          - **Frontend Build:** ✅ Passed
-          - **Netlify Preview:** ✅ Deployed Successfully
-
-          _This is a fast preview deployment. Full CI tests are running in parallel._
-
     - name: Comment PR with deployment failure
       if: steps.netlify-preview.conclusion == 'failure'
       uses: peter-evans/create-or-update-comment@v4
