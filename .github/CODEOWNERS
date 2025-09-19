@@ -3,27 +3,27 @@
 # These owners will be the default assignees for pull requests
 
 # Global owners
-* @zahara-ai/core-team @umerfarok
+* @umerfarok
 
 # Infrastructure and deployment
-/infra/ @zahara-ai/devops-team
-/.github/ @zahara-ai/devops-team
-/docker-compose*.yml @zahara-ai/devops-team
-/Dockerfile @zahara-ai/devops-team
+/infra/
+/.github/
+/docker-compose*.yml
+/Dockerfile
 
 # API service
-/services/api/ @zahara-ai/backend-team
+/services/api/
 
 # Router service  
-/services/router/ @zahara-ai/backend-team
+/services/router/
 
 # Tests
-/tests/ @zahara-ai/backend-team @zahara-ai/qa-team
+/tests/
 
 # Documentation
-*.md @zahara-ai/docs-team
-/docs/ @zahara-ai/docs-team
+*.md
+/docs/
 
 # Configuration files
-pyproject.toml @zahara-ai/core-team
-requirements.txt @zahara-ai/backend-team
+pyproject.toml
+requirements.txt
