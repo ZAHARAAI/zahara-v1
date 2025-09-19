@@ -1,0 +1,131 @@
+version: '3.8'
+
+services:
+  # Jaeger observability backend
+  jaeger:
+    image: jaegertracing/all-in-one:1.51
+    container_name: zahara-jaeger
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "14268:14268"  # HTTP collector
+      - "14250:14250"  # gRPC collector
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:14269/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - zahara-network
+
+  # FastAPI Gateway
+  fastapi-gateway:
+    build:
+      context: ./apps/fastapi-gateway
+      dockerfile: Dockerfile
+    container_name: zahara-fastapi-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=14268
+      - API_KEY=${FASTAPI_API_KEY:-default-api-key}
+    env_file:
+      - ./apps/fastapi-gateway/.env
+    depends_on:
+      jaeger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - zahara-network
+
+  # Agent Demo Runtime
+  agent-demo:
+    build:
+      context: ./apps/agent-demo
+      dockerfile: Dockerfile
+    container_name: zahara-agent-demo
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=production
+      - FASTAPI_GATEWAY_URL=http://fastapi-gateway:8000
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=14268
+      - API_KEY=${AGENT_DEMO_API_KEY:-demo-api-key}
+    env_file:
+      - ./apps/agent-demo/.env
+    depends_on:
+      fastapi-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - zahara-network
+
+  # Agent Custom Runtime
+  agent-custom:
+    build:
+      context: ./apps/agent-custom
+      dockerfile: Dockerfile
+    container_name: zahara-agent-custom
+    ports:
+      - "3002:3000"
+    environment:
+      - NODE_ENV=production
+      - FASTAPI_GATEWAY_URL=http://fastapi-gateway:8000
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=14268
+      - API_KEY=${AGENT_CUSTOM_API_KEY:-custom-api-key}
+    env_file:
+      - ./apps/agent-custom/.env
+    depends_on:
+      fastapi-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - zahara-network
+
+  # Dashboard UI
+  dashboard:
+    build:
+      context: ./apps/dashboard
+      dockerfile: Dockerfile
+    container_name: zahara-dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_AGENT_CUSTOM_URL=http://localhost:3002
+    env_file:
+      - ./apps/dashboard/.env
+    depends_on:
+      agent-custom:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - zahara-network
+
+networks:
+  zahara-network:
+    driver: bridge
+
+volumes:
+  jaeger-data:
+    driver: local
