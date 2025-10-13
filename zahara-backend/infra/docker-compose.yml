@@ -1,0 +1,159 @@
+services:
+  # API Service
+  api:
+    build: ../services/api
+    image: ${IMAGE_PREFIX:-zahara-ai}/api:latest
+    container_name: zahara-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=true
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/postgres
+      - REDIS_URL=redis://redis:6379
+      - QDRANT_URL=http://qdrant:6333
+      - SECRET_KEY=dev_secret_key_change_in_production
+      - ENABLE_DEV_PAGES=${ENABLE_DEV_PAGES:-0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck: { test: ["CMD","curl","-sf","http://localhost:8000/health/"], interval: 10s, timeout: 3s, retries: 3 }
+
+  # Router Service  
+  router:
+    build: ../services/router
+    image: ${IMAGE_PREFIX:-zahara-ai}/router:latest
+    container_name: zahara-router
+    ports:
+      - "7000:7000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck: { test: ["CMD","curl","-sf","http://localhost:7000/health"], interval: 10s, timeout: 3s, retries: 3 }
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: zahara-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck: { test: ["CMD-SHELL","pg_isready -U postgres"], interval: 10s, timeout: 3s, retries: 5 }
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: zahara-redis
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck: { test: ["CMD","redis-cli","ping"], interval: 10s, timeout: 3s, retries: 5 }
+
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: zahara-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck: { test: ["CMD","curl","-sf","http://localhost:6333/"], interval: 15s, timeout: 10s, retries: 15, start_period: 45s }
+
+  # Local LLM Service (Ollama) - ollama profile only
+  ollama:
+    image: ollama/ollama:latest
+    container_name: zahara-ollama
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - app-network
+    restart: unless-stopped
+    profiles: ["ollama"]
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    healthcheck: { test: ["CMD","curl","-sf","http://localhost:11434/api/tags"], interval: 30s, timeout: 10s, retries: 10, start_period: 60s }
+
+  # Flowise - Low-code LLM Flow Builder (flowise profile) - Option A Fork Integration
+  flow-builder:
+    image: ghcr.io/zaharaai/flowise:${FLOWISE_COMMIT_SHA:-af1464f7c2b9a608a2763f5d696d6670e8f51a7e}
+    # Note: For production, use digest pinning: ghcr.io/zaharaai/flowise@sha256:actual-digest-hash
+    container_name: zahara-flowise
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - FLOWISE_USERNAME=${FLOWISE_USERNAME:-admin}
+      - FLOWISE_PASSWORD=${FLOWISE_PASSWORD:-admin123}
+      - DATABASE_PATH=/root/.flowise
+      - APIKEY_PATH=/root/.flowise
+      - LOG_LEVEL=info
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:8000
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/v1/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    volumes:
+      - flowise_data:/root/.flowise
+    profiles: ["flowise"]
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  qdrant_data:
+    driver: local
+  ollama_data:
+    driver: local
+  flowise_data:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge
