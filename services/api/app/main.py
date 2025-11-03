@@ -10,7 +10,7 @@ from .config import settings
 from .database import Base, engine
 from .middleware.observability import ObservabilityMiddleware
 from .middleware.rate_limit import RateLimitMiddleware
-from .routers import agents, api_keys, auth, health, llm_router, vector, version
+from .routers import agents, api_keys, auth, health, llm_router, vector, version, flows
 
 # Create database tables (skip during testing)
 if not os.getenv("TESTING"):
@@ -81,6 +81,7 @@ app.include_router(llm_router.v1_router)
 app.include_router(agents.router)
 app.include_router(version.router)
 app.include_router(api_keys.router)
+app.include_router(flows.router)
 
 # Include dev router only if dev pages are enabled
 if os.getenv("ENABLE_DEV_PAGES") == "1":

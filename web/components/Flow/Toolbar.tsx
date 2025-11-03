@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { createFlow, getFlow, listFlows, updateFlow } from "@/services/api";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useFlowStore } from "./store";
@@ -16,6 +17,7 @@ export default function Toolbar() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false); // <-- now used
   const [options, setOptions] = useState<Option[]>([]);
+  const router = useRouter();
 
   const refreshList = async () => {
     try {
@@ -23,7 +25,7 @@ export default function Toolbar() {
       const list = await listFlows("me");
       setOptions(list.items.map((i) => [i.id, i.name]));
     } catch (e: any) {
-      toast.error("Failed to list flows", { description: e.message });
+      toast.error("Failed to fetch flow lists", { description: e.message });
     } finally {
       setLoading(false);
     }
@@ -51,6 +53,7 @@ export default function Toolbar() {
       await refreshList();
     } catch (e: any) {
       toast.error("Save failed", { description: e.message });
+      console.log(e);
     } finally {
       setSaving(false);
     }
@@ -74,7 +77,7 @@ export default function Toolbar() {
 
   const openInPro = () => {
     const q = flowId ? `?flowId=${flowId}` : "";
-    window.location.href = "/pro" + q;
+    router.push("/pro" + q);
   };
 
   const selectOptions: Option[] = useMemo(

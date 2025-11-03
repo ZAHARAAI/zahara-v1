@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useFlowStore } from "./store";
 import type { AnyNodeData } from "./types";
@@ -14,6 +15,7 @@ type Tab = (typeof TABS)[number];
 export default function Inspector() {
   const { nodes, selectedId, setNodes, flowId } = useFlowStore();
   const [tab, setTab] = useState<Tab>("config");
+  const router = useRouter();
 
   const idx = useMemo(
     () => nodes.findIndex((n) => n.id === selectedId),
@@ -33,7 +35,7 @@ export default function Inspector() {
 
   const openInPro = () => {
     const q = flowId ? `?flowId=${flowId}` : "";
-    window.location.href = "/pro" + q;
+    router.push("/pro" + q);
   };
 
   return (
