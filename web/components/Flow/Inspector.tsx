@@ -12,7 +12,7 @@ const TABS = ["config", "prompt", "logs"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function Inspector() {
-  const { nodes, selectedId, setNodes } = useFlowStore();
+  const { nodes, selectedId, setNodes, flowId } = useFlowStore();
   const [tab, setTab] = useState<Tab>("config");
 
   const idx = useMemo(
@@ -29,6 +29,11 @@ export default function Inspector() {
       data: { ...(copy[idx].data as any), ...partial },
     } as any;
     setNodes(copy as any);
+  };
+
+  const openInPro = () => {
+    const q = flowId ? `?flowId=${flowId}` : "";
+    window.location.href = "/pro" + q;
   };
 
   return (
@@ -143,9 +148,7 @@ export default function Inspector() {
       </div>
 
       <div className="mt-auto p-3 border-t border-[hsl(var(--border))] flex items-center gap-2">
-        <Button onClick={() => (location.href = "/pro")}>
-          Open in Pro
-        </Button>
+        <Button onClick={openInPro}>Open in Pro</Button>
       </div>
     </div>
   );

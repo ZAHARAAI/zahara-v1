@@ -12,6 +12,7 @@ import ReactFlow, {
   useNodesState,
 } from "reactflow";
 import "reactflow/dist/style.css";
+
 import { ModelNode } from "./nodes/ModelNode";
 import { OutputNode } from "./nodes/OutputNode";
 import { StartNode } from "./nodes/StartNode";
@@ -69,6 +70,8 @@ export default function Canvas() {
     setEdges: setStoreEdges,
     select,
   } = useFlowStore();
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
