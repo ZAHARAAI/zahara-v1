@@ -10,7 +10,7 @@ from .config import settings
 from .database import Base, engine
 from .middleware.observability import ObservabilityMiddleware
 from .middleware.rate_limit import RateLimitMiddleware
-from .routers import agents, api_keys, auth, health, llm_router, vector, version
+from .routers import agents, api_keys, auth, health, llm_router, vector, version, flows
 
 # Create database tables (skip during testing)
 if not os.getenv("TESTING"):
@@ -81,6 +81,7 @@ app.include_router(llm_router.v1_router)
 app.include_router(agents.router)
 app.include_router(version.router)
 app.include_router(api_keys.router)
+app.include_router(flows.router)
 
 # Include dev router only if dev pages are enabled
 if os.getenv("ENABLE_DEV_PAGES") == "1":
@@ -111,3 +112,35 @@ if __name__ == "__main__":
         port=settings.port,
         reload=settings.debug
     )
+# --- Zahara: CORS + Demo API Key + Health --------------------
+from os import getenv
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Depends, HTTPException
+
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://zahara-v1-web.fly.dev",
+    "https://zahara.ai",
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+DEMO_TOKEN = getenv("DEMO_TOKEN", "zahara-demo-123")
+def require_api_key(request: Request):
+    key = request.headers.get("X-API-Key")
+    if key != DEMO_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+@app.get("/health")
+def health():
+    return {"ok": True}
+
+@app.get("/whoami")
+def whoami(dep: None = Depends(require_api_key)):
+    return {"ok": True, "who": "frontend", "source": "zahara-ui"}
+# --------------------------------------------------------------
