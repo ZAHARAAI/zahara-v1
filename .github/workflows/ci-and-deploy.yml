@@ -1,5 +1,3 @@
-# .github/workflows/ci-and-deploy.yml
-
 name: Deploy API to Fly (Dockerfile path)
 
 on:
