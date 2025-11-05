@@ -5,7 +5,6 @@ uvicorn[standard]==0.29.0
 
 # --- Data models & validation ---
 pydantic==2.6.4
-pydantic-core==2.16.3
 pydantic-settings==2.2.1
 
 # --- Database & ORM ---
