@@ -1,16 +1,29 @@
+# --- Standard library
 import os
 
+# --- Third-party libraries
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+# --- Local imports
 from .config import settings
 from .database import Base, engine
 from .middleware.observability import ObservabilityMiddleware
 from .middleware.rate_limit import RateLimitMiddleware
-from .routers import agents, api_keys, auth, health, llm_router, vector, version, flows
+from .routers import (
+    agents,
+    api_keys,
+    auth,
+    dev,
+    flows,
+    health,
+    llm_router,
+    vector,
+    version,
+)
 
 # Create database tables (skip during testing)
 if not os.getenv("TESTING"):
@@ -37,11 +50,11 @@ app = FastAPI(
 )
 
 # CORS middleware
-allowed_origins = ["*"] if settings.debug else [
-    "http://localhost:3000",
-    "http://localhost:8000",
-    "https://zahara.ai"
-]
+allowed_origins = (
+    ["*"]
+    if settings.debug
+    else ["http://localhost:3000", "http://localhost:8000", "https://zahara.ai"]
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -57,20 +70,29 @@ app.add_middleware(ObservabilityMiddleware)
 # Rate limiting middleware
 app.add_middleware(RateLimitMiddleware)
 
+
 # Exception handlers
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc):
     return JSONResponse(
         status_code=404,
-        content={"error": "Not found", "detail": "The requested resource was not found"}
+        content={
+            "error": "Not found",
+            "detail": "The requested resource was not found",
+        },
     )
+
 
 @app.exception_handler(500)
 async def internal_error_handler(request: Request, exc):
     return JSONResponse(
         status_code=500,
-        content={"error": "Internal server error", "detail": "An unexpected error occurred"}
+        content={
+            "error": "Internal server error",
+            "detail": "An unexpected error occurred",
+        },
     )
+
 
 # Include routers
 app.include_router(health.router)
@@ -85,13 +107,13 @@ app.include_router(flows.router)
 
 # Include dev router only if dev pages are enabled
 if os.getenv("ENABLE_DEV_PAGES") == "1":
-    from .routers import dev
     app.include_router(dev.router)
 
 # Mount static files
 static_path = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_path):
     app.mount("/static", StaticFiles(directory=static_path), name="static")
+
 
 # Root endpoint
 @app.get("/")
@@ -102,20 +124,16 @@ async def root():
         "version": settings.app_version,
         "docs": "/docs",
         "dashboard": "/static/index.html",
-        "website": settings.company_url
+        "website": settings.company_url,
     }
+
 
 if __name__ == "__main__":
     uvicorn.run(
-        "app.main:app",
-        host=settings.host,
-        port=settings.port,
-        reload=settings.debug
+        "app.main:app", host=settings.host, port=settings.port, reload=settings.debug
     )
 # --- Zahara: CORS + Demo API Key + Health --------------------
-from os import getenv
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Depends, HTTPException
+
 
 ALLOWED_ORIGINS = [
     "http://localhost:3000",
@@ -130,17 +148,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DEMO_TOKEN = getenv("DEMO_TOKEN", "zahara-demo-123")
+DEMO_TOKEN = os.getenv("DEMO_TOKEN", "zahara-demo-123")
+
+
 def require_api_key(request: Request):
     key = request.headers.get("X-API-Key")
     if key != DEMO_TOKEN:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
+
 @app.get("/health")
 def health():
     return {"ok": True}
 
+
 @app.get("/whoami")
 def whoami(dep: None = Depends(require_api_key)):
     return {"ok": True, "who": "frontend", "source": "zahara-ui"}
+
+
 # --------------------------------------------------------------
