@@ -1,15 +1,3 @@
-"""
-Compatibility shim for FastAPI / Pydantic field attribute differences.
-
-- Some FastAPI versions look for `FieldInfo.in_` (Pydantic v1 era).
-- Pydantic v2 removed that attribute; FastAPI>=0.103 adapted, but older envs may not.
-
-This module patches Pydantic v2's FieldInfo to expose a best-effort `in_`
-property, and also wraps FastAPI's `Form` helper to ensure created fields carry
-`in_ = ParamTypes.form`. Harmless no-ops if not needed.
-"""
-
-
 def _patch_fieldinfo():
     try:
         from pydantic.fields import FieldInfo as _PDFieldInfo  # type: ignore
@@ -32,44 +20,45 @@ def _patch_fieldinfo():
         pass
 
 
-def _wrap_form_helper():
+def _subclass_form_to_set_in():
     try:
-        # Old FastAPI code may check `field_info.in_ == ParamTypes.form`
         from fastapi import params as _params
 
-        _orig_Form = _params.Form
+        _OrigForm = _params.Form
 
-        def Form(*args, **kwargs):
-            fi = _orig_Form(*args, **kwargs)
-            try:
-                # If FieldInfo lacks in_, set it explicitly for form fields
-                if not hasattr(fi, "in_") or getattr(fi, "in_", None) is None:
-                    try:
-                        form_enum = _params.ParamTypes.form
-                    except Exception:
-                        form_enum = "form"  # sensible fallback
-                    try:
-                        # prefer attribute to work with our property
-                        setattr(fi, "in_", form_enum)
-                    except Exception:
-                        # fall back to private storage used by our FieldInfo property
-                        setattr(fi, "_in", form_enum)
-            except Exception:
-                pass
-            return fi
+        # Only proceed if Form is a type (class). If it's already wrapped, keep it.
+        if isinstance(_OrigForm, type) and not getattr(
+            _OrigForm, "__compat_wrapped__", False
+        ):
 
-        # Only replace if not already wrapped
-        if getattr(_params.Form, "__wrapped_by_compat__", False) is not True:
-            Form.__wrapped_by_compat__ = True  # type: ignore[attr-defined]
-            _params.Form = Form  # type: ignore[assignment]
+            class _CompatForm(_OrigForm):  # type: ignore[misc]
+                __compat_wrapped__ = True
+
+                def __init__(self, *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    try:
+                        form_enum = getattr(_params, "ParamTypes", None)
+                        form_value = getattr(form_enum, "form") if form_enum else "form"
+                    except Exception:
+                        form_value = "form"
+                    # Try assign via property; fall back to private attr used by our FieldInfo patch
+                    try:
+                        setattr(self, "in_", form_value)
+                    except Exception:
+                        try:
+                            setattr(self, "_in", form_value)
+                        except Exception:
+                            pass
+
+            _params.Form = _CompatForm  # type: ignore[assignment]
     except Exception:
-        # If fastapi.params is absent / different, silently skip.
+        # If fastapi.params isn't available or changes shape, silently skip.
         pass
 
 
 def _apply_patch():
     _patch_fieldinfo()
-    _wrap_form_helper()
+    _subclass_form_to_set_in()
 
 
 _apply_patch()
