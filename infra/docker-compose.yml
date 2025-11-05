@@ -77,12 +77,7 @@ services:
     ports:
       - "6333:6333"
     healthcheck:
-      # Try curl, then wget; hit the correct endpoint
-      test:
-        [
-          "CMD-SHELL",
-          "curl -fsS http://localhost:6333/readyz || wget -qO- http://localhost:6333/readyz",
-        ]
+      test: ["CMD", "curl", "-fsS", "http://localhost:6333/readyz"]
       interval: 5s
       timeout: 5s
       retries: 60
