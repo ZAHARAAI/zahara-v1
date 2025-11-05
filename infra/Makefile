@@ -1,79 +1,49 @@
-.PHONY: help init up down logs ps test clean build
+.PHONY: help init build up up-flowise down logs ps test seed clean
 
-# Default target
 help:
 	@echo "Zahara Infrastructure Commands:"
 	@echo ""
-	@echo "  make init           - Build and pull Docker images"
-	@echo "  make build          - Build all Docker images"
-	@echo "  make up             - Start all services"
-	@echo "  make up-flowise     - Start all services including Flowise (Option A Fork)"
-	@echo "  make down           - Stop all services"  
-	@echo "  make logs           - Show logs from all services"
-	@echo "  make ps             - Show status of all services"
-	@echo "  make test           - Run health checks"
-	@echo "  make seed           - Generate initial API key (run once)"
-	@echo "  make clean          - Stop and remove containers with volumes"
-	@echo ""
-	@echo "Flowise Commands:"
-	@echo "  make flowise-up     - Start only Flowise service"
-	@echo "  make flowise-down   - Stop Flowise service"
-	@echo "  make flowise-logs   - Show Flowise logs"
-	@echo ""
+	@echo "  make init           - Build images"
+	@echo "  make build          - Build images"
+	@echo "  make up             - Start services"
+	@echo "  make up-flowise     - Start services incl. Flowise profile"
+	@echo "  make down           - Stop all services"
+	@echo "  make logs           - Tail logs"
+	@echo "  make ps             - Status"
+	@echo "  make test           - Hit API health"
+	@echo "  make seed           - Generate initial API key (inside api)"
+	@echo "  make clean          - Stop and remove with volumes"
 
-# Build and pull images
 init:
 	docker compose build
-	docker compose pull --ignore-pull-failures
 
-# Start all services
+build:
+	docker compose build
+
 up:
 	docker compose up -d
 
-# Stop all services
-down:
-	docker compose down
-
-# Show logs
-logs:
-	docker compose logs -f --tail=200
-
-# Show service status
-ps:
-	docker compose ps
-
-# Build Docker images
-build:
-	docker build -t zahara-ai/api:latest ../services/api
-	docker build -t zahara-ai/router:latest ../services/router
-
-# Test health endpoints
-test:
-	@echo "Testing health endpoints..."
-	@curl -sf http://localhost:8000/health/ && echo "✅ API health check passed"
-	@curl -sf http://localhost:7000/health && echo "✅ Router health check passed"
-
-# Start all services including Flowise (Option A Fork)
+# Start with Flowise profile too
 up-flowise:
 	docker compose --profile flowise up -d
 
-# Start only Flowise service (Option A Fork)
-flowise-up:
-	docker compose --profile flowise up flow-builder -d
+down:
+	docker compose down
 
-# Stop Flowise service
-flowise-down:
-	docker compose stop flow-builder
+logs:
+	docker compose logs -f
 
-# Show Flowise logs
-flowise-logs:
-	docker compose logs flow-builder -f
+ps:
+	docker compose ps
 
-# Generate initial API key
+# Simple health check (requires API container running)
+test:
+	docker compose run --rm api curl -fsS http://localhost:8000/health || exit 1
+
+# Generate initial API key (your app should implement seed_data.py)
 seed:
 	@echo "🌱 Generating initial API key..."
 	docker compose exec api bash -c "cd /app && python seed_data.py"
 
-# Clean up containers and volumes
 clean:
 	docker compose down -v

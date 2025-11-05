@@ -11,29 +11,22 @@ LABEL zahara.ai.component="llm-routing"
 
 WORKDIR /app
 
-# OS deps (curl is handy for healthchecks / debugging)
+# curl for optional healthcheck/debugging
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
   && rm -rf /var/lib/apt/lists/*
 
-# --- Python deps -------------------------------------------------------------
-# (Option A uses repo-root build context, so we reference services/router/*)
+# Python deps (context is services/router)
 COPY requirements.txt ./requirements.txt
-COPY app ./app
-
-
 RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-# --- App code ----------------------------------------------------------------
-# Copy the router package into /app/app so "uvicorn app.main:app" works
-COPY services/router/app ./app
+# App code
+COPY app ./app
 
-# --- Runtime user ------------------------------------------------------------
+# Non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 7000
-
-# Optional healthcheck if you expose /health
 # HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 #   CMD curl -fsS http://localhost:7000/health || exit 1
 

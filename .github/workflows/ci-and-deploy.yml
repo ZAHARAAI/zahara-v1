@@ -1,8 +1,10 @@
-name: ci-and-deploy
+# .github/workflows/ci-and-deploy.yml
+
+name: Deploy API to Fly (Dockerfile path)
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch: {}
 
 jobs:
@@ -41,29 +43,29 @@ jobs:
       - name: Security scan (API)
         uses: aquasecurity/trivy-action@master
         with:
-          scan-type: 'fs'
-          format: 'table'
-          output: 'api-trivy-results.txt'
-          severity: 'CRITICAL,HIGH'
+          scan-type: "fs"
+          format: "table"
+          output: "api-trivy-results.txt"
+          severity: "CRITICAL,HIGH"
           ignore-unfixed: true
-          exit-code: '0'  # don't fail deployment for vulnerabilities (optional)
+          exit-code: "0" # don't fail deployment for vulnerabilities (optional)
 
       - name: Security scan (Router)
         uses: aquasecurity/trivy-action@master
         with:
-          scan-type: 'fs'
-          format: 'table'
-          output: 'router-trivy-results.txt'
-          severity: 'CRITICAL,HIGH'
+          scan-type: "fs"
+          format: "table"
+          output: "router-trivy-results.txt"
+          severity: "CRITICAL,HIGH"
           ignore-unfixed: true
-          exit-code: '0'
+          exit-code: "0"
 
       - name: Upload security scan results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: security-scan-results-${{ github.run_id }}
-          path: '*-trivy-results.txt'
+          path: "*-trivy-results.txt"
           retention-days: 30
 
       - name: Cleanup
@@ -80,13 +82,14 @@ jobs:
       - name: Install flyctl
         uses: superfly/flyctl-actions/setup-flyctl@v1
 
-      - name: Deploy API to Fly (Dockerfile path)
+      - name: Deploy API to Fly (Option B - service dir context)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           flyctl deploy \
             --app zahara-v1-api \
-            --dockerfile services/api/Dockerfile \
+            --path services/api \
+            --dockerfile Dockerfile \
             --remote-only \
             --strategy immediate \
             --detach
