@@ -176,13 +176,13 @@ async def chat_with_agent(agent_id: str, request: ChatWithAgentRequest):
     # If LLM service returns an error, provide a demo response
     if "error" in result:
         # Create a demo response based on the agent
-        demo_response = f"""Hello! I'm {agent['name']}, {agent['description']}.
+        demo_response = f"""Hello! I'm {agent["name"]}, {agent["description"]}.
 
 You said: "{request.message}"
 
-This is a demo response since external LLM providers aren't configured yet. In a production environment, I would use {agent['model']} via {agent['provider']} to provide intelligent responses based on my system prompt:
+This is a demo response since external LLM providers aren't configured yet. In a production environment, I would use {agent["model"]} via {agent["provider"]} to provide intelligent responses based on my system prompt:
 
-"{agent['system_prompt'][:100]}..."
+"{agent["system_prompt"][:100]}..."
 
 To enable full functionality, please configure API keys for the LLM providers in your environment variables."""
 

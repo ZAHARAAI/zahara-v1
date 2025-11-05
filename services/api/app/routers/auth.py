@@ -1,7 +1,6 @@
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import APIRouter, Depends, Form, HTTPException, status
 from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy.orm import Session
 
@@ -69,38 +68,36 @@ async def register_user(user: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=Token)
 async def login_user(
-    form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
+    username: str = Form(...),
+    password: str = Form(...),
+    scope: str = Form(""),
+    grant_type: str | None = Form(default=None),
+    client_id: str | None = Form(default=None),
+    client_secret: str | None = Form(default=None),
+    db: Session = Depends(get_db),
 ):
     """Login user and return access token"""
     # Input validation
-    if not form_data.username or not form_data.password:
+    if not username or not password:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username and password are required",
         )
 
-    user = db.query(User).filter(User.username == form_data.username).first()
+    user = db.query(User).filter(User.username == username).first()
 
     # Always check password even if user doesn't exist to prevent timing attacks
     password_correct = False
     if user:
-        password_correct = verify_password(form_data.password, user.hashed_password)
+        password_correct = verify_password(password, user.hashed_password)
     else:
         # Perform a dummy password verification to maintain consistent timing
-        verify_password(
-            form_data.password, "$2b$12$dummy.hash.to.prevent.timing.attacks"
-        )
+        verify_password(password, "$2b$12$dummy.hash.to.prevent.timing.attacks")
 
     if not user or not password_correct:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user"
         )
 
     access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)

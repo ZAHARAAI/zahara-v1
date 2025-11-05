@@ -12,21 +12,15 @@ What this module does
 ---------------------
 1) Adds a backwards-compatible `.in_` property to Pydantic v2's FieldInfo
    (no-op if it already exists).
-2) Replaces `fastapi.params.Form` with a small subclass that sets `self.in_`
-   (or a private `_in`) to `ParamTypes.form`, so `isinstance(..., params.Form)`
-   remains valid and `in_` is populated.
-3) Proactively normalizes the class attributes on
-   `fastapi.security.oauth2.OAuth2PasswordRequestForm` (e.g., `grant_type`,
-   `username`, `password`, `scope`, `client_id`, `client_secret`) to ensure
-   they carry `in_ = ParamTypes.form` even if they were imported before some
-   internals stabilized.
+2) Ensures `fastapi.params.Form` instances end up with `in_ = ParamTypes.form`
+   so older internals classify them as body/form fields instead of “non-body”.
+3) Normalizes class attributes on OAuth2PasswordRequestForm if necessary.
 
-This whole module tries very hard to be a no-op on newer stacks.
+All operations are best-effort and no-op on newer stacks.
 """
 
 
 def _patch_fieldinfo_in_attr():
-    """Add .in_ property to Pydantic v2 FieldInfo if missing."""
     try:
         from pydantic.fields import FieldInfo as _PDFieldInfo  # type: ignore
     except Exception:
@@ -46,16 +40,13 @@ def _patch_fieldinfo_in_attr():
         try:
             _PDFieldInfo.in_ = property(_get_in, _set_in)  # type: ignore[attr-defined]
         except Exception:
-            # Best-effort: never crash.
             pass
 
 
 def _ensure_form_sets_in_():
     """
-    Make sure fastapi.params.Form remains a *type* (class) that sets in_ to 'form'
-    on instances, so:
-      - isinstance(field_info, params.Form) works
-      - field_info.in_ is present and equals ParamTypes.form
+    Keep fastapi.params.Form as a *type* (class) and ensure instances get `in_='form'`.
+    This way: isinstance(field_info, params.Form) still works on older FastAPI.
     """
     try:
         from fastapi import params as _params
@@ -66,7 +57,6 @@ def _ensure_form_sets_in_():
     if _OrigForm is None:
         return
 
-    # Only wrap once and only if it's a class (older FastAPI defines it as a class)
     if isinstance(_OrigForm, type) and not getattr(
         _OrigForm, "__compat_wrapped__", False
     ):
@@ -81,11 +71,9 @@ def _ensure_form_sets_in_():
                     form_value = getattr(form_enum, "form") if form_enum else "form"
                 except Exception:
                     form_value = "form"
-                # Prefer the property (if our FieldInfo patch added it)
                 try:
                     setattr(self, "in_", form_value)
                 except Exception:
-                    # Fall back to the private slot used by our property
                     try:
                         setattr(self, "_in", form_value)
                     except Exception:
@@ -94,15 +82,13 @@ def _ensure_form_sets_in_():
         try:
             _params.Form = _CompatForm  # type: ignore[assignment]
         except Exception:
-            # If assignment is blocked, we still proceed with the rest.
             pass
 
 
 def _normalize_oauth2passwordrequestform_fields():
     """
-    OAuth2PasswordRequestForm defines class attributes via Form(...).
-    If those were created before our wrapper / property, they may lack `in_`.
-    This pass ensures they have `in_ = ParamTypes.form`.
+    Ensure OAuth2PasswordRequestForm's class-level Form(...) attrs have in_='form'
+    even if they were created before our patches.
     """
     try:
         from fastapi import params as _params
@@ -119,11 +105,8 @@ def _normalize_oauth2passwordrequestform_fields():
         return
 
     try:
-        for name, value in vars(OAuth2PasswordRequestForm).items():
-            # The class attributes for grant_type, username, password, scope, client_id, client_secret
-            # are instances of fastapi.params.Form (i.e., Param subclass)
+        for _, value in vars(OAuth2PasswordRequestForm).items():
             if FormType and isinstance(value, FormType):
-                # Attach in_ if missing / None
                 try:
                     if not hasattr(value, "in_") or getattr(value, "in_", None) is None:
                         setattr(value, "in_", form_value)
@@ -133,7 +116,6 @@ def _normalize_oauth2passwordrequestform_fields():
                     except Exception:
                         pass
     except Exception:
-        # Never break imports
         pass
 
 
@@ -143,5 +125,4 @@ def _apply_patch():
     _normalize_oauth2passwordrequestform_fields()
 
 
-# Execute as soon as this module is imported.
 _apply_patch()
