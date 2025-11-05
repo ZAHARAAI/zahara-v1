@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Header, HTTPException, Query
-from pydantic import BaseModel, Field
-from typing import Dict, List, Optional, Any
-from uuid import uuid4
-from datetime import datetime, timezone
 import os
 import threading
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+from uuid import uuid4
+
+from fastapi import APIRouter, Header, HTTPException, Query
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/flows", tags=["flows"])
 
@@ -19,7 +20,12 @@ _flows: Dict[str, "Flow"] = {}
 
 def _now_iso_z() -> str:
     # Example format: 2025-11-02T18:15:03Z
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
 
 def _new_flow_id() -> str:
@@ -30,6 +36,7 @@ def _new_flow_id() -> str:
 # ---------------------------
 # Models
 # ---------------------------
+
 
 class Graph(BaseModel):
     nodes: List[Any] = Field(default_factory=list)
@@ -83,12 +90,22 @@ class OkUpdated(BaseModel):
 def _require_api_key(x_api_key: Optional[str]) -> None:
     expected = os.getenv("DEMO_TOKEN", "zahara-demo-123")
     if not x_api_key or x_api_key != expected:
-       raise HTTPException(status_code=401, detail={"ok": False, "error": {"code": "UNAUTHORIZED", "message": "Invalid or missing API key"}})
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "ok": False,
+                "error": {
+                    "code": "UNAUTHORIZED",
+                    "message": "Invalid or missing API key",
+                },
+            },
+        )
 
 
 # ---------------------------
 # Routes
 # ---------------------------
+
 
 @router.get("/", response_model=ListResponse)
 def list_flows(
@@ -99,7 +116,10 @@ def list_flows(
 ):
     _require_api_key(x_api_key)
     with _flow_lock:
-        all_items = [FlowListItem(id=f.id, name=f.name, updatedAt=f.updatedAt) for f in _flows.values()]
+        all_items = [
+            FlowListItem(id=f.id, name=f.name, updatedAt=f.updatedAt)
+            for f in _flows.values()
+        ]
         total = len(all_items)
         start = (page - 1) * pageSize
         end = start + pageSize
@@ -109,29 +129,46 @@ def list_flows(
 
 
 @router.post("/", response_model=FlowEnvelope)
-def create_flow(payload: FlowCreate, x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")):
+def create_flow(
+    payload: FlowCreate,
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+):
     _require_api_key(x_api_key)
-    flow = Flow(id=_new_flow_id(), name=payload.name, graph=payload.graph, updatedAt=_now_iso_z())
+    flow = Flow(
+        id=_new_flow_id(),
+        name=payload.name,
+        graph=payload.graph,
+        updatedAt=_now_iso_z(),
+    )
     with _flow_lock:
         _flows[flow.id] = flow
     return FlowEnvelope(ok=True, flow=flow)
 
 
 @router.get("/{flow_id}", response_model=FlowEnvelope)
-def get_flow(flow_id: str, x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")):
+def get_flow(
+    flow_id: str, x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")
+):
     _require_api_key(x_api_key)
     with _flow_lock:
         flow = _flows.get(flow_id)
     if not flow:
         raise HTTPException(
             status_code=404,
-            detail={"ok": False, "error": {"code": "NOT_FOUND", "message": "Flow not found"}},
+            detail={
+                "ok": False,
+                "error": {"code": "NOT_FOUND", "message": "Flow not found"},
+            },
         )
     return FlowEnvelope(ok=True, flow=flow)
 
 
 @router.put("/{flow_id}", response_model=OkUpdated)
-def update_flow(flow_id: str, payload: FlowUpdate, x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")):
+def update_flow(
+    flow_id: str,
+    payload: FlowUpdate,
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+):
     _require_api_key(x_api_key)
 
     with _flow_lock:
@@ -139,7 +176,10 @@ def update_flow(flow_id: str, payload: FlowUpdate, x_api_key: Optional[str] = He
         if not flow:
             raise HTTPException(
                 status_code=404,
-                detail={"ok": False, "error": {"code": "NOT_FOUND", "message": "Flow not found"}},
+                detail={
+                    "ok": False,
+                    "error": {"code": "NOT_FOUND", "message": "Flow not found"},
+                },
             )
 
         if payload.name is not None:
