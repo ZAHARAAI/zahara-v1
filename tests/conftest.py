@@ -49,6 +49,7 @@ async def dev_client():
     import importlib
 
     import app.main
+
     importlib.reload(app.main)
 
     try:

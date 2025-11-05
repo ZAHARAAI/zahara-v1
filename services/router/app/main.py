@@ -45,10 +45,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Pydantic models
 class ChatMessage(BaseModel):
     role: str
     content: str
+
 
 class ChatCompletionRequest(BaseModel):
     model: str
@@ -57,8 +59,10 @@ class ChatCompletionRequest(BaseModel):
     max_tokens: Optional[int] = None
     stream: Optional[bool] = False
 
+
 class RouterConfig:
     """Configuration for LLM provider routing"""
+
     def __init__(self):
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -82,11 +86,11 @@ class RouterConfig:
         model_lower = model.lower()
 
         # OpenAI models
-        if any(provider in model_lower for provider in ['gpt', 'openai']):
+        if any(provider in model_lower for provider in ["gpt", "openai"]):
             return bool(self.openai_api_key), "OpenAI"
 
         # Anthropic models
-        elif any(provider in model_lower for provider in ['claude', 'anthropic']):
+        elif any(provider in model_lower for provider in ["claude", "anthropic"]):
             return bool(self.anthropic_api_key), "Anthropic"
 
         # OpenRouter models (fallback for many providers)
@@ -100,29 +104,37 @@ class RouterConfig:
         models = []
 
         if self.openai_api_key:
-            models.extend([
-                {"id": "gpt-3.5-turbo", "provider": "OpenAI"},
-                {"id": "gpt-4", "provider": "OpenAI"},
-                {"id": "gpt-4-turbo", "provider": "OpenAI"},
-            ])
+            models.extend(
+                [
+                    {"id": "gpt-3.5-turbo", "provider": "OpenAI"},
+                    {"id": "gpt-4", "provider": "OpenAI"},
+                    {"id": "gpt-4-turbo", "provider": "OpenAI"},
+                ]
+            )
 
         if self.anthropic_api_key:
-            models.extend([
-                {"id": "claude-3-haiku-20240307", "provider": "Anthropic"},
-                {"id": "claude-3-sonnet-20240229", "provider": "Anthropic"},
-                {"id": "claude-3-opus-20240229", "provider": "Anthropic"},
-            ])
+            models.extend(
+                [
+                    {"id": "claude-3-haiku-20240307", "provider": "Anthropic"},
+                    {"id": "claude-3-sonnet-20240229", "provider": "Anthropic"},
+                    {"id": "claude-3-opus-20240229", "provider": "Anthropic"},
+                ]
+            )
 
         if self.openrouter_api_key:
-            models.extend([
-                {"id": "openrouter/auto", "provider": "OpenRouter"},
-                {"id": "meta-llama/llama-2-70b-chat", "provider": "OpenRouter"},
-                {"id": "mistralai/mixtral-8x7b-instruct", "provider": "OpenRouter"},
-            ])
+            models.extend(
+                [
+                    {"id": "openrouter/auto", "provider": "OpenRouter"},
+                    {"id": "meta-llama/llama-2-70b-chat", "provider": "OpenRouter"},
+                    {"id": "mistralai/mixtral-8x7b-instruct", "provider": "OpenRouter"},
+                ]
+            )
 
         return models
 
+
 router_config = RouterConfig()
+
 
 @app.get("/")
 async def root():
@@ -133,17 +145,15 @@ async def root():
         "message": "Zahara.ai Router Service",
         "version": "1.0.0",
         "company": "Zahara.ai",
-        "website": "https://zahara.ai"
+        "website": "https://zahara.ai",
     }
+
 
 @app.get("/health")
 async def health():
     """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "service": "Zahara.ai Router",
-        "company": "Zahara.ai"
-    }
+    return {"status": "healthy", "service": "Zahara.ai Router", "company": "Zahara.ai"}
+
 
 @app.get("/v1/models")
 async def list_models():
@@ -153,13 +163,11 @@ async def list_models():
     if not models:
         raise HTTPException(
             status_code=501,
-            detail="Not implemented: No API keys configured for any providers"
+            detail="Not implemented: No API keys configured for any providers",
         )
 
-    return {
-        "object": "list",
-        "data": models
-    }
+    return {"object": "list", "data": models}
+
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
@@ -173,7 +181,7 @@ async def chat_completions(request: ChatCompletionRequest):
     if not has_key:
         raise HTTPException(
             status_code=501,
-            detail=f"Not implemented: No {provider} API keys configured for model '{request.model}'"
+            detail=f"Not implemented: No {provider} API keys configured for model '{request.model}'",
         )
 
     # Convert messages to LiteLLM format
@@ -202,11 +210,11 @@ async def chat_completions(request: ChatCompletionRequest):
         if "No API key" in str(e) or "API key" in str(e):
             raise HTTPException(
                 status_code=501,
-                detail=f"Not implemented: No {provider} API keys configured"
+                detail=f"Not implemented: No {provider} API keys configured",
             )
         raise HTTPException(
             status_code=401,
-            detail=f"Authentication failed with {provider}: Invalid API key"
+            detail=f"Authentication failed with {provider}: Invalid API key",
         )
     except litellm.exceptions.RateLimitError as e:
         logger.error(f"Rate limit error with {provider}: {str(e)}")
@@ -214,31 +222,30 @@ async def chat_completions(request: ChatCompletionRequest):
         if "quota" in str(e).lower() or "exceeded" in str(e).lower():
             raise HTTPException(
                 status_code=501,
-                detail=f"Not implemented: {provider} quota exceeded or API key not properly configured"
+                detail=f"Not implemented: {provider} quota exceeded or API key not properly configured",
             )
         raise HTTPException(
-            status_code=429,
-            detail=f"Rate limit exceeded for {provider}: {str(e)}"
+            status_code=429, detail=f"Rate limit exceeded for {provider}: {str(e)}"
         )
     except litellm.exceptions.BadRequestError as e:
         logger.error(f"Bad request error with {provider}: {str(e)}")
         raise HTTPException(
-            status_code=400,
-            detail=f"Bad request to {provider}: {str(e)}"
+            status_code=400, detail=f"Bad request to {provider}: {str(e)}"
         )
     except Exception as e:
         logger.error(f"Unexpected error routing to {provider}: {str(e)}")
         # Check if it's a quota/authentication related error that should be 501
         error_msg = str(e).lower()
-        if any(keyword in error_msg for keyword in ["quota", "exceeded", "billing", "api key"]):
+        if any(
+            keyword in error_msg
+            for keyword in ["quota", "exceeded", "billing", "api key"]
+        ):
             raise HTTPException(
                 status_code=501,
-                detail=f"Not implemented: {provider} API not properly configured"
+                detail=f"Not implemented: {provider} API not properly configured",
             )
-        raise HTTPException(
-            status_code=502,
-            detail=f"Provider error: {str(e)}"
-        )
+        raise HTTPException(status_code=502, detail=f"Provider error: {str(e)}")
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=7000)

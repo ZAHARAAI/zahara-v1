@@ -1,4 +1,5 @@
 """Smoke tests for CI - test against running services"""
+
 import pytest
 import requests
 
@@ -44,9 +45,9 @@ def test_api_v1_chat_completions_501():
             "http://localhost:8000/v1/chat/completions",
             json={
                 "model": "gpt-3.5-turbo",
-                "messages": [{"role": "user", "content": "Hello"}]
+                "messages": [{"role": "user", "content": "Hello"}],
             },
-            timeout=5
+            timeout=5,
         )
         assert response.status_code == 501
         print("✅ API chat completions 501 check passed")
@@ -61,9 +62,9 @@ def test_router_v1_chat_completions_501():
             "http://localhost:7000/v1/chat/completions",
             json={
                 "model": "gpt-3.5-turbo",
-                "messages": [{"role": "user", "content": "Hello"}]
+                "messages": [{"role": "user", "content": "Hello"}],
             },
-            timeout=5
+            timeout=5,
         )
         assert response.status_code == 501
         print("✅ Router chat completions 501 check passed")

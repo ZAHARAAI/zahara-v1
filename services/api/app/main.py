@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 # --- Local imports
+from . import compat  # ensure patch applied before router import  # noqa: F401
 from .config import settings
 from .database import Base, engine
 from .middleware.observability import ObservabilityMiddleware

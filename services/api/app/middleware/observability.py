@@ -15,11 +15,12 @@ from starlette.middleware.base import BaseHTTPMiddleware
 # Configure JSON logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(message)s',  # We'll format as JSON ourselves
-    handlers=[logging.StreamHandler()]
+    format="%(message)s",  # We'll format as JSON ourselves
+    handlers=[logging.StreamHandler()],
 )
 
 logger = logging.getLogger("zahara.observability")
+
 
 class ObservabilityMiddleware(BaseHTTPMiddleware):
     """Middleware for observability: request tracking, JSON logging, metrics"""
@@ -38,8 +39,8 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
         client_ip = self._get_client_ip(request)
         user_agent = request.headers.get("user-agent", "")
         api_key_present = bool(
-            request.headers.get("authorization", "").startswith("Bearer ") or
-            request.headers.get("x-api-key", "")
+            request.headers.get("authorization", "").startswith("Bearer ")
+            or request.headers.get("x-api-key", "")
         )
 
         # Log request start
@@ -49,7 +50,7 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
             url=str(request.url),
             client_ip=client_ip,
             user_agent=user_agent,
-            api_key_present=api_key_present
+            api_key_present=api_key_present,
         )
 
         # Process request
@@ -71,7 +72,7 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
                 url=str(request.url),
                 status_code=response.status_code,
                 latency_ms=latency_ms,
-                client_ip=client_ip
+                client_ip=client_ip,
             )
 
             return response
@@ -88,7 +89,7 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
                 url=str(request.url),
                 error=str(e),
                 latency_ms=latency_ms,
-                client_ip=client_ip
+                client_ip=client_ip,
             )
 
             # Re-raise the exception
@@ -111,8 +112,15 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
 
         return "unknown"
 
-    def _log_request_start(self, request_id: str, method: str, url: str,
-                          client_ip: str, user_agent: str, api_key_present: bool):
+    def _log_request_start(
+        self,
+        request_id: str,
+        method: str,
+        url: str,
+        client_ip: str,
+        user_agent: str,
+        api_key_present: bool,
+    ):
         """Log request start in JSON format"""
         log_data = {
             "timestamp": time.time(),
@@ -124,13 +132,20 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
             "client_ip": client_ip,
             "user_agent": user_agent,
             "api_key_present": api_key_present,
-            "service": "zahara-api"
+            "service": "zahara-api",
         }
 
         logger.info(json.dumps(log_data))
 
-    def _log_request_success(self, request_id: str, method: str, url: str,
-                           status_code: int, latency_ms: float, client_ip: str):
+    def _log_request_success(
+        self,
+        request_id: str,
+        method: str,
+        url: str,
+        status_code: int,
+        latency_ms: float,
+        client_ip: str,
+    ):
         """Log successful request completion in JSON format"""
         log_data = {
             "timestamp": time.time(),
@@ -142,13 +157,20 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
             "status_code": status_code,
             "latency_ms": latency_ms,
             "client_ip": client_ip,
-            "service": "zahara-api"
+            "service": "zahara-api",
         }
 
         logger.info(json.dumps(log_data))
 
-    def _log_request_error(self, request_id: str, method: str, url: str,
-                          error: str, latency_ms: float, client_ip: str):
+    def _log_request_error(
+        self,
+        request_id: str,
+        method: str,
+        url: str,
+        error: str,
+        latency_ms: float,
+        client_ip: str,
+    ):
         """Log request error in JSON format"""
         log_data = {
             "timestamp": time.time(),
@@ -160,7 +182,7 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
             "error": error,
             "latency_ms": latency_ms,
             "client_ip": client_ip,
-            "service": "zahara-api"
+            "service": "zahara-api",
         }
 
         logger.error(json.dumps(log_data))

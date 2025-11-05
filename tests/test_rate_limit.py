@@ -1,4 +1,5 @@
 """Tests for rate limiting middleware"""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,7 +18,7 @@ async def test_rate_limit_middleware_integration(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-@patch('app.middleware.rate_limit.get_redis')
+@patch("app.middleware.rate_limit.get_redis")
 async def test_rate_limit_logic(mock_get_redis, async_client: AsyncClient):
     """Test rate limiting logic with mocked Redis"""
     # Mock Redis client

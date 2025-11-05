@@ -34,7 +34,7 @@ class APIKeyService:
         description: str = None,
         can_read: bool = True,
         can_write: bool = False,
-        can_admin: bool = False
+        can_admin: bool = False,
     ) -> tuple[APIKey, str]:
         """Create a new API key and return both the model and the plain key"""
 
@@ -51,7 +51,7 @@ class APIKeyService:
             description=description,
             can_read=can_read,
             can_write=can_write,
-            can_admin=can_admin
+            can_admin=can_admin,
         )
 
         db.add(api_key)
@@ -68,10 +68,11 @@ class APIKeyService:
         try:
             key_hash = self.hash_api_key(api_key)
 
-            api_key_record = db.query(APIKey).filter(
-                APIKey.key_hash == key_hash,
-                APIKey.is_active
-            ).first()
+            api_key_record = (
+                db.query(APIKey)
+                .filter(APIKey.key_hash == key_hash, APIKey.is_active)
+                .first()
+            )
 
             if api_key_record:
                 # Update usage statistics in a separate transaction to avoid locks
@@ -125,7 +126,7 @@ def verify_api_key_dependency(api_key: str, db: Session) -> APIKey:
     if not api_key_record:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or inactive API key"
+            detail="Invalid or inactive API key",
         )
 
     return api_key_record

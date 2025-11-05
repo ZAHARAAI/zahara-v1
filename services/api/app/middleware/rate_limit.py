@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, requests_per_minute: int = None, window_seconds: int = None):
+    def __init__(
+        self, app, requests_per_minute: int = None, window_seconds: int = None
+    ):
         super().__init__(app)
         self.requests_per_minute = requests_per_minute or settings.rate_limit_requests
         self.window_seconds = window_seconds or settings.rate_limit_window
@@ -77,8 +79,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     content={
                         "error": "Rate limit exceeded",
                         "detail": f"Maximum {self.requests_per_minute} requests per {self.window_seconds} seconds",
-                        "rate_limit_type": "api_key" if api_key else "ip"
-                    }
+                        "rate_limit_type": "api_key" if api_key else "ip",
+                    },
                 )
 
             # Increment request count
@@ -92,8 +94,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
             # Add rate limit headers
             response.headers["X-RateLimit-Limit"] = str(self.requests_per_minute)
-            response.headers["X-RateLimit-Remaining"] = str(max(0, self.requests_per_minute - current_requests - 1))
-            response.headers["X-RateLimit-Reset"] = str(window_start + self.window_seconds)
+            response.headers["X-RateLimit-Remaining"] = str(
+                max(0, self.requests_per_minute - current_requests - 1)
+            )
+            response.headers["X-RateLimit-Reset"] = str(
+                window_start + self.window_seconds
+            )
             response.headers["X-RateLimit-Type"] = "api_key" if api_key else "ip"
 
             return response

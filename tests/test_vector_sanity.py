@@ -1,4 +1,5 @@
 """Tests for vector service sanity checks"""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,11 +10,15 @@ from httpx import AsyncClient
 async def test_vector_sanity_endpoint_requires_auth(async_client: AsyncClient):
     """Test that vector sanity endpoint requires authentication"""
     response = await async_client.post("/vector/debug/vector-sanity")
-    assert response.status_code in [401, 403, 422]  # Unauthorized, Forbidden, or validation error
+    assert response.status_code in [
+        401,
+        403,
+        422,
+    ]  # Unauthorized, Forbidden, or validation error
 
 
 @pytest.mark.asyncio
-@patch('app.services.vector_service.get_qdrant')
+@patch("app.services.vector_service.get_qdrant")
 async def test_vector_sanity_check_logic(mock_get_qdrant):
     """Test vector sanity check logic with mocked Qdrant"""
     from app.services.vector_service import VectorService
