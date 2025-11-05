@@ -17,7 +17,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 
 # --- Python deps -------------------------------------------------------------
 # (Option A uses repo-root build context, so we reference services/router/*)
-COPY services/router/requirements.txt ./requirements.txt
+COPY requirements.txt ./requirements.txt
+COPY app ./app
+
+
 RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
 # --- App code ----------------------------------------------------------------

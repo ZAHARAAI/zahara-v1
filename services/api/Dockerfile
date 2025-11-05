@@ -8,7 +8,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 # Copy and build Python wheels first for better caching
-COPY services/api/requirements.txt ./requirements.txt
+COPY requirements.txt ./requirements.txt
+COPY app ./app
+
 RUN pip install --upgrade pip && pip wheel --no-cache-dir --no-deps -r requirements.txt -w /wheels
 
 # --- Runtime -----------------------------------------------------------------

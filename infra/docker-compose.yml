@@ -1,9 +1,7 @@
 services:
   # API Service
   api:
-    build:
-      context: ..
-      dockerfile: services/api/Dockerfile
+    build: ../services/api
     image: ${IMAGE_PREFIX:-zahara-ai}/api:latest
     container_name: zahara-api
     ports:
@@ -29,9 +27,7 @@ services:
 
   # Router Service  
   router:
-    build:
-      context: ..
-      dockerfile: services/router/Dockerfile
+    build: ../services/router
     image: ${IMAGE_PREFIX:-zahara-ai}/router:latest
     container_name: zahara-router
     ports:
@@ -40,9 +36,6 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      
-    depends_on:
-      - api
     networks:
       - app-network
     restart: unless-stopped
