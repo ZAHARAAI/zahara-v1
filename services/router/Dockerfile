@@ -1,6 +1,5 @@
 FROM python:3.11-slim
 
-# Docker labels for branding
 LABEL org.opencontainers.image.title="Zahara.ai Router Service"
 LABEL org.opencontainers.image.description="Zahara.ai - Intelligent LLM Router and Load Balancer"
 LABEL org.opencontainers.image.vendor="Zahara.ai"
@@ -12,25 +11,25 @@ LABEL zahara.ai.component="llm-routing"
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# OS deps (curl optional but nice to have)
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python deps
+COPY services/router/requirements.txt ./requirements.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY app/ ./app/
+# Copy router code
+COPY services/router/app ./app
 
-# Create non-root user
+# Non-root
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
 EXPOSE 7000
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7000"]
+# Optional healthcheck (if your router exposes /health on 7000)
+# HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+#   CMD curl -fsS http://localhost:7000/health || exit 1
 
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7000"]
