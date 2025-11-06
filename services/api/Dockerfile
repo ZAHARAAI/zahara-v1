@@ -19,11 +19,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Install Python deps first to leverage layer cache
-COPY ./requirements.txt ./requirements.txt
+COPY ./services/api/requirements.txt ./requirements.txt
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
 # Copy application code
-COPY ./app ./app
+COPY ./services/api/app ./app
 
 # Non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
