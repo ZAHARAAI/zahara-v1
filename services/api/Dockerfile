@@ -1,47 +1,39 @@
-# ---- Builder ---------------------------------------------------------------
-FROM python:3.11-slim AS builder
-WORKDIR /app
-
-# Build deps for wheels
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl \
- && rm -rf /var/lib/apt/lists/*
-
-# Keep cache stable
-COPY requirements.txt .
-RUN pip install --upgrade pip \
- && pip wheel --no-cache-dir --no-deps -r requirements.txt -w /wheels
-
-# ---- Runtime ---------------------------------------------------------------
+# ---- Runtime (single-stage, simple & reliable) -----------------------------
 FROM python:3.11-slim
-LABEL org.opencontainers.image.title="Zahara.ai API Service"
 
-# tini for clean signal handling + curl for healthcheck
+# Basic hardening / defaults
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PORT=8000
+
+# System deps:
+# - curl: healthcheck
+# - tini: signal handling
+# - build-essential + gcc + git: build any sdists / git requirements
+# - libpq5: runtime for psycopg/psycopg2 (remove if you don't use Postgres)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tini curl \
+    tini curl build-essential gcc git libpq5 \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install deps from built wheels
-COPY --from=builder /wheels /wheels
-COPY --from=builder /app/requirements.txt .
-RUN pip install --no-index --find-links=/wheels -r requirements.txt \
- && rm -rf /wheels
+# Install Python deps first to leverage layer cache
+COPY requirements.txt .
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# Copy application code (context is services/api)
+# Copy application code
 COPY app ./app
 
 # Non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Health check
+# Healthcheck (Compose uses this; Fly has its own HTTP check)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -fsS http://localhost:8000/health || exit 1
+  CMD curl -fsS http://localhost:${PORT}/health || exit 1
 
 EXPOSE 8000
-ENV PORT=8000
 
 ENTRYPOINT ["/usr/bin/tini","--"]
 CMD ["sh","-c","uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
