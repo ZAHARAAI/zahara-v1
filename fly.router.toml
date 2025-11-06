@@ -1,0 +1,25 @@
+# fly.router.toml — Router service (optional)
+app = "zahara-v1-router"
+primary_region = "iad"
+
+[build]
+  dockerfile = "router/Dockerfile"
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8080
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [services.http_checks]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"

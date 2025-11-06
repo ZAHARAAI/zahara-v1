@@ -1,4 +1,4 @@
-name: ci-and-deploy
+name: compose-ci-and-fly-deploy
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  deploy-api:
+  ci-compose-and-deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -15,18 +15,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Optional: basic sanity check of your repo layout
-      - name: Show tree
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compose up via Makefile (CI smoke)
         run: |
-          ls -la
-          ls -la services/api || true
+          cd infra
+          make up
+          # wait a bit for services to be ready
+          sleep 10
+          # hit health endpoint (API exposes 8000 in compose)
+          curl -fsS http://localhost:8000/health
+          make down
 
       - name: Install flyctl
         uses: superfly/flyctl-actions/setup-flyctl@v1
 
-      - name: Deploy API via fly.toml
+      - name: Deploy API (fly.api.toml)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          # fly.toml at repo root points to services/api/Dockerfile
-          flyctl deploy --remote-only --strategy immediate --detach
+          flyctl deploy --config fly.api.toml --remote-only --strategy immediate --detach
+
+      # OPTIONAL: Deploy router (uncomment if you want router deployed)
+      # - name: Deploy Router (fly.router.toml)
+      #   if: ${{ false }}
+      #   env:
+      #     FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      #   run: |
+      #     flyctl deploy --config fly.router.toml --remote-only --strategy immediate --detach
