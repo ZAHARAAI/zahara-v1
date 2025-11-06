@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 # Only copy requirements to keep layer cache stable
-COPY requirements.txt ./requirements.txt
+COPY services/api/requirements.txt ./requirements.txt
 RUN pip install --upgrade pip && pip wheel --no-cache-dir --no-deps -r requirements.txt -w /wheels
 
 # --- Runtime -----------------------------------------------------------------
@@ -38,7 +38,7 @@ COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir /wheels/*
 
 # Copy application code (context is services/api)
-COPY app ./app
+COPY services/api/app ./app
 
 # Non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
