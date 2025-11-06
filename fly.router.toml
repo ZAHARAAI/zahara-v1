@@ -3,7 +3,8 @@ app = "zahara-v1-router"
 primary_region = "iad"
 
 [build]
-  dockerfile = "router/Dockerfile"
+  context = "services/router"
+  dockerfile = "services/router/Dockerfile"
 
 [[services]]
   protocol = "tcp"
