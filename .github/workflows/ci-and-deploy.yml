@@ -62,7 +62,7 @@ jobs:
 
       - name: Deploy API to Fly.io
         run: |
-          flyctl deploy \
+          flyctl deploy ./services/api \
             --config fly.api.toml \
             --remote-only \
             --strategy immediate \

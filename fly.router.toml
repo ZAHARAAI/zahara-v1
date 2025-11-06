@@ -7,7 +7,6 @@ kill_signal = "SIGINT"
 kill_timeout = "5s"
 
 [build]
-  context = "./services/router"
   dockerfile = "./Dockerfile"
 
 [env]

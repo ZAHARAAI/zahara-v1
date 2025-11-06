@@ -8,8 +8,6 @@ kill_signal = "SIGINT"
 kill_timeout = "5s"
 
 [build]
-  # Build from your repo using the service Dockerfile
-  context = "./services/api"
   dockerfile = "./Dockerfile"
 
 [env]
