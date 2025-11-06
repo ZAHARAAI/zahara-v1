@@ -16,11 +16,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
   && rm -rf /var/lib/apt/lists/*
 
 # Python deps (context is services/router)
-COPY ./services/api/requirements.txt ./requirements.txt
+COPY ./requirements.txt ./requirements.txt
 RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
 # App code
-COPY ./services/api/app ./app
+COPY ./app ./app
 
 # Non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
