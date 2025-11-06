@@ -6,9 +6,7 @@ primary_region = "iad"
 kill_signal = "SIGINT"
 kill_timeout = "5s"
 
-[build]
-  context = "./services/router"
-  dockerfile = "./services/router/Dockerfile"
+[build] "./services/router/Dockerfile"
 
 [env]
   PORT = "8080"
