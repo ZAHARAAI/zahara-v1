@@ -2,8 +2,8 @@ app = "zahara-v1-api"
 primary_region = "iad"
 
 [build]
+  context = "."
   dockerfile = "services/api/Dockerfile"
-  context = "services/api"
 
 [env]
   ENABLE_DEV_PAGES = "0"
