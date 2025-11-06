@@ -8,7 +8,7 @@ kill_timeout = "5s"
 
 [build]
   context = "services/router"
-  dockerfile = "services/router/Dockerfile"
+  dockerfile = "Dockerfile"
 
 [env]
   PORT = "8080"
