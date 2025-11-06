@@ -80,14 +80,15 @@ jobs:
       - name: Install flyctl
         uses: superfly/flyctl-actions/setup-flyctl@v1
 
-      - name: Deploy API to Fly (Option B - service dir context)
+      # If your fly.toml and Dockerfile live in services/api/,
+      # set the working directory and deploy with no --path flag.
+      - name: Deploy API to Fly
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          flyctl deploy \
+          flyctl deploy services/api \
             --app zahara-v1-api \
-            --path services/api \
-            --dockerfile Dockerfile \
+            --dockerfile services/api/Dockerfile \
             --remote-only \
             --strategy immediate \
             --detach
