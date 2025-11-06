@@ -88,7 +88,7 @@ jobs:
         run: |
           flyctl deploy services/api \
             --app zahara-v1-api \
-            --dockerfile services/api/Dockerfile \
+            --dockerfile Dockerfile \
             --remote-only \
             --strategy immediate \
             --detach
