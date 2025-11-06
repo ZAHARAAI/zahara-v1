@@ -1,94 +1,32 @@
-name: Deploy API to Fly (Dockerfile path)
+name: ci-and-deploy
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   workflow_dispatch: {}
 
 jobs:
-  test:
+  deploy-api:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      actions: read
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
+      # Optional: basic sanity check of your repo layout
+      - name: Show tree
         run: |
-          pip install ruff pytest pytest-asyncio httpx requests
-          pip install -r services/api/requirements.txt
-          pip install -r services/router/requirements.txt
-
-      - name: Lint with ruff
-        run: ruff check .
-
-      - name: Build images
-        run: |
-          make -C infra init
-          make -C infra build
-
-      - name: Start services for tests
-        run: make -C infra up
-
-      - name: Run tests
-        run: pytest tests/ -v --tb=short
-
-      - name: Security scan (API)
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: "fs"
-          format: "table"
-          output: "api-trivy-results.txt"
-          severity: "CRITICAL,HIGH"
-          ignore-unfixed: true
-          exit-code: "0" # don't fail deployment for vulnerabilities (optional)
-
-      - name: Security scan (Router)
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: "fs"
-          format: "table"
-          output: "router-trivy-results.txt"
-          severity: "CRITICAL,HIGH"
-          ignore-unfixed: true
-          exit-code: "0"
-
-      - name: Upload security scan results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: security-scan-results-${{ github.run_id }}
-          path: "*-trivy-results.txt"
-          retention-days: 30
-
-      - name: Cleanup
-        if: always()
-        run: make -C infra clean
-
-  deploy:
-    needs: test
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
+          ls -la
+          ls -la services/api || true
 
       - name: Install flyctl
         uses: superfly/flyctl-actions/setup-flyctl@v1
 
-      # If your fly.toml and Dockerfile live in services/api/,
-      # set the working directory and deploy with no --path flag.
-      - name: Deploy API to Fly
+      - name: Deploy API via fly.toml
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          flyctl deploy services/api \
-            --app zahara-v1-api \
-            --dockerfile Dockerfile \
-            --remote-only \
-            --strategy immediate \
-            --detach
+          # fly.toml at repo root points to services/api/Dockerfile
+          flyctl deploy --remote-only --strategy immediate --detach

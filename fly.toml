@@ -1,0 +1,37 @@
+# fly.toml generated for Zahara API
+app = "zahara-v1-api"
+primary_region = "iad"
+
+[build]
+  # Build the API from this Dockerfile path
+  dockerfile = "services/api/Dockerfile"
+
+[env]
+  # Keep dev pages off in prod
+  ENABLE_DEV_PAGES = "0"
+
+# Services: expose the app on HTTP 80/443 and route to container port 8000
+[[services]]
+  protocol = "tcp"
+  internal_port = 8000
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  # HTTP health check against /health
+  [services.http_checks]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+  # Optional TCP health check
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "2s"
