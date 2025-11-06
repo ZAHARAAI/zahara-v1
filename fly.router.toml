@@ -1,26 +1,40 @@
-# fly.router.toml — Router service (optional)
-app = "zahara-v1-router"
+# ==== Fly.io app config for services/router ====
+# Change the app name to your actual Fly app slug (create it once with `fly apps create <slug>`).
+app = "your-router-app-slug"
 primary_region = "iad"
+
+kill_signal = "SIGINT"
+kill_timeout = "5s"
 
 [build]
   context = "services/router"
   dockerfile = "services/router/Dockerfile"
 
+[env]
+  PORT = "8080"
+
 [[services]]
-  protocol = "tcp"
   internal_port = 8080
+  protocol = "tcp"
 
   [[services.ports]]
-    handlers = ["http"]
     port = 80
+    handlers = ["http"]
 
   [[services.ports]]
-    handlers = ["tls", "http"]
     port = 443
+    handlers = ["tls", "http"]
 
-  [services.http_checks]
+  [services.concurrency]
+    type = "requests"
+    hard_limit = 100
+    soft_limit = 80
+
+  [[services.http_checks]]
     interval = "15s"
     timeout = "5s"
-    grace_period = "10s"
+    grace_period = "20s"
     method = "GET"
     path = "/health"
+    protocol = "http"
+    tls_skip_verify = false

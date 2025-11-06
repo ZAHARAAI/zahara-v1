@@ -1,32 +1,34 @@
 services:
   # ---------- API ------------------------------------------------------------
   api:
-    build: . # context = "."
-    image: ${IMAGE_PREFIX:-zahara-ai}/api:latest
-    container_name: zahara-api
-    ports:
-      - "8000:8000"
-    environment:
-      - DEBUG=true
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/postgres
-      - REDIS_URL=redis://redis:6379
-      - QDRANT_URL=http://qdrant:6333
-      - SECRET_KEY=dev_secret_key_change_in_production
-      - ALLOWED_ORIGINS=*
-      - ENABLE_DEV_PAGES=${ENABLE_DEV_PAGES:-0}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      qdrant:
-        # condition: service_healthy
-        condition: service_started
-    networks: [app-network]
+  build:
+    context: ../services/api
+    dockerfile: Dockerfile
+  image: ${IMAGE_PREFIX:-zahara-ai}/api:latest
+  container_name: zahara-api
+  ports:
+    - "8000:8000"
+  environment:
+    - DEBUG=true
+    - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/postgres
+    - REDIS_URL=redis://redis:6379
+    - QDRANT_URL=http://qdrant:6333
+    - SECRET_KEY=dev_secret_key_change_in_production
+    - ALLOWED_ORIGINS=*
+    
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    qdrant:
+      # condition: service_healthy
+      condition: service_started
+  networks: [app-network]
 
   # ---------- Router (optional) ---------------------------------------------
   router:
-    build: . # context = "."
+    build: ../services/router
     image: ${IMAGE_PREFIX:-zahara-ai}/router:latest
     container_name: zahara-router
     ports:
