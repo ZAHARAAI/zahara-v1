@@ -33,41 +33,9 @@ export async function api(path: string, init: RequestInit = {}) {
 }
 
 // Flows
-export const FlowItemSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  updatedAt: z.string().optional(),
-});
-
-export const FlowEnvelopeSchema = z.object({
-  ok: z.boolean(),
-  flow: z.object({
-    id: z.string(),
-    name: z.string(),
-    graph: z.object({
-      nodes: z.array(z.any()),
-      edges: z.array(z.any()),
-    }),
-    updatedAt: z.string().optional(),
-  }),
-});
-
-export const FlowListSchema = z.object({
-  ok: z.boolean(),
-  items: z.array(FlowItemSchema),
-  page: z.number().optional(),
-  pageSize: z.number().optional(),
-  total: z.number().optional(),
-});
-
-export type FlowItem = z.infer<typeof FlowItemSchema>;
-export type FlowEnvelope = z.infer<typeof FlowEnvelopeSchema>;
-export type FlowList = z.infer<typeof FlowListSchema>;
-
 export async function listFlows(owner: "me" | string = "me") {
   const res = await api(`/flows?owner=${owner}&page=1&pageSize=50`);
-  const json = await res.json();
-  return FlowListSchema.parse(json);
+  return await res.json();
 }
 
 export async function createFlow(
@@ -78,14 +46,12 @@ export async function createFlow(
     method: "POST",
     body: JSON.stringify({ name, graph }),
   });
-  const json = await res.json();
-  return FlowEnvelopeSchema.parse(json);
+  return await res.json();
 }
 
 export async function getFlow(id: string) {
   const res = await api(`/flows/${id}`);
-  const json = await res.json();
-  return FlowEnvelopeSchema.parse(json);
+  return await res.json();
 }
 
 export async function updateFlow(
@@ -97,6 +63,127 @@ export async function updateFlow(
     method: "PUT",
     body: JSON.stringify({ name, graph }),
   });
-  const json = await res.json();
-  return json;
+  return await res.json();
+}
+
+// Files
+export const FileItemSchema = z.object({
+  path: z.string(),
+  size: z.number().optional(),
+  modified: z.string().optional(),
+  type: z.enum(["file", "dir"]),
+});
+
+export const FileListSchema = z.object({
+  ok: z.boolean(),
+  root: z.string(),
+  items: z.array(FileItemSchema),
+});
+
+export async function listFiles() {
+  const res = await api("/files");
+  return await res.json();
+}
+
+export async function readFile(path: string) {
+  const res = await api(`/files/${encodeURIComponent(path)}`);
+  return await res.json();
+}
+
+export async function writeFile(path: string, content: string, sha: string) {
+  const res = await api(`/files/${encodeURIComponent(path)}`, {
+    method: "PUT",
+    body: JSON.stringify({ content, sha }),
+  });
+  return await res.json();
+}
+
+// Run + SSE
+export async function startRun(entry: string, args: Record<string, any> = {}) {
+  const res = await api(`/run`, {
+    method: "POST",
+    body: JSON.stringify({ entry, args }),
+  });
+  return await res.json(); // { ok, runId }
+}
+
+export function openEventStream(
+  url: string,
+  onMessage: (data: any, type?: string) => void
+) {
+  const full = `${BASE}${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`;
+  const es = new EventSource(full, { withCredentials: false });
+  es.onmessage = (e) => {
+    try {
+      onMessage(JSON.parse(e.data));
+    } catch {}
+  };
+
+  es.addEventListener?.("status", (e: MessageEvent) => {
+    try {
+      onMessage(JSON.parse(e.data), "status");
+    } catch {}
+  });
+
+  es.addEventListener?.("log", (e: MessageEvent) => {
+    try {
+      onMessage(JSON.parse(e.data), "log");
+    } catch {}
+  });
+
+  es.addEventListener?.("done", (e: MessageEvent) => {
+    try {
+      onMessage(JSON.parse(e.data), "done");
+    } catch {}
+  });
+  return () => es.close();
+}
+
+export function streamRun(
+  runId: string,
+  onMessage: (data: any, type?: string) => void
+) {
+  return openEventStream(
+    `/sse/stream?runId=${encodeURIComponent(runId)}`,
+    onMessage
+  );
+}
+
+/** Clinic **/
+export async function listSessions() {
+  const res = await api("/clinic/sessions");
+  return await res.json();
+}
+
+export async function replaySession(sessionId: string) {
+  const res = await api(`/clinic/replay/${encodeURIComponent(sessionId)}`);
+  return await res.json();
+}
+
+export async function exportSession(sessionId: string) {
+  const res = await api(`/clinic/export/${encodeURIComponent(sessionId)}`);
+  return await res.json();
+}
+
+/** MCP **/
+
+export async function listConnectors() {
+  const res = await api("/mcp/connectors");
+  return await res.json();
+}
+
+export async function patchConnector(id: string, enabled: boolean) {
+  const res = await api(`/mcp/connectors/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ enabled }),
+  });
+  return await res.json();
+}
+
+export async function testConnector(id: string) {
+  const res = await api(`/mcp/test`, {
+    method: "POST",
+    body: JSON.stringify({ connectorId: id }),
+  });
+  return await res.json();
 }

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Toaster } from "sonner";
 import "../globals.css";
+import Providers from "./providers";
 
 export const metadata: Metadata = {
   title: "Job 5 Dashboard",
@@ -11,11 +12,14 @@ export const metadata: Metadata = {
 
 const Job5Layout = ({ children }: { children: React.ReactNode }) => {
   if (process.env.NEXT_PUBLIC_JOB5_ENABLED !== "true") redirect("/");
+  
   return (
     <html lang="en" data-theme="dark">
       <body className="flex min-h-screen bg-[hsl(var(--bg))] text-[hsl(var(--fg))]">
         <LeftNav />
-        <main className="flex-1 p-4">{children}</main>
+        <main className="flex-1 p-4">
+          <Providers>{children}</Providers>
+        </main>
         <Toaster />
       </body>
     </html>
