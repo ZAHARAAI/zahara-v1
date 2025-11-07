@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { z } from "zod";
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL as string;
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY as string;
+const API_KEY = process.env.NEXT_PUBLIC_ZAHARA_API_KEY as string;
 
 const Retry = { max: 2, backoffMs: 400 };
 
@@ -35,7 +34,8 @@ export async function api(path: string, init: RequestInit = {}) {
 // Flows
 export async function listFlows(owner: "me" | string = "me") {
   const res = await api(`/flows?owner=${owner}&page=1&pageSize=50`);
-  return await res.json();
+  const json = await res.json();
+  return json.files ? json : { ...json, files: json.items ?? [] };
 }
 
 export async function createFlow(
@@ -67,19 +67,6 @@ export async function updateFlow(
 }
 
 // Files
-export const FileItemSchema = z.object({
-  path: z.string(),
-  size: z.number().optional(),
-  modified: z.string().optional(),
-  type: z.enum(["file", "dir"]),
-});
-
-export const FileListSchema = z.object({
-  ok: z.boolean(),
-  root: z.string(),
-  items: z.array(FileItemSchema),
-});
-
 export async function listFiles() {
   const res = await api("/files");
   return await res.json();
@@ -136,6 +123,14 @@ export function openEventStream(
       onMessage(JSON.parse(e.data), "done");
     } catch {}
   });
+
+  es.onerror = () => {
+    es.close();
+    setTimeout(
+      () => openEventStream(url, onMessage),
+      500 + Math.random() * 1500
+    );
+  };
   return () => es.close();
 }
 

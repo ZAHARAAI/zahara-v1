@@ -12,10 +12,10 @@ export const metadata: Metadata = {
 
 const Job5Layout = ({ children }: { children: React.ReactNode }) => {
   if (process.env.NEXT_PUBLIC_JOB5_ENABLED !== "true") redirect("/");
-  
+
   return (
     <html lang="en" data-theme="dark">
-      <body className="flex min-h-screen bg-[hsl(var(--bg))] text-[hsl(var(--fg))]">
+      <body className="flex min-h-screen bg-[hsl(var(--bg))] text-[hsl(var(--fg))] min-w-[1300px]">
         <LeftNav />
         <main className="flex-1 p-4">
           <Providers>{children}</Providers>

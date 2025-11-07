@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // components/Pro/Toolbar.tsx
-
 "use client";
 import { Button } from "@/components/ui/Button";
 import { useEventBus } from "@/hooks/useEventBus";
@@ -11,7 +10,7 @@ import { useProStore } from "./store";
 
 const DEFAULT_ENTRY = "agents/hello.ts";
 
-export default function Toolbar() {
+export default function Toolbar({ flowId }: { flowId?: string }) {
   const [busy, setBusy] = useState(false);
   const { runId, setRun, push } = useEventBus();
   const { activePath } = useProStore();
@@ -22,11 +21,17 @@ export default function Toolbar() {
   const run = async () => {
     setBusy(true);
     try {
-      const start = await startRun(entry, {});
+      // Include flowId as args context (backend can link run → flow)
+      const start = await startRun(entry, flowId ? { flowId } : {});
       const id = start.runId;
       setRun(id);
-      const stop = streamRun(id, (e) => push(e));
+
+      // Preserve named SSE event types in the log stream
+      const stop = streamRun(id, (data, type) =>
+        push(type ? { type, ...data } : data)
+      );
       (window as any).__job5_stop = stop;
+
       toast.success("Run started", { description: id });
     } catch (e: any) {
       toast.error("Run failed to start", { description: e.message });
@@ -41,6 +46,7 @@ export default function Toolbar() {
         {busy ? "Running…" : "Run"}
       </Button>
       <div className="text-xs opacity-70">entry: {entry}</div>
+      {flowId && <div className="text-xs opacity-70">flow: {flowId}</div>}
       {runId && <div className="text-xs opacity-70">run: {runId}</div>}
       <div className="ml-auto text-xs opacity-70">Pro IDE</div>
     </div>

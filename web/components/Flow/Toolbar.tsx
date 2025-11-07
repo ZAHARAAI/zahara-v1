@@ -15,7 +15,7 @@ export default function Toolbar() {
   const { nodes, edges, flowId, flowName, setGraph, setFlowMeta } =
     useFlowStore();
   const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(false); // <-- now used
+  const [loading, setLoading] = useState(false);
   const [options, setOptions] = useState<Option[]>([]);
   const router = useRouter();
 
@@ -23,7 +23,7 @@ export default function Toolbar() {
     try {
       setLoading(true);
       const list = await listFlows("me");
-      setOptions(list.items.map((i) => [i.id, i.name]));
+      setOptions(list.items.map((i: any) => [i.id, i.name]));
     } catch (e: any) {
       toast.error("Failed to fetch flow lists", { description: e.message });
     } finally {
@@ -93,7 +93,12 @@ export default function Toolbar() {
         onChange={(e) => setFlowMeta(flowId, e.target.value)}
         placeholder="Flow name"
       />
-      <Button onClick={onSave} disabled={saving || loading}>
+
+      <Button
+        onClick={onSave}
+        className="cursor-pointer"
+        disabled={saving || loading}
+      >
         {saving ? "Saving..." : flowId ? "Save" : "Create"}
       </Button>
 
@@ -108,8 +113,17 @@ export default function Toolbar() {
         Open in Pro
       </Button>
 
-      <div className="ml-auto text-xs opacity-70">
-        {loading ? "Loading…" : "Flow Builder"}
+      {/* Right-aligned status area */}
+      <div className="ml-auto flex items-center gap-3 text-xs opacity-70">
+        {loading && <span>Loading…</span>}
+        {flowId ? (
+          <span>
+            Active:{" "}
+            <span className="font-medium">{flowName || "Untitled Flow"}</span>
+          </span>
+        ) : (
+          <span>Flow Builder</span>
+        )}
       </div>
     </div>
   );

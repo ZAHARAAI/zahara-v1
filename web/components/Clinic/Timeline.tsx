@@ -20,7 +20,9 @@ export default function Timeline() {
   const attach = (id: string) => {
     stopRef.current?.();
     setRun(id);
-    stopRef.current = streamRun(id, (e) => push(e));
+    stopRef.current = streamRun(id, (data, type) =>
+      push(type ? { type, ...data } : data)
+    );
     toast.success("Attached to run", { description: id });
   };
 
