@@ -3,6 +3,7 @@
 import { Activity, Code2, Settings, Workflow } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import ThemeToggle from "../ThemeToggle";
 
 const item =
   "flex items-center gap-2 rounded-xl px-3 py-2 hover:bg-[hsl(var(--muted))]";
@@ -29,7 +30,7 @@ function NavItem({
 
 export default function LeftNav() {
   return (
-    <aside className="w-64 border-r border-[hsl(var(--border))] p-3 space-y-2 bg-[hsl(var(--panel))]">
+    <aside className="relative w-64 border-r border-[hsl(var(--border))] p-3 space-y-2 bg-[hsl(var(--panel))]">
       <div className="px-2 pb-2 text-xs uppercase tracking-wide opacity-70">
         Job 5
       </div>
@@ -37,6 +38,10 @@ export default function LeftNav() {
       <NavItem href="/pro" label="Pro" Icon={Code2} />
       <NavItem href="/clinic" label="Clinic" Icon={Activity} />
       <NavItem href="/mcp" label="MCP" Icon={Settings} />
+
+      <div className="absolute bottom-4 left-3">
+        <ThemeToggle />
+      </div>
     </aside>
   );
 }

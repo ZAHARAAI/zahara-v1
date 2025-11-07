@@ -1,5 +1,6 @@
 import LeftNav from "@/components/nav/LeftNav";
 import type { Metadata } from "next";
+import Head from "next/head";
 import { redirect } from "next/navigation";
 import { Toaster } from "sonner";
 import "../globals.css";
@@ -15,6 +16,23 @@ const Job5Layout = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <html lang="en" data-theme="dark">
+      <Head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+          (function(){
+            try{
+              var t = localStorage.getItem('theme');
+              if(!t){
+                t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+              }
+              document.documentElement.dataset.theme = t;
+            }catch(e){}
+          })();`,
+          }}
+        />
+      </Head>
+
       <body className="flex min-h-screen bg-[hsl(var(--bg))] text-[hsl(var(--fg))] min-w-[1300px]">
         <LeftNav />
         <main className="flex-1 p-4">
