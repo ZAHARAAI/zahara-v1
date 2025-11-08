@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { createFlow, getFlow, listFlows, updateFlow } from "@/services/api";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useFlowStore } from "./store";
@@ -12,12 +12,40 @@ import { useFlowStore } from "./store";
 type Option = [string, string];
 
 export default function Toolbar() {
+  const searchParams = useSearchParams();
+  const flowIdParam = searchParams.get("flowId");
   const { nodes, edges, flowId, flowName, setGraph, setFlowMeta } =
     useFlowStore();
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [options, setOptions] = useState<Option[]>([]);
   const router = useRouter();
+
+  useEffect(() => {
+    const loadFlow = async () => {
+      if (!flowIdParam) return;
+
+      try {
+        const res = await getFlow(flowIdParam); // { ok, flow }
+        const f = res.flow;
+
+        // guard just in case
+        const nodes = (f?.graph?.nodes ?? []) as any[];
+        const edges = (f?.graph?.edges ?? []) as any[];
+
+        setFlowMeta(f.id, f.name ?? "Untitled Flow"); // correct API
+        setGraph(nodes as any, edges as any); // pass both args
+
+        toast.success("Flow loaded", { description: f.name });
+      } catch (err: any) {
+        toast.error("Error loading flow", {
+          description: String(err?.message || err),
+        });
+      }
+    };
+
+    loadFlow();
+  }, [flowIdParam, setFlowMeta, setGraph]);
 
   const refreshList = async () => {
     try {

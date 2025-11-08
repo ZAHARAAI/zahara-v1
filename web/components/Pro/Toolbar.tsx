@@ -4,13 +4,16 @@
 import { Button } from "@/components/ui/Button";
 import { useEventBus } from "@/hooks/useEventBus";
 import { startRun, streamRun } from "@/services/api";
+import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useProStore } from "./store";
 
 const DEFAULT_ENTRY = "agents/hello.ts";
 
-export default function Toolbar({ flowId }: { flowId?: string }) {
+export default function Toolbar() {
+  const searchParams = useSearchParams();
+  const flowId = searchParams.get("flowId") || undefined;
   const [busy, setBusy] = useState(false);
   const { runId, setRun, push } = useEventBus();
   const { activePath } = useProStore();
