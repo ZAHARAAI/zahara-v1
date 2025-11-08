@@ -61,20 +61,32 @@ export default function Timeline() {
 
   // Attach to live SSE stream for a given runId
   const attach = (id: string) => {
-    stopRef.current?.();
-    setRun(id);
-    stopRef.current = streamRun(id, (data: any, type?: string) =>
-      // ensure event.type is set for rendering
-      push(type ? { type, ...data } : data)
-    );
-    toast.success("Attached to run", { description: id });
+    try {
+      stopRef.current?.();
+      setRun(id);
+      stopRef.current = streamRun(id, (data: any, type?: string) =>
+        // ensure event.type is set for rendering
+        push(type ? { type, ...data } : data)
+      );
+      toast.success("Attached to run", { description: id });
+    } catch (error) {
+      toast.error("Failed to attach to run", {
+        description: (error as Error).message,
+      });
+    }
   };
 
   // Replay currently attached run into a NEW run (SSE live view)
   const replay = async () => {
     if (!runId) return;
-    const start = await startRun(DEFAULT_ENTRY, { replay: runId });
-    attach(start.runId);
+    try {
+      const start = await startRun(DEFAULT_ENTRY, { replay: runId });
+      attach(start.runId);
+    } catch (error) {
+      toast.error("Failed to replay run", {
+        description: (error as Error).message,
+      });
+    }
   };
 
   // Load the historical events of a past session (no SSE)
