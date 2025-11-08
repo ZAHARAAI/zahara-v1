@@ -80,8 +80,9 @@ export function openEventStream(
   url: string,
   onMessage: (data: any, type?: string) => void
 ) {
+  const BASE = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_BASE_URL || "";
   // const full = `${BASE}${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`;
-  const full = `https://zahara-v1-api.fly.dev${url}`;
+  const full = `${BASE}${url}`;
   let es = new EventSource(full, { withCredentials: false });
   let closed = false;
 
