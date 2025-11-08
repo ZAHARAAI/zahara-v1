@@ -1,3 +1,5 @@
+"use client";
+
 import BackToFlowBuilder from "@/components/Pro/BackToFlowBuilder";
 import FileTree from "@/components/Pro/FileTree";
 import LogPanel from "@/components/Pro/LogPanel";
@@ -5,7 +7,7 @@ import Toolbar from "@/components/Pro/Toolbar";
 import dynamic from "next/dynamic";
 import { Suspense } from "react";
 
-const Editor = dynamic(() => import("@/components/Pro/Editor"));
+const Editor = dynamic(() => import("@/components/Pro/Editor"), { ssr: false });
 
 export default function ProPage() {
   return (

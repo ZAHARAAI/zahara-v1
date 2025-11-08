@@ -47,21 +47,23 @@ export default function Toolbar() {
     loadFlow();
   }, [flowIdParam, setFlowMeta, setGraph]);
 
-  const refreshList = async () => {
+  useEffect(() => {
+    refreshList();
+  }, []);
+
+  async function refreshList() {
     try {
       setLoading(true);
       const list = await listFlows("me");
+      console.log({ list });
       setOptions(list.items.map((i: any) => [i.id, i.name]));
     } catch (e: any) {
+      console.log(e);
       toast.error("Failed to fetch flow lists", { description: e.message });
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    refreshList();
-  }, []);
+  }
 
   const onSave = async () => {
     setSaving(true);

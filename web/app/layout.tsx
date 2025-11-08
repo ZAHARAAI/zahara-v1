@@ -1,9 +1,8 @@
 import LeftNav from "@/components/nav/LeftNav";
 import type { Metadata } from "next";
-import Head from "next/head";
 import { redirect } from "next/navigation";
 import { Toaster } from "sonner";
-import "../globals.css";
+import "./globals.css";
 import Providers from "./providers";
 
 export const metadata: Metadata = {
@@ -12,11 +11,11 @@ export const metadata: Metadata = {
 };
 
 const Job5Layout = ({ children }: { children: React.ReactNode }) => {
-  if (process.env.NEXT_PUBLIC_JOB5_ENABLED !== "true") redirect("/");
+  if (process.env.JOB5_ENABLED !== "true") redirect("/");
 
   return (
     <html lang="en" data-theme="dark">
-      <Head>
+      <head>
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -31,7 +30,7 @@ const Job5Layout = ({ children }: { children: React.ReactNode }) => {
           })();`,
           }}
         />
-      </Head>
+      </head>
 
       <body className="flex min-h-screen bg-[hsl(var(--bg))] text-[hsl(var(--fg))] min-w-[1300px]">
         <LeftNav />

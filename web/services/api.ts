@@ -1,35 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-const BASE = process.env.NEXT_PUBLIC_API_BASE_URL as string;
-const API_KEY = process.env.NEXT_PUBLIC_ZAHARA_API_KEY as string;
-
-const Retry = { max: 2, backoffMs: 400 };
-
-export async function api(path: string, init: RequestInit = {}) {
-  let last: any;
-  for (let attempt = 0; attempt <= Retry.max; attempt++) {
-    try {
-      const res = await fetch(`${BASE}${path}`, {
-        ...init,
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-Key": API_KEY,
-          ...(init.headers || {}),
-        },
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      return res;
-    } catch (e) {
-      last = e;
-      if (attempt < Retry.max)
-        await new Promise((r) =>
-          setTimeout(r, Retry.backoffMs * (attempt + 1))
-        );
-    }
-  }
-  throw last;
-}
+import { api } from "@/actions/api";
 
 function ensureOk<T extends { ok?: boolean; error?: any }>(
   json: T,
@@ -44,8 +15,7 @@ function ensureOk<T extends { ok?: boolean; error?: any }>(
 
 // Flows
 export async function listFlows(owner: "me" | string = "me") {
-  const res = await api(`/flows?owner=${owner}&page=1&pageSize=50`);
-  const json = await res.json();
+  const json = await api(`/flows?owner=${owner}&page=1&pageSize=50`);
   const data = ensureOk(json, "fetching list flows");
   return data.files ? data : { ...data, files: data.items ?? [] };
 }
@@ -54,17 +24,15 @@ export async function createFlow(
   name: string,
   graph: { nodes: any[]; edges: any[] }
 ) {
-  const res = await api(`/flows`, {
+  const json = await api(`/flows`, {
     method: "POST",
     body: JSON.stringify({ name, graph }),
   });
-  const json = await res.json();
   return ensureOk(json, "creating flow");
 }
 
 export async function getFlow(id: string) {
-  const res = await api(`/flows/${id}`);
-  const json = await res.json();
+  const json = await api(`/flows/${id}`);
   return ensureOk(json, "fetching flow");
 }
 
@@ -73,43 +41,38 @@ export async function updateFlow(
   name: string,
   graph: { nodes: any[]; edges: any[] }
 ) {
-  const res = await api(`/flows/${id}`, {
+  const json = await api(`/flows/${id}`, {
     method: "PUT",
     body: JSON.stringify({ name, graph }),
   });
-  const json = await res.json();
   return ensureOk(json, "updating flow");
 }
 
 // Files
 export async function listFiles() {
-  const res = await api("/files");
-  const json = await res.json();
+  const json = await api("/files");
   return ensureOk(json, "listing files");
 }
 
 export async function readFile(path: string) {
-  const res = await api(`/files/${encodeURIComponent(path)}`);
-  const json = await res.json();
+  const json = await api(`/files/${encodeURIComponent(path)}`);
   return ensureOk(json, "reading file");
 }
 
 export async function writeFile(path: string, content: string, sha: string) {
-  const res = await api(`/files/${encodeURIComponent(path)}`, {
+  const json = await api(`/files/${encodeURIComponent(path)}`, {
     method: "PUT",
     body: JSON.stringify({ content, sha }),
   });
-  const json = await res.json();
   return ensureOk(json, "updating file");
 }
 
 // Run + SSE
 export async function startRun(entry: string, args: Record<string, any> = {}) {
-  const res = await api(`/run`, {
+  const json = await api(`/run`, {
     method: "POST",
     body: JSON.stringify({ entry, args }),
   });
-  const json = await res.json(); // { ok, runId }
   return ensureOk(json, "starting run");
 }
 
@@ -118,7 +81,7 @@ export function openEventStream(
   onMessage: (data: any, type?: string) => void
 ) {
   // const full = `${BASE}${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`;
-  const full = `${BASE}${url}`;
+  const full = `https://zahara-v1-api.fly.dev${url}`;
   let es = new EventSource(full, { withCredentials: false });
   let closed = false;
 
@@ -171,48 +134,41 @@ export function streamRun(
 
 /** Clinic **/
 export async function listSessions() {
-  const res = await api("/clinic/sessions");
-  const json = await res.json();
+  const json = await api("/clinic/sessions");
   return ensureOk(json, "listing sessions");
 }
 
 export async function replaySession(sessionId: string) {
-  const res = await api(`/clinic/replay/${encodeURIComponent(sessionId)}`);
-  const json = await res.json();
+  const json = await api(`/clinic/replay/${encodeURIComponent(sessionId)}`);
   return ensureOk(json, "replaying session");
 }
-
 
 // TODO: this can be a large file, need to handle differently?
 // TODO: this function is not used currently
 export async function exportSession(sessionId: string) {
-  const res = await api(`/clinic/export/${encodeURIComponent(sessionId)}`);
-  const json = await res.json();
+  const json = await api(`/clinic/export/${encodeURIComponent(sessionId)}`);
   return ensureOk(json, "exporting session");
 }
 
 /** MCP **/
 
 export async function listConnectors() {
-  const res = await api("/mcp/connectors");
-  const json = await res.json();
+  const json = await api("/mcp/connectors");
   return ensureOk(json, "listing connectors");
 }
 
 export async function patchConnector(id: string, enabled: boolean) {
-  const res = await api(`/mcp/connectors/${encodeURIComponent(id)}`, {
+  const json = await api(`/mcp/connectors/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify({ enabled }),
   });
-  const json = await res.json();
   return ensureOk(json, "patching connector");
 }
 
 export async function testConnector(id: string) {
-  const res = await api(`/mcp/test`, {
+  const json = await api(`/mcp/test`, {
     method: "POST",
     body: JSON.stringify({ connectorId: id }),
   });
-  const json = await res.json();
   return ensureOk(json, "testing connector");
 }
