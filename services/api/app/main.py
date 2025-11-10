@@ -151,23 +151,6 @@ if __name__ == "__main__":
         "app.main:app", host=settings.host, port=settings.port, reload=settings.debug
     )
 # --- Zahara: CORS + Demo API Key + Health --------------------
-ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:8000",
-    "https://zahara-v1-web.fly.dev",
-    "https://zahara.ai",
-    "https://job5-ui-sprint.vercel.app",
-]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
 DEMO_TOKEN = os.getenv("DEMO_TOKEN", "zahara-demo-123")
 
 
