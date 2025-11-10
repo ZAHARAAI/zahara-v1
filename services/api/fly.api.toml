@@ -1,6 +1,4 @@
-# ==== Fly.io app config for services/api/app ====
-# Change the "app" name to your Fly app slug once created:
-#   fly apps create <your-app-name>
+# fly.api.toml (services/api)
 app = "zahara-v1-api"
 primary_region = "iad"
 
@@ -27,8 +25,8 @@ kill_timeout = "5s"
 
   [services.concurrency]
     type = "requests"
+    soft_limit = 50
     hard_limit = 100
-    soft_limit = 80
 
   [[services.http_checks]]
     interval = "15s"
@@ -38,6 +36,3 @@ kill_timeout = "5s"
     path = "/health"
     protocol = "http"
     tls_skip_verify = false
-
-[http_service]
-  internal_port = 8080

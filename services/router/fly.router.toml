@@ -10,10 +10,10 @@ kill_timeout = "5s"
   dockerfile = "./Dockerfile"
 
 [env]
-  PORT = "8080"
+  PORT = "8000"
 
 [[services]]
-  internal_port = 8080
+  internal_port = 8000
   protocol = "tcp"
 
   [[services.ports]]
@@ -27,7 +27,7 @@ kill_timeout = "5s"
   [services.concurrency]
     type = "requests"
     hard_limit = 100
-    soft_limit = 80
+    soft_limit = 00
 
   [[services.http_checks]]
     interval = "15s"
@@ -37,6 +37,3 @@ kill_timeout = "5s"
     path = "/health"
     protocol = "http"
     tls_skip_verify = false
-
-[http_service]
-  internal_port = 8080

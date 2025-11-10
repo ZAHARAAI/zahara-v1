@@ -25,7 +25,7 @@ RUN pip install --upgrade pip setuptools wheel \
 # ---------- Runtime ----------
 FROM base AS runtime
 ENV PATH="/opt/venv/bin:$PATH" \
-    PORT=8080 \
+    PORT=8000 \
     WORKERS=1 \
     LOG_LEVEL=info
 
@@ -36,7 +36,7 @@ USER appuser
 COPY --from=builder /opt/venv /opt/venv
 COPY . /app
 
-EXPOSE 8080
+EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD \
   curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1
