@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "zahara-v1"
 version = "1.0.0"
 description = "Zahara.ai FastAPI backend and router services"
-authors = [{ name = "Faridul Islam", email = "you@example.com" }]
+authors = [{ name = "Faridul Islam", email = "mdfaridulislamovi@gmail.com" }]
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
@@ -73,3 +73,4 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --disable-warnings --maxfail=1"
+asyncio_mode = "auto"
