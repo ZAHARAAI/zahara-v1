@@ -1,102 +1,71 @@
-name: CI & Deploy
+name: CI and Deploy (API)
 
 on:
   push:
-    branches: [main]
-    # deploy only from main; adjust as you like
+    branches: ["main"]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
-# concurrency:
-#   group: ${{ github.workflow }}-${{ github.ref }}
-#   cancel-in-progress: true
+env:
+  COMPOSE_FILE: infra/docker-compose.yml
+  API_HEALTH_URL: http://localhost:8000/health
 
 jobs:
-  test-api:
-    name: Test API (Python 3.12)
+  test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Check out repo
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: "pip"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Install API deps
+      - name: Docker Compose - Build & Up
         run: |
-          python -m pip install --upgrade pip
-          pip install -r services/api/requirements.txt
+          docker compose -f $COMPOSE_FILE up -d --build
+          docker compose -f $COMPOSE_FILE ps
 
-      - name: Run API tests
+      - name: Wait for API health
         run: |
-          if [ -d "tests" ]; then
-            pytest -q tests
-          else
-            echo "No tests directory found; skipping."
-          fi
+          echo "Waiting for $API_HEALTH_URL"
+          for i in {1..30}; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$API_HEALTH_URL" || true)
+            if [ "$code" = "200" ]; then
+              echo "API healthy ✅"
+              exit 0
+            fi
+            echo "Attempt $i/30: got $code, retrying..."
+            sleep 3
+          done
+          echo "API did not become healthy in time ❌"
+          docker compose -f $COMPOSE_FILE logs --no-color || true
+          exit 1
 
-  test-router:
-    name: Test Router (optional)
-    runs-on: ubuntu-latest
-    if: ${{ hashFiles('services/router/requirements.txt') != '' }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Compose logs (on failure)
+        if: failure()
+        run: docker compose -f $COMPOSE_FILE logs --no-color || true
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: "pip"
-
-      - name: Install Router deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r services/router/requirements.txt
-
-      - name: Run Router tests
-        run: |
-          if [ -d "tests" ]; then
-            pytest -q tests
-          else
-            echo "No tests directory found; skipping."
-          fi
+      - name: Docker Compose - Down
+        if: always()
+        run: docker compose -f $COMPOSE_FILE down -v
 
   deploy:
-    name: Deploy to Fly.io
-    needs: test-api
-    # needs: test-router
+    needs: test
     runs-on: ubuntu-latest
-    # if: github.ref == 'refs/heads/main'
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
     steps:
-      - name: Checkout
+      - name: Check out repo
         uses: actions/checkout@v4
 
-      - name: Setup Flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@v1.5
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
 
-      # ---- API Deploy ----
-      - name: Deploy API
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      - name: Deploy API to Fly.io
         run: |
           flyctl deploy ./services/api \
             --config fly.api.toml \
             --remote-only \
             --strategy immediate \
             --detach
-
-      # ---- Router Deploy (optional) ----
-      # - name: Deploy Router
-      #   if: ${{ hashFiles('services/router/fly.router.toml') != '' }}
-      #   env:
-      #     FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      #   run: |
-      #     flyctl deploy ./services/router \
-      #       --config fly.router.toml \
-      #       --remote-only \
-      #       --strategy immediate \
-      #       --detach
