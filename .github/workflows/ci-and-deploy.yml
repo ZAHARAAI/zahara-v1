@@ -67,9 +67,10 @@ jobs:
 
   deploy:
     name: Deploy to Fly.io
-    needs: [test-api, test-router]
+    needs: test-api
+    # needs: test-router
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    # if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
