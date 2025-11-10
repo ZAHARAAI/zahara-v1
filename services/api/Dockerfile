@@ -1,39 +1,45 @@
-# ---- Runtime (single-stage, simple & reliable) -----------------------------
-FROM python:3.11-slim
+# ---------- Base: Python 3.12 slim with build tools ----------
+FROM python:3.12-slim AS base
 
-# Basic hardening / defaults
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PORT=8000
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
 
-# System deps:
-# - curl: healthcheck
-# - tini: signal handling
-# - build-essential + gcc + git: build any sdists / git requirements
-# - libpq5: runtime for psycopg/psycopg2 (remove if you don't use Postgres)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tini curl build-essential gcc git libpq5 \
- && rm -rf /var/lib/apt/lists/*
+    build-essential curl ca-certificates libpq-dev tini \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install Python deps first to leverage layer cache
-COPY ./requirements.txt ./requirements.txt
-RUN pip install --upgrade pip && pip install -r requirements.txt
+# ---------- Builder ----------
+FROM base AS builder
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy application code
-COPY ./app ./app
+COPY requirements.txt /app/requirements.txt
+RUN pip install --upgrade pip setuptools wheel \
+ && pip install -r /app/requirements.txt \
+ && pip install "gunicorn>=21,<22"
+
+# ---------- Runtime ----------
+FROM base AS runtime
+ENV PATH="/opt/venv/bin:$PATH" \
+    PORT=8080 \
+    WORKERS=1 \
+    LOG_LEVEL=info
 
 # Non-root user
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+RUN useradd -m appuser
 USER appuser
 
-# Healthcheck (Compose uses this; Fly has its own HTTP check)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -fsS http://localhost:${PORT}/health || exit 1
+COPY --from=builder /opt/venv /opt/venv
+COPY . /app
 
-EXPOSE 8000
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD \
+  curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1
 
 ENTRYPOINT ["/usr/bin/tini","--"]
-CMD ["sh","-c","uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh","-c","gunicorn app.main:app -k uvicorn.workers.UvicornWorker -w ${WORKERS} -b 0.0.0.0:${PORT} --timeout 120 --keep-alive 75 --log-level ${LOG_LEVEL}"]

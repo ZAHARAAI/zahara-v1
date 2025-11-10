@@ -1,33 +1,49 @@
-FROM python:3.11-slim
+# ---------- Base ----------
+FROM python:3.12-slim AS base
 
-LABEL org.opencontainers.image.title="Zahara.ai Router Service"
-LABEL org.opencontainers.image.description="Zahara.ai - Intelligent LLM Router and Load Balancer"
-LABEL org.opencontainers.image.vendor="Zahara.ai"
-LABEL org.opencontainers.image.url="https://zahara.ai"
-LABEL org.opencontainers.image.source="https://github.com/zahara-ai/zahara-v1"
-LABEL org.opencontainers.image.licenses="MIT"
-LABEL zahara.ai.service="router"
-LABEL zahara.ai.component="llm-routing"
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
 
-WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# curl for optional healthcheck/debugging
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
-  && rm -rf /var/lib/apt/lists/*
+WORKDIR /router
 
-# Python deps (context is services/router)
-COPY ./requirements.txt ./requirements.txt
-RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+# ---------- Builder ----------
+FROM base AS builder
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# App code
-COPY ./app ./app
+COPY requirements.txt /router/requirements.txt
+RUN pip install --upgrade pip setuptools wheel \
+ && pip install -r /router/requirements.txt \
+ && pip install "gunicorn>=21,<22"
 
-# Non-root user
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+# ---------- Runtime ----------
+FROM base AS runtime
+ENV PATH="/opt/venv/bin:$PATH" \
+    PORT=8080 \
+    WORKERS=1 \
+    LOG_LEVEL=info
+
+RUN useradd -m appuser
 USER appuser
 
-EXPOSE 7000
-# HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-#   CMD curl -fsS http://localhost:7000/health || exit 1
+COPY --from=builder /opt/venv /opt/venv
+COPY . /router
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7000"]
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD \
+  curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1
+
+# If your router’s FastAPI entry is router/main.py with app=FastAPI(...)
+CMD gunicorn router.main:app \
+    -k uvicorn.workers.UvicornWorker \
+    -w ${WORKERS} \
+    -b 0.0.0.0:${PORT} \
+    --timeout 120 \
+    --keep-alive 75 \
+    --log-level ${LOG_LEVEL}
