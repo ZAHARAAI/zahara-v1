@@ -7,9 +7,9 @@ on:
   pull_request:
     branches: [main]
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+# concurrency:
+#   group: ${{ github.workflow }}-${{ github.ref }}
+#   cancel-in-progress: true
 
 jobs:
   test-api:
@@ -83,9 +83,11 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          flyctl deploy \
-            --config services/api/fly.api.toml \
-            --remote-only
+          flyctl deploy ./services/api \
+            --config fly.api.toml \
+            --remote-only \
+            --strategy immediate \
+            --detach
 
       # ---- Router Deploy (optional) ----
       # - name: Deploy Router
@@ -93,6 +95,8 @@ jobs:
       #   env:
       #     FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       #   run: |
-      #     flyctl deploy \
-      #       --config services/router/fly.router.toml \
-      #       --remote-only
+      #     flyctl deploy ./services/router \
+      #       --config fly.router.toml \
+      #       --remote-only \
+      #       --strategy immediate \
+      #       --detach
