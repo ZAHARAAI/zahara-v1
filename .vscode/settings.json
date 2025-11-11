@@ -1,6 +1,8 @@
 {
    "cSpell.words": [
+      "fastapi",
       "groq",
+      "psycopg",
       "qdrant",
       "reactflow",
       "ZAHARA"

@@ -1,6 +1,6 @@
 # ==== Fly.io app config for services/router ====
 # Change the app name to your actual Fly app slug (create it once with `fly apps create <slug>`).
-app = "zahara-router"
+app = "zahara-v1-router"
 primary_region = "iad"
 
 kill_signal = "SIGINT"

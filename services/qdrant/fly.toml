@@ -1,0 +1,18 @@
+app = "zahara-v1-qdrant"
+primary_region = "iad"
+
+[build]
+  image = "qdrant/qdrant:latest"
+
+[mounts]
+  source = "qdrant_data"
+  destination = "/qdrant/storage"
+
+[[services]]
+  internal_port = 6333
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 80
+  [[services.ports]]
+    port = 443

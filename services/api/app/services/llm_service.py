@@ -9,8 +9,8 @@ from ..config import settings
 class LLMService:
     def __init__(self):
         self.local_llm_url = settings.local_llm_url
-        self.openai_api_key = settings.openai_api_key
-        self.openrouter_api_key = settings.openrouter_api_key
+        self.openai_api_key = settings.openai_api_key.get_secret_value()
+        self.openrouter_api_key = settings.openrouter_api_key.get_secret_value()
         self.default_model = settings.default_model
 
     async def chat_completion(

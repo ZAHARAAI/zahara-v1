@@ -113,7 +113,7 @@ async def openai_chat_completions(request: OpenAIChatCompletionRequest):
 
     if (
         request.model not in ["tinyllama", "llama2", "llama3", "codellama"]
-        and not is_valid_api_key(llm_service.openai_api_key)
+        and not is_valid_api_key(llm_service.openai_api_key.get_secret_value())
         and not is_valid_api_key(llm_service.openrouter_api_key)
     ):
         raise HTTPException(

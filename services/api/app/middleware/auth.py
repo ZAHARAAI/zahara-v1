@@ -32,7 +32,7 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
         )
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(
-        to_encode, settings.secret_key, algorithm=settings.algorithm
+        to_encode, settings.secret_key.get_secret_value(), algorithm=settings.algorithm
     )
     return encoded_jwt
 
@@ -41,7 +41,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         payload = jwt.decode(
             credentials.credentials,
-            settings.secret_key,
+            settings.secret_key.get_secret_value(),
             algorithms=[settings.algorithm],
         )
         username: str = payload.get("sub")
