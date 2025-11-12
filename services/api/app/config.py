@@ -1,6 +1,7 @@
+import os
 from typing import Optional
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,10 +37,13 @@ class Settings(BaseSettings):
     qdrant_url: str = ""  # will be auto-built if empty
 
     # LLM
-    local_llm_url: str = "http://ollama:11434"
+    # local_llm_url: str = "http://ollama:11434"
+    local_llm_url: Optional[str] = Field(
+        default_factory=lambda: os.getenv("OLLAMA_HOST") or None
+    )
     openai_api_key: Optional[SecretStr] = None
     openrouter_api_key: Optional[SecretStr] = None
-    default_model: str = "tinyllama"
+    default_model: str = os.getenv("DEFAULT_MODEL") or "gpt-4o-mini"
 
     # Auth
     secret_key: SecretStr = SecretStr("super_secret_jwt_key_change_in_production")

@@ -68,22 +68,10 @@ async def _qdrant_check() -> Dict[str, Any]:
 
 
 async def _llm_check() -> Dict[str, Any]:
-    # LLM is optional
-    try:
-        llm_service = LLMService()
-        result = await llm_service.health_check()
-        status = result.get("status", "healthy" if result else "unavailable")
-        return {
-            "service": "llm",
-            "status": status,
-            **{k: v for k, v in result.items() if k != "status"},
-        }
-    except Exception:
-        return {
-            "service": "llm",
-            "status": "unavailable",
-            "note": "Ollama not configured (optional)",
-        }
+    llm_service = LLMService()
+    result = await llm_service.health_check()
+    # normalize shape to include a top-level status and provider
+    return {"status": result.get("status", "unavailable"), **result}
 
 
 def _compose_overall_status(services: Dict[str, Dict[str, Any]]) -> str:
@@ -145,12 +133,6 @@ async def llm_health():
     return await _llm_check()
 
 
-@router.get("/all")
-async def all_health_check(db: Session = Depends(get_db)):
-    """Comprehensive health check for all services (alias for /full)"""
-    return await full_health_check(db)
-
-
 @router.get("/full")
 async def full_health_check(db: Session = Depends(get_db)):
     """Comprehensive health check for all services"""
@@ -177,3 +159,9 @@ async def full_health_check(db: Session = Depends(get_db)):
         "platform": "Zahara.ai Intelligent AI Platform",
         "services": services,
     }
+
+
+@router.get("/all")
+async def all_health_check(db: Session = Depends(get_db)):
+    """Comprehensive health check for all services (alias for /full)"""
+    return await full_health_check(db)
