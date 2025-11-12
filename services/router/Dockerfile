@@ -39,6 +39,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD \
   curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1
 
-ENTRYPOINT ["/usr/bin/tini","--"]
 CMD ["sh","-c","gunicorn app.main:app -k uvicorn.workers.UvicornWorker -w ${WORKERS} -b 0.0.0.0:${PORT} --timeout 120 --keep-alive 75 --log-level ${LOG_LEVEL}"]
 
