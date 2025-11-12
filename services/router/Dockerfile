@@ -10,16 +10,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /router
+WORKDIR /app
 
 # ---------- Builder ----------
 FROM base AS builder
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY requirements.txt /router/requirements.txt
+COPY requirements.txt /app/requirements.txt
 RUN pip install --upgrade pip setuptools wheel \
- && pip install -r /router/requirements.txt \
+ && pip install -r /app/requirements.txt \
  && pip install "gunicorn>=21,<22"
 
 # ---------- Runtime ----------
@@ -33,17 +33,12 @@ RUN useradd -m appuser
 USER appuser
 
 COPY --from=builder /opt/venv /opt/venv
-COPY . /router
+COPY . /app
 
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD \
   curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1
 
-# If your router’s FastAPI entry is router/main.py with app=FastAPI(...)
-CMD gunicorn router.main:app \
-    -k uvicorn.workers.UvicornWorker \
-    -w ${WORKERS} \
-    -b 0.0.0.0:${PORT} \
-    --timeout 120 \
-    --keep-alive 75 \
-    --log-level ${LOG_LEVEL}
+ENTRYPOINT ["/usr/bin/tini","--"]
+CMD ["sh","-c","gunicorn app.main:app -k uvicorn.workers.UvicornWorker -w ${WORKERS} -b 0.0.0.0:${PORT} --timeout 120 --keep-alive 75 --log-level ${LOG_LEVEL}"]
+

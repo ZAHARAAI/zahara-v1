@@ -3,7 +3,7 @@ import asyncio
 from fastapi import APIRouter, Depends
 
 from ..auth import check_auth
-from ..models import RunRequest, RunResponse
+from ..run_models import RunRequest, RunResponse
 from ..store import EVENTS, RUNS, new_run, ts
 
 router = APIRouter()
