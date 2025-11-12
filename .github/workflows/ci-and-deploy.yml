@@ -69,3 +69,23 @@ jobs:
             --remote-only \
             --strategy immediate \
             --detach
+
+  # deploy:
+  #   needs: test
+  #   runs-on: ubuntu-latest
+  #   env:
+  #     FLY_API_TOKEN: ${{ secrets.FLY_ROUTER_TOKEN }}
+  #   steps:
+  #     - name: Check out repo
+  #       uses: actions/checkout@v4
+
+  #     - name: Install flyctl
+  #       uses: superfly/flyctl-actions/setup-flyctl@master
+
+  #     - name: Deploy ROUTER to Fly.io
+  #       run: |
+  #         flyctl deploy ./services/router \
+  #           --config fly.router.toml \
+  #           --remote-only \
+  #           --strategy immediate \
+  #           --detach

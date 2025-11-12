@@ -27,7 +27,7 @@ kill_timeout = "5s"
   [services.concurrency]
     type = "requests"
     hard_limit = 100
-    soft_limit = 00
+    soft_limit = 50
 
   [[services.http_checks]]
     interval = "15s"
