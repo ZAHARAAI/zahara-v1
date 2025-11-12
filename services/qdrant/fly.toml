@@ -4,15 +4,23 @@ primary_region = "iad"
 [build]
   image = "qdrant/qdrant:latest"
 
+[env]
+  QDRANT__SERVICE__HOST = "0.0.0.0"
+  QDRANT__SERVICE__HTTP_PORT = "6333"
+  # Optional if you use gRPC internally:
+  # QDRANT__SERVICE__GRPC_PORT = "6334"
+
 [mounts]
   source = "qdrant_data"
   destination = "/qdrant/storage"
 
 [[services]]
   internal_port = 6333
+  processes = ["app"]
   protocol = "tcp"
 
-  [[services.ports]]
-    port = 80
-  [[services.ports]]
-    port = 443
+[http_service]
+  internal_port = 6333
+  force_https = false
+  auto_start_machines = true
+  auto_stop_machines = "stop"

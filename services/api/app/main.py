@@ -3,7 +3,7 @@ import os
 
 # --- Third-party libraries
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -11,6 +11,7 @@ from starlette.middleware.gzip import GZipMiddleware
 
 # --- Local imports
 from . import compat  # ensure patch applied before router import  # noqa: F401
+from .auth import check_auth
 from .config import settings
 from .database import Base, engine
 from .middleware.observability import ObservabilityMiddleware
@@ -19,10 +20,15 @@ from .routers import (
     agents,
     api_keys,
     auth,
+    clinic,
     dev,
+    events,
+    files,
     flows,
     health,
     llm_router,
+    mcp,
+    run,
     vector,
     version,
 )
@@ -113,15 +119,21 @@ async def internal_error_handler(request: Request, exc):
 
 
 # Include routers
-app.include_router(health.router)
+app.include_router(agents.router)
+app.include_router(api_keys.router)
 app.include_router(auth.router)
-app.include_router(vector.router)
+app.include_router(clinic.router)
+# app.include_router(dev.router)
+app.include_router(events.router)
+app.include_router(files.router)
+app.include_router(flows.router)
+app.include_router(health.router)
 app.include_router(llm_router.router)
 app.include_router(llm_router.v1_router)
-app.include_router(agents.router)
+app.include_router(mcp.router)
+app.include_router(run.router)
+app.include_router(vector.router)
 app.include_router(version.router)
-app.include_router(api_keys.router)
-app.include_router(flows.router)
 
 # Include dev router only if dev pages are enabled
 if os.getenv("ENABLE_DEV_PAGES") == "1":
@@ -150,21 +162,14 @@ if __name__ == "__main__":
     uvicorn.run(
         "app.main:app", host=settings.host, port=settings.port, reload=settings.debug
     )
+
+
 # --- Zahara: CORS + Demo API Key + Health --------------------
-DEMO_TOKEN = os.getenv("DEMO_TOKEN", "zahara-demo-123")
-
-
-def require_api_key(request: Request):
-    key = request.headers.get("X-API-Key")
-    if key != DEMO_TOKEN:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
-
-
 @app.get("/health")
 def health():
     return {"ok": True}
 
 
 @app.get("/whoami")
-def whoami(dep: None = Depends(require_api_key)):
+def whoami(token: str = Depends(check_auth)):
     return {"ok": True, "who": "frontend", "source": "zahara-ui"}
