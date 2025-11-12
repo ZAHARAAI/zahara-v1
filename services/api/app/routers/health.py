@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
@@ -51,17 +51,18 @@ def _redis_check() -> Dict[str, Any]:
 
 
 async def _qdrant_check() -> Dict[str, Any]:
-    # Treat Qdrant as non-critical; failures shouldn't degrade overall
+    # Treat Qdrant as non-critical; failures shouldn't degrade overall health
     try:
+        # Avoid side effects during health checks: __init__ will ensure collection;
+        # that's acceptable for your current design, but you could refactor to pass a flag.
         vector_service = VectorService()
-        result = await vector_service.health_check()
-        # Ensure a 'status' key exists; default to 'unavailable' if missing
-        status = result.get("status", "healthy" if result else "unavailable")
-        return {
-            "service": "qdrant",
-            "status": status,
-            **{k: v for k, v in result.items() if k != "status"},
-        }
+        result: Optional[Dict[str, Any]] = await vector_service.health_check()
+        if not result:
+            return {"service": "qdrant", "status": "unavailable"}
+
+        status = result.get("status", "unavailable")
+        extra = {k: v for k, v in result.items() if k != "status"}
+        return {"service": "qdrant", "status": status, **extra}
     except Exception as e:
         return {"service": "qdrant", "status": "unavailable", "error": str(e)}
 

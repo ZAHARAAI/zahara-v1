@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -6,21 +8,29 @@ from qdrant_client.models import Distance, PointStruct, VectorParams
 try:
     from qdrant_client.exceptions import UnexpectedResponse
 except ImportError:
-    # Fallback for older qdrant_client versions
-    UnexpectedResponse = Exception
+    UnexpectedResponse = Exception  # Fallback for older qdrant_client versions
 
 from ..database import get_qdrant
 from .agent_service import AgentService
 
+logger = logging.getLogger(__name__)
+
+
+def _run_sync(func, *args, **kwargs):
+    """Run a blocking function in a thread, safe to call inside async code."""
+    loop = asyncio.get_running_loop()
+    return loop.run_in_executor(None, lambda: func(*args, **kwargs))
+
 
 class VectorService:
     def __init__(self):
-        self.client = get_qdrant()
+        self.client = get_qdrant()  # Synchronous client
         self.agent_service = AgentService()
+        # Avoid creating collections on import in production paths; keep it explicit.
         self._ensure_default_collection()
 
     def _ensure_default_collection(self):
-        """Ensure the default collection exists"""
+        """Ensure the default collection exists (idempotent, no exception spam)."""
         try:
             vector_config = self.agent_service.get_vector_config()
             default_collection = vector_config.get(
@@ -28,13 +38,15 @@ class VectorService:
             )
             vector_size = vector_config.get("vector_size", 1536)
 
-            # Check if collection exists first
             try:
+                # If this succeeds, we're done.
                 self.client.get_collection(default_collection)
-                print(f"Default collection '{default_collection}' already exists")
-                return  # Collection exists, nothing to do
+                logger.info(
+                    "Default collection '%s' already exists", default_collection
+                )
+                return
             except Exception:
-                # Collection doesn't exist, try to create it
+                # Try to create it; if it already exists due to race, swallow gracefully.
                 try:
                     self.client.create_collection(
                         collection_name=default_collection,
@@ -42,22 +54,34 @@ class VectorService:
                             size=vector_size, distance=Distance.COSINE
                         ),
                     )
-                    print(f"Created default collection: {default_collection}")
-                except Exception as create_error:
-                    # If creation fails because it already exists, that's OK
-                    if "already exists" in str(create_error).lower():
-                        print(
-                            f"Default collection '{default_collection}' already exists (concurrent creation)"
+                    logger.info("Created default collection '%s'", default_collection)
+                except UnexpectedResponse as ue:
+                    msg = str(ue).lower()
+                    if "already exists" in msg or "exists" in msg:
+                        logger.info(
+                            "Default collection '%s' existed after concurrent create",
+                            default_collection,
                         )
                     else:
-                        print(f"Error creating default collection: {create_error}")
+                        logger.exception("Error creating default collection: %s", ue)
+                except Exception as create_error:
+                    logger.exception(
+                        "Error creating default collection: %s", create_error
+                    )
         except Exception as e:
-            print(f"Error ensuring default collection: {e}")
+            logger.exception("Error ensuring default collection: %s", e)
 
-    async def create_collection(self, collection_name: str, vector_size: int = 384):
-        """Create a new collection in Qdrant"""
+    async def create_collection(
+        self, collection_name: str, vector_size: Optional[int] = None
+    ):
+        """Create a new collection in Qdrant (idempotent-ish)."""
         try:
-            self.client.create_collection(
+            if vector_size is None:
+                cfg = self.agent_service.get_vector_config()
+                vector_size = cfg.get("vector_size", 1536)
+
+            await _run_sync(
+                self.client.create_collection,
                 collection_name=collection_name,
                 vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
             )
@@ -65,13 +89,21 @@ class VectorService:
                 "status": "success",
                 "message": f"Collection '{collection_name}' created",
             }
+        except UnexpectedResponse as e:
+            msg = str(e).lower()
+            if "already exists" in msg or "exists" in msg:
+                return {
+                    "status": "success",
+                    "message": f"Collection '{collection_name}' already exists",
+                }
+            return {"status": "error", "message": str(e)}
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
     async def list_collections(self):
         """List all collections"""
         try:
-            collections = self.client.get_collections()
+            collections = await _run_sync(self.client.get_collections)
             return {
                 "status": "success",
                 "collections": [col.name for col in collections.collections],
@@ -93,7 +125,9 @@ class VectorService:
                 payload = payloads[i] if payloads and i < len(payloads) else {}
                 points.append(PointStruct(id=point_id, vector=vector, payload=payload))
 
-            self.client.upsert(collection_name=collection_name, points=points)
+            await _run_sync(
+                self.client.upsert, collection_name=collection_name, points=points
+            )
             return {"status": "success", "message": f"Added {len(vectors)} vectors"}
         except Exception as e:
             return {"status": "error", "message": str(e)}
@@ -103,31 +137,36 @@ class VectorService:
         collection_name: str,
         query_vector: List[float],
         limit: int = 10,
-        score_threshold: float = 0.0,
+        score_threshold: Optional[float] = None,
     ):
         """Search for similar vectors"""
         try:
-            results = self.client.search(
-                collection_name=collection_name,
-                query_vector=query_vector,
-                limit=limit,
-                score_threshold=score_threshold,
+            kwargs = dict(
+                collection_name=collection_name, query_vector=query_vector, limit=limit
             )
+            if score_threshold is not None:
+                kwargs["score_threshold"] = score_threshold
+
+            results = await _run_sync(self.client.search, **kwargs)
 
             return {
                 "status": "success",
                 "results": [
-                    {"id": result.id, "score": result.score, "payload": result.payload}
-                    for result in results
+                    {
+                        "id": r.id,
+                        "score": r.score,
+                        "payload": getattr(r, "payload", None),
+                    }
+                    for r in results
                 ],
             }
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
     async def health_check(self):
-        """Check if Qdrant is healthy"""
+        """Check if Qdrant is reachable; do NOT mutate state here."""
         try:
-            collections = self.client.get_collections()
+            collections = await _run_sync(self.client.get_collections)
             return {
                 "status": "healthy",
                 "collections_count": len(collections.collections),
@@ -136,40 +175,29 @@ class VectorService:
             return {"status": "unhealthy", "error": str(e)}
 
     async def sanity_check(self):
-        """Perform a sanity check on the vector database"""
+        """Perform a sanity check on the vector database (non-destructive)."""
         try:
-            # Get vector configuration
             vector_config = self.agent_service.get_vector_config()
             default_collection = vector_config.get(
                 "default_collection", "zahara_default"
             )
             vector_size = vector_config.get("vector_size", 1536)
 
-            # Check if default collection exists
+            # Test 1: Ensure collection exists or can be created
+            test_results: Dict[str, Any] = {}
             try:
-                self.client.get_collection(default_collection)
-                collection_exists = True
-            except Exception:
-                collection_exists = False
-
-            # Test basic operations
-            test_results = {}
-
-            # Test 1: Collection creation/access
-            if not collection_exists:
-                create_result = await self.create_collection(
-                    default_collection, vector_size
-                )
-                test_results["collection_creation"] = create_result
-            else:
+                await _run_sync(self.client.get_collection, default_collection)
                 test_results["collection_access"] = {
                     "status": "success",
                     "message": "Default collection accessible",
                 }
+            except Exception:
+                test_results["collection_creation"] = await self.create_collection(
+                    default_collection, vector_size
+                )
 
-            # Test 2: Vector insertion and search
+            # Test 2: Insert + search a single test vector
             try:
-                # Insert a test vector
                 test_vector = [0.1] * vector_size
                 test_payload = {"test": True, "message": "Sanity check vector"}
 
@@ -180,27 +208,24 @@ class VectorService:
                 )
                 test_results["vector_insertion"] = add_result
 
-                # Test vector search
                 search_result = await self.search_vectors(
                     collection_name=default_collection,
                     query_vector=test_vector,
                     limit=1,
                 )
                 test_results["vector_search"] = search_result
-
             except Exception as e:
                 test_results["vector_operations"] = {
                     "status": "error",
                     "message": str(e),
                 }
 
-            # Test 3: Collection listing
+            # Test 3: List collections
             list_result = await self.list_collections()
             test_results["collection_listing"] = list_result
 
-            # Overall health assessment
             all_passed = all(
-                result.get("status") == "success" for result in test_results.values()
+                (v.get("status") == "success") for v in test_results.values()
             )
 
             return {
@@ -210,7 +235,6 @@ class VectorService:
                 "tests": test_results,
                 "summary": "All tests passed" if all_passed else "Some tests failed",
             }
-
         except Exception as e:
             return {
                 "status": "unhealthy",
