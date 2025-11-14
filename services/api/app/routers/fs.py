@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..auth import check_auth
 
-router = APIRouter(prefix="/fs", tags=["filesystem"])
+router = APIRouter(prefix="/files", tags=["filesystem"])
 
 # Root directory for the Pro IDE / agents.
 # You can override this with an env var, for example:
