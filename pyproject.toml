@@ -66,8 +66,8 @@ fix = true
 
 [tool.mypy]
 python_version = "3.12"
-ignore_missing_imports = true
-strict_optional = false
+lint.ignore_missing_imports = true
+lint.strict_optional = false
 warn_unused_ignores = true
 
 [tool.pytest.ini_options]

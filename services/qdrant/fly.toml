@@ -1,3 +1,4 @@
+# fly.toml for zahara-v1-qdrant
 app = "zahara-v1-qdrant"
 primary_region = "iad"
 
@@ -5,19 +6,16 @@ primary_region = "iad"
   image = "qdrant/qdrant:latest"
 
 [env]
-  QDRANT__SERVICE__HOST=::
+  QDRANT__SERVICE__HOST = "::"
   QDRANT__SERVICE__HTTP_PORT = "6333"
 
 [mounts]
   source = "qdrant_data"
   destination = "/qdrant/storage"
 
-[[services]]
-  internal_port = 6333
-  processes = ["app"]
-  protocol = "tcp"
-
 [http_service]
   internal_port = 6333
   auto_start_machines = true
-  auto_stop_machines = true
+  auto_stop_machines = false      # <-- keep it running
+  min_machines_running = 1        # <-- ensure at least 1 machine
+

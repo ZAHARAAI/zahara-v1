@@ -1,49 +1,110 @@
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
 from ..auth import check_auth
-from ..store import EVENTS, RUNS
+from ..database import get_db
+from ..models.run import Run
+from ..models.run_event import RunEvent
 
-router = APIRouter(prefix="/clinic")
+router = APIRouter(prefix="/clinic", tags=["clinic"])
 
 
 @router.get("/sessions")
-def clinic_sessions(limit: int = 25, offset: int = 0, token: str = Depends(check_auth)):
-    items = []
-    for run_id, r in list(RUNS.items())[::-1][offset : offset + limit]:
+def list_sessions(
+    limit: int = 50,
+    offset: int = 0,
+    token: str = Depends(check_auth),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    List recent run sessions for the Clinic UI.
+    """
+
+    q = db.query(Run).order_by(Run.started_at.desc())
+    total = q.count()
+    runs: List[Run] = q.offset(offset).limit(limit).all()
+
+    items: List[Dict[str, Any]] = []
+    for r in runs:
         items.append(
             {
-                "request_id": r["request_id"],
-                "run_id": run_id,
-                "status": r["status"],
-                "source": r.get("source", "unknown"),
-                "model": r.get("model", "unknown"),
-                "latency_ms": (0 if "ended_at" not in r else 1800),
-                "attempts": 1,
-                "tokens": 900,
-                "cost": 0.0023,
-                "started_at": r["started_at"],
-                "ended_at": r.get("ended_at"),
+                "requestId": r.request_id,
+                "runId": r.id,
+                "status": r.status,
+                "model": r.model,
+                "source": r.source,
+                "tokens": r.tokens,
+                "cost": r.cost,
+                "latencyMs": r.latency_ms,
+                "startedAt": r.started_at.isoformat() if r.started_at else None,
+                "finishedAt": r.finished_at.isoformat() if r.finished_at else None,
             }
         )
-    return {"items": items, "total": len(RUNS)}
+
+    return {
+        "ok": True,
+        "total": total,
+        "items": items,
+    }
 
 
-@router.get("/replay/{request_id}")
-def clinic_replay(request_id: str, token: str = Depends(check_auth)):
-    for run_id, r in RUNS.items():
-        if r["request_id"] == request_id:
-            ev = EVENTS.get(run_id, [])
-            return {
-                "request_id": request_id,
-                "run_id": run_id,
-                "events": ev,
-                "summary": {
-                    "status": r["status"],
-                    "latency_ms": 1800,
-                    "tokens": 900,
-                    "cost": 0.0023,
-                    "model": r.get("model", "unknown"),
-                    "source": r.get("source", "unknown"),
-                },
+@router.get("/session/{request_id}")
+def get_session(
+    request_id: str,
+    token: str = Depends(check_auth),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Return details for a single session (run) including all events.
+    """
+
+    run: Run | None = (
+        db.query(Run)
+        .filter(Run.request_id == request_id)
+        .order_by(Run.started_at.desc())
+        .first()
+    )
+    if not run:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    events: List[RunEvent] = (
+        db.query(RunEvent)
+        .filter(RunEvent.run_id == run.id)
+        .order_by(RunEvent.ts.asc(), RunEvent.id.asc())
+        .all()
+    )
+
+    event_payloads: List[Dict[str, Any]] = []
+    for ev in events:
+        event_payloads.append(
+            {
+                "type": ev.type,
+                "payload": ev.payload,
+                "ts": ev.ts.isoformat() if ev.ts else None,
             }
-    raise HTTPException(404, "request_id not found")
+        )
+
+    summary = {
+        "status": run.status,
+        "latency_ms": run.latency_ms,
+        "tokens": run.tokens,
+        "cost": run.cost,
+        "model": run.model,
+        "source": run.source,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+    }
+
+    return {
+        "ok": True,
+        "session": {
+            "request_id": run.request_id,
+            "run_id": run.id,
+            "events": event_payloads,
+            "summary": summary,
+        },
+    }

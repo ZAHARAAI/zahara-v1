@@ -23,8 +23,8 @@ from .routers import (
     clinic,
     dev,
     events,
-    files,
     flows,
+    fs,
     health,
     llm_router,
     mcp,
@@ -125,8 +125,8 @@ app.include_router(auth.router)
 app.include_router(clinic.router)
 # app.include_router(dev.router)
 app.include_router(events.router)
-app.include_router(files.router)
 app.include_router(flows.router)
+app.include_router(fs.router)
 app.include_router(health.router)
 app.include_router(llm_router.router)
 app.include_router(llm_router.v1_router)

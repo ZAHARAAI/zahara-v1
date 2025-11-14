@@ -1,63 +1,125 @@
-from datetime import datetime
-from typing import Any, Dict
+from typing import Any, List, Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from ..auth import check_auth
+from ..database import get_db
+from ..models.flow import Flow
 
-router = APIRouter(prefix="/flows")
-FLOWS: Dict[str, Dict[str, Any]] = {}
-
-
-def now_iso():
-    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+router = APIRouter(prefix="/flows", tags=["flows"])
 
 
-@router.post("")
-def create_flow(body: Dict[str, Any], token: str = Depends(check_auth)):
-    fid = "flow_" + now_iso().replace(":", "").replace("-", "").replace("Z", "")[-10:]
-    flow = {
-        "id": fid,
-        "name": body.get("name", "Untitled"),
-        "graph": body.get("graph", {"nodes": [], "edges": []}),
-        "updatedAt": now_iso(),
-    }
-    FLOWS[fid] = flow
-    return {"ok": True, "flow": flow}
+class FlowGraph(BaseModel):
+    nodes: List[Any]
+    edges: List[Any]
 
 
-@router.get("/{fid}")
-def get_flow(fid: str, token: str = Depends(check_auth)):
-    if fid not in FLOWS:
-        raise HTTPException(404, "flow not found")
-    return {"ok": True, "flow": FLOWS[fid]}
+class FlowCreate(BaseModel):
+    name: str
+    graph: FlowGraph
 
 
-@router.put("/{fid}")
-def update_flow(fid: str, body: Dict[str, Any], token: str = Depends(check_auth)):
-    if fid not in FLOWS:
-        raise HTTPException(404, "flow not found")
-    FLOWS[fid]["name"] = body.get("name", FLOWS[fid]["name"])
-    FLOWS[fid]["graph"] = body.get("graph", FLOWS[fid]["graph"])
-    FLOWS[fid]["updatedAt"] = now_iso()
-    return {"ok": True, "updated": True}
+class FlowUpdate(BaseModel):
+    name: Optional[str] = None
+    graph: Optional[FlowGraph] = None
+
+
+class FlowSummary(BaseModel):
+    id: str
+    name: str
+    updatedAt: str
 
 
 @router.get("")
 def list_flows(
-    owner: str = "me",
     page: int = 1,
     pageSize: int = 20,
     token: str = Depends(check_auth),
+    db: Session = Depends(get_db),
 ):
-    items = [
-        {"id": f["id"], "name": f["name"], "updatedAt": f["updatedAt"]}
-        for f in FLOWS.values()
-    ]
+    q = db.query(Flow).order_by(Flow.updated_at.desc())
+    total = q.count()
+    items = q.offset((page - 1) * pageSize).limit(pageSize).all()
     return {
         "ok": True,
-        "items": items,
+        "items": [
+            {
+                "id": f.id,
+                "name": f.name,
+                "updatedAt": f.updated_at.isoformat(),
+            }
+            for f in items
+        ],
+        "total": total,
         "page": page,
         "pageSize": pageSize,
-        "total": len(items),
+    }
+
+
+@router.get("/{flow_id}")
+def get_flow(
+    flow_id: str,
+    token: str = Depends(check_auth),
+    db: Session = Depends(get_db),
+):
+    flow = db.query(Flow).get(flow_id)
+    if not flow:
+        raise HTTPException(status_code=404, detail="Flow not found")
+    return {
+        "ok": True,
+        "id": flow.id,
+        "name": flow.name,
+        "graph": flow.graph,
+    }
+
+
+@router.post("")
+def create_flow(
+    body: FlowCreate,
+    token: str = Depends(check_auth),
+    db: Session = Depends(get_db),
+):
+    flow = Flow(
+        id=str(uuid4()),
+        name=body.name,
+        graph=body.graph.dict(),
+    )
+    db.add(flow)
+    db.commit()
+    db.refresh(flow)
+    return {
+        "ok": True,
+        "id": flow.id,
+        "name": flow.name,
+        "graph": flow.graph,
+    }
+
+
+@router.put("/{flow_id}")
+def update_flow(
+    flow_id: str,
+    body: FlowUpdate,
+    token: str = Depends(check_auth),
+    db: Session = Depends(get_db),
+):
+    flow = db.query(Flow).get(flow_id)
+    if not flow:
+        raise HTTPException(status_code=404, detail="Flow not found")
+
+    if body.name is not None:
+        flow.name = body.name
+    if body.graph is not None:
+        flow.graph = body.graph.dict()
+
+    db.add(flow)
+    db.commit()
+    db.refresh(flow)
+    return {
+        "ok": True,
+        "id": flow.id,
+        "name": flow.name,
+        "graph": flow.graph,
     }
