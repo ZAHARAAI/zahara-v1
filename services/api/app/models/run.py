@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, Float, Integer, String, func
+from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, func
 
 from ..database import Base
 
@@ -15,6 +15,8 @@ class Run(Base):
     tokens = Column(Integer, nullable=True)
     cost = Column(Float, nullable=True)
     latency_ms = Column(Integer, nullable=True)
+
+    config = Column(JSON, nullable=True)
 
     started_at = Column(DateTime(timezone=True), server_default=func.now())
     finished_at = Column(DateTime(timezone=True), nullable=True)

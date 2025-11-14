@@ -16,16 +16,13 @@ from ..models.run_event import RunEvent
 router = APIRouter(prefix="/run", tags=["run"])
 
 
-# --- Request / response models ---
-
-
 class RunRequest(BaseModel):
     prompt: Optional[str] = None
     model: Optional[str] = None
     source: Optional[str] = None
-    # you can add more fields that your frontend sends:
-    # flowId: Optional[str] = None
-    # agentId: Optional[str] = None
+    flowId: Optional[str] = None
+    entry: Optional[str] = None
+    code: Optional[str] = None
 
 
 class RunResponse(BaseModel):
@@ -34,23 +31,17 @@ class RunResponse(BaseModel):
     requestId: str
 
 
-@router.post("", response_model=RunResponse)
-def start_run(
-    body: RunRequest,
-    token: str = Depends(check_auth),
-    db: Session = Depends(get_db),
-) -> RunResponse:
+def _launch_run(body: RunRequest, db: Session) -> RunResponse:
     """
-    Start a new run.
-
-    For now this still simulates events, but they are stored in the DB
-    (Run + RunEvent) instead of in-memory dicts.
+    Create a Run + RunEvent rows from a RunRequest.
+    Used by /run and by Clinic replay.
     """
 
     run_id = str(uuid4())
-    request_id = run_id  # or generate differently if you want
+    request_id = run_id  # or something else if you want stable external ids
 
-    # 1) Create the Run row with status 'running'
+    config: Dict[str, Any] = body.dict()
+
     run = Run(
         id=run_id,
         request_id=request_id,
@@ -58,12 +49,12 @@ def start_run(
         model=body.model or "demo-model",
         source=body.source or "pro-ide",
         started_at=datetime.utcnow(),
+        config=config,  # 👈 store config for replay
     )
     db.add(run)
     db.commit()
     db.refresh(run)
 
-    # 2) Simulate some events (replace with real executor later)
     events: list[RunEvent] = []
 
     def add_event(event_type: str, payload: Dict[str, Any]) -> None:
@@ -75,37 +66,29 @@ def start_run(
             )
         )
 
-    # status: started
+    # --- demo events (replace with real executor later) ---
     add_event("status", {"status": "started"})
-
-    # log messages
-    add_event("log", {"level": "info", "message": "Run started"})
+    add_event(
+        "log",
+        {
+            "level": "info",
+            "message": f"Run started (source={run.source}, model={run.model})",
+        },
+    )
     if body.prompt:
         add_event("log", {"level": "debug", "message": f"Prompt: {body.prompt}"})
-    add_event("log", {"level": "info", "message": "Calling LLM..."})
 
-    # metric event (tokens, cost, latency)
     latency_ms = 180
     tokens = 256
     cost = 0.0008
 
-    add_event(
-        "metric",
-        {
-            "latency_ms": latency_ms,
-            "tokens": tokens,
-            "cost": cost,
-        },
-    )
-
-    # status: succeeded
+    add_event("metric", {"latency_ms": latency_ms, "tokens": tokens, "cost": cost})
     add_event("status", {"status": "succeeded"})
+    # ------------------------------------------------------
 
-    # 3) Persist events
     db.add_all(events)
     db.commit()
 
-    # 4) Update run summary fields
     run.status = "succeeded"
     run.tokens = tokens
     run.cost = cost
@@ -115,3 +98,12 @@ def start_run(
     db.commit()
 
     return RunResponse(ok=True, runId=run.id, requestId=run.request_id)
+
+
+@router.post("", response_model=RunResponse)
+def start_run(
+    body: RunRequest,
+    token: str = Depends(check_auth),
+    db: Session = Depends(get_db),
+) -> RunResponse:
+    return _launch_run(body, db)

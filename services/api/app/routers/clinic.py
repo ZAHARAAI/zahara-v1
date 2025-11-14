@@ -9,6 +9,7 @@ from ..auth import check_auth
 from ..database import get_db
 from ..models.run import Run
 from ..models.run_event import RunEvent
+from .run import RunRequest, RunResponse, _launch_run
 
 router = APIRouter(prefix="/clinic", tags=["clinic"])
 
@@ -108,3 +109,32 @@ def get_session(
             "summary": summary,
         },
     }
+
+
+@router.post("/replay/{request_id}", response_model=RunResponse)
+def replay_session(
+    request_id: str,
+    token: str = Depends(check_auth),
+    db: Session = Depends(get_db),
+) -> RunResponse:
+    """
+    Start a new run using the stored config from a previous run.
+    """
+
+    original: Run | None = (
+        db.query(Run)
+        .filter(Run.request_id == request_id)
+        .order_by(Run.started_at.asc())
+        .first()
+    )
+    if not original:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    if not original.config:
+        raise HTTPException(
+            status_code=400,
+            detail="session has no stored config to replay",
+        )
+
+    body = RunRequest(**original.config)
+    return _launch_run(body, db)
