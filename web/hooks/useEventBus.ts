@@ -20,12 +20,13 @@ type Bus = {
   setRun: (id?: string) => void;
 };
 
-export const useEventBus = create<Bus>((set) => {
-  return {
-    runId: undefined,
-    events: [],
-    push: (e) => set((s) => ({ events: [...s.events, e] })),
-    clear: () => set({ events: [] }),
-    setRun: (id) => set({ runId: id, events: [] }),
-  };
-});
+export const useEventBus = create<Bus>((set) => ({
+  runId: undefined,
+  events: [],
+  push: (e) =>
+    set((s) => ({
+      events: [...s.events, e],
+    })),
+  clear: () => set({ events: [] }),
+  setRun: (id) => set({ runId: id, events: [] }),
+}));

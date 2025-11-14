@@ -2,10 +2,12 @@
 
 import { api } from "@/actions/api";
 
+const BASE = process.env.NEXT_PUBLIC_API_BASE_URL as string;
+
 function ensureOk<T extends { ok?: boolean; error?: any }>(
   json: T,
-  hint: string
-) {
+  hint: string,
+): T {
   if (json && json.ok === false) {
     const msg = json.error?.message || `Request failed: ${hint}`;
     throw new Error(msg);
@@ -13,110 +15,160 @@ function ensureOk<T extends { ok?: boolean; error?: any }>(
   return json;
 }
 
-// Flows
-export async function listFlows(owner: "me" | string = "me") {
-  const json = await api(`/flows?owner=${owner}&page=1&pageSize=50`);
-  const data = ensureOk(json, "fetching list flows");
-  return data.files ? data : { ...data, files: data.items ?? [] };
+/* ----------------------------------------------------- */
+/* Filesystem (Pro IDE)                                  */
+/* ----------------------------------------------------- */
+
+export type FsItem = {
+  path: string;
+  type: "file" | "dir";
+  size?: number;
+  modified?: string;
+};
+
+export async function listFiles(): Promise<FsItem[]> {
+  const json = await api(`/files/list`);
+  ensureOk(json, "listing files");
+  return json.items ?? [];
+}
+
+export async function readFile(path: string): Promise<{
+  ok: boolean;
+  path: string;
+  content: string;
+  sha: string;
+}> {
+  const json = await api(`/files/read?path=${encodeURIComponent(path)}`);
+  return ensureOk(json, `reading file ${path}`);
+}
+
+export async function writeFile(
+  path: string,
+  content: string,
+  sha: string,
+): Promise<{ ok: boolean; path: string; sha: string }> {
+  const json = await api(`/files/write`, {
+    method: "POST",
+    body: JSON.stringify({ path, content, sha }),
+  });
+  return ensureOk(json, `writing file ${path}`);
+}
+
+/* ----------------------------------------------------- */
+/* Flows (Flow Builder)                                  */
+/* ----------------------------------------------------- */
+
+export type FlowGraph = {
+  nodes: any[];
+  edges: any[];
+  [k: string]: any;
+};
+
+export type FlowSummary = {
+  id: string;
+  name: string;
+  updatedAt?: string;
+};
+
+export async function listFlows(): Promise<FlowSummary[]> {
+  const json = await api(`/flows`);
+  ensureOk(json, "listing flows");
+  return json.items ?? [];
+}
+
+export async function getFlow(id: string): Promise<{
+  ok: boolean;
+  id: string;
+  name: string;
+  graph: FlowGraph;
+}> {
+  const json = await api(`/flows/${id}`);
+  return ensureOk(json, `loading flow ${id}`);
 }
 
 export async function createFlow(
   name: string,
-  graph: { nodes: any[]; edges: any[] }
-) {
+  graph: FlowGraph,
+): Promise<{
+  ok: boolean;
+  id: string;
+  name: string;
+  graph: FlowGraph;
+}> {
   const json = await api(`/flows`, {
     method: "POST",
     body: JSON.stringify({ name, graph }),
   });
-  return ensureOk(json, "creating flow");
-}
-
-export async function getFlow(id: string) {
-  const json = await api(`/flows/${id}`);
-  return ensureOk(json, "fetching flow");
+  return ensureOk(json, `creating flow`);
 }
 
 export async function updateFlow(
   id: string,
-  name: string,
-  graph: { nodes: any[]; edges: any[] }
-) {
+  body: { name?: string; graph?: FlowGraph },
+): Promise<{
+  ok: boolean;
+  id: string;
+  name: string;
+  graph: FlowGraph;
+}> {
   const json = await api(`/flows/${id}`, {
     method: "PUT",
-    body: JSON.stringify({ name, graph }),
+    body: JSON.stringify(body),
   });
-  return ensureOk(json, "updating flow");
+  return ensureOk(json, `updating flow ${id}`);
 }
 
-// Files
-export async function listFiles() {
-  const json = await api("/files");
-  return ensureOk(json, "listing files");
-}
+/* ----------------------------------------------------- */
+/* Run + SSE (Pro + Clinic + AG-UI)                      */
+/* ----------------------------------------------------- */
 
-export async function readFile(path: string) {
-  const json = await api(`/files/${encodeURIComponent(path)}`);
-  return ensureOk(json, "reading file");
-}
-
-export async function writeFile(path: string, content: string, sha: string) {
-  const json = await api(`/files/${encodeURIComponent(path)}`, {
-    method: "PUT",
-    body: JSON.stringify({ content, sha }),
-  });
-  return ensureOk(json, "updating file");
-}
-
-// Run + SSE
-export async function startRun(entry: string, args: Record<string, any> = {}) {
+export async function startRun(payload: any): Promise<{
+  ok: boolean;
+  runId: string;
+  requestId: string;
+}> {
   const json = await api(`/run`, {
     method: "POST",
-    body: JSON.stringify({ entry, args }),
+    body: JSON.stringify(payload),
   });
   return ensureOk(json, "starting run");
 }
 
 export function openEventStream(
   url: string,
-  onMessage: (data: any, type?: string) => void
+  onMessage: (data: any, type?: string) => void,
 ) {
-  const BASE = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_BASE_URL || "";
-  // const full = `${BASE}${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`;
   const full = `${BASE}${url}`;
   let es = new EventSource(full, { withCredentials: false });
   let closed = false;
 
-  es.onmessage = (e) => {
+  const handle = (e: MessageEvent, type?: string) => {
     try {
-      onMessage(JSON.parse(e.data));
-    } catch {}
+      const data = JSON.parse(e.data);
+      onMessage(data, type);
+    } catch {
+      // ignore bad payload
+    }
   };
 
-  es.addEventListener?.("status", (e: MessageEvent) => {
-    try {
-      onMessage(JSON.parse(e.data), "status");
-    } catch {}
-  });
+  es.onmessage = (e) => handle(e);
 
-  es.addEventListener?.("log", (e: MessageEvent) => {
-    try {
-      onMessage(JSON.parse(e.data), "log");
-    } catch {}
-  });
-
-  es.addEventListener?.("done", (e: MessageEvent) => {
-    try {
-      onMessage(JSON.parse(e.data), "done");
-    } catch {}
+  ["status", "log", "metric", "done"].forEach((type) => {
+    es.addEventListener(type, (e) =>
+      handle(e as MessageEvent, type as string),
+    );
   });
 
   es.onerror = () => {
     es.close();
     if (closed) return;
     setTimeout(() => {
-      if (!closed) es = openEventStream(url, onMessage) as any;
+      if (!closed) {
+        es = openEventStream(url, onMessage) as any;
+      }
     }, 800 + Math.random() * 1800);
   };
+
   return () => {
     closed = true;
     es.close();
@@ -125,45 +177,88 @@ export function openEventStream(
 
 export function streamRun(
   runId: string,
-  onMessage: (data: any, type?: string) => void
+  onMessage: (data: any, type?: string) => void,
 ) {
-  return openEventStream(
-    `/sse/stream?runId=${encodeURIComponent(runId)}`,
-    onMessage
-  );
+  return openEventStream(`/events/${encodeURIComponent(runId)}`, onMessage);
 }
 
-/** Clinic **/
-export async function listSessions() {
-  const json = await api("/clinic/sessions");
-  return ensureOk(json, "listing sessions");
+/* ----------------------------------------------------- */
+/* Clinic (runtime viewer)                               */
+/* ----------------------------------------------------- */
+
+export type SessionSummary = {
+  requestId: string;
+  runId: string;
+  status: string;
+  model?: string;
+  source?: string;
+  tokens?: number;
+  cost?: number;
+  latencyMs?: number;
+  startedAt?: string;
+  finishedAt?: string;
+};
+
+export async function listSessions(): Promise<SessionSummary[]> {
+  const json = await api(`/clinic/sessions`);
+  ensureOk(json, "listing sessions");
+  return json.items ?? [];
 }
 
-export async function replaySession(sessionId: string) {
-  const json = await api(`/clinic/replay/${encodeURIComponent(sessionId)}`);
-  return ensureOk(json, "replaying session");
+export async function getSessionByRequestId(requestId: string): Promise<{
+  ok: boolean;
+  session: {
+    request_id: string;
+    run_id: string;
+    events: { type: string; payload: any; ts?: string }[];
+    summary: any;
+  };
+}> {
+  const json = await api(`/clinic/session/${encodeURIComponent(requestId)}`);
+  return ensureOk(json, `getting session ${requestId}`);
 }
 
-// TODO: this can be a large file, need to handle differently?
-// TODO: this function is not used currently
-export async function exportSession(sessionId: string) {
-  const json = await api(`/clinic/export/${encodeURIComponent(sessionId)}`);
-  return ensureOk(json, "exporting session");
+export async function replaySession(
+  requestId: string,
+): Promise<{ ok: boolean; runId: string; requestId: string }> {
+  const json = await api(`/clinic/replay/${encodeURIComponent(requestId)}`, {
+    method: "POST",
+  });
+  return ensureOk(json, `replaying session ${requestId}`);
 }
 
-/** MCP **/
-
-export async function listConnectors() {
-  const json = await api("/mcp/connectors");
-  return ensureOk(json, "listing connectors");
+export async function exportSession(requestId: string) {
+  // simplest: just re-use getSession and let the caller download JSON
+  return getSessionByRequestId(requestId);
 }
 
-export async function patchConnector(id: string, enabled: boolean) {
-  const json = await api(`/mcp/connectors/${encodeURIComponent(id)}`, {
+/* ----------------------------------------------------- */
+/* MCP                                                   */
+/* ----------------------------------------------------- */
+
+export type Connector = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  status?: string;
+};
+
+export async function listConnectors(): Promise<Connector[]> {
+  const json = await api(`/mcp/connectors`);
+  ensureOk(json, "listing connectors");
+  return json.connectors ?? [];
+}
+
+export async function patchConnector(
+  id: string,
+  enabled: boolean,
+): Promise<Connector> {
+  const json = await api(`/mcp/connectors/${id}`, {
     method: "PATCH",
     body: JSON.stringify({ enabled }),
   });
-  return ensureOk(json, "patching connector");
+  ensureOk(json, "updating connector");
+  return json;
 }
 
 export async function testConnector(id: string) {

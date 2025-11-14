@@ -2,6 +2,7 @@
 // components/Clinic/Timeline.tsx
 
 "use client";
+
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -10,213 +11,258 @@ import { toast } from "sonner";
 
 import { useEventBus } from "@/hooks/useEventBus";
 import {
+  getSessionByRequestId,
   listSessions,
   replaySession,
   startRun,
   streamRun,
+  type SessionSummary,
 } from "@/services/api";
 
-const DEFAULT_ENTRY = "agents/hello.ts";
-
-type SessionItem = {
-  id: string;
-  flowId?: string;
-  status: string;
-  startedAt: string;
-  durationMs?: number;
-};
-
 export default function Timeline() {
-  const { events, clear, setRun, runId, push } = useEventBus();
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | undefined>();
 
-  // Live attach state
-  const [localRunId, setLocalRunId] = useState<string>("");
+  const { runId, events, setRun, push, clear } = useEventBus();
+  const stopRef = useRef<null | (() => void)>(null);
 
-  // Sessions state
-  const [sessions, setSessions] = useState<SessionItem[]>([]);
-  const [loadingSessions, setLoadingSessions] = useState(false);
-  const [selectedSessionId, setSelectedSessionId] = useState<string>("");
-
-  // SSE cleanup handle
-  const stopRef = useRef<() => void>(() => {});
-
-  // Cleanup SSE on unmount
-  useEffect(() => () => stopRef.current?.(), []);
-
-  // Load sessions on mount
   useEffect(() => {
     const load = async () => {
-      setLoadingSessions(true);
       try {
-        const { sessions } = await listSessions();
-        setSessions(sessions);
+        setLoading(true);
+        const list = await listSessions();
+        setSessions(list);
       } catch (e: any) {
         toast.error("Failed to load sessions", { description: e.message });
       } finally {
-        setLoadingSessions(false);
+        setLoading(false);
       }
     };
     load();
   }, []);
 
-  // Attach to live SSE stream for a given runId
-  const attach = (id: string) => {
+  const openSession = async (requestId: string) => {
     try {
-      stopRef.current?.();
-      setRun(id);
-      stopRef.current = streamRun(id, (data: any, type?: string) =>
-        // ensure event.type is set for rendering
-        push(type ? { type, ...data } : data)
-      );
-      toast.success("Attached to run", { description: id });
-    } catch (error) {
-      toast.error("Failed to attach to run", {
-        description: (error as Error).message,
-      });
-    }
-  };
-
-  // Replay currently attached run into a NEW run (SSE live view)
-  const replay = async () => {
-    if (!runId) return;
-    try {
-      const start = await startRun(DEFAULT_ENTRY, { replay: runId });
-      attach(start.runId);
-    } catch (error) {
-      toast.error("Failed to replay run", {
-        description: (error as Error).message,
-      });
-    }
-  };
-
-  // Load the historical events of a past session (no SSE)
-  const loadSession = async (sessionId: string) => {
-    if (!sessionId) return;
-    try {
-      const { events } = await replaySession(sessionId);
-      // Clear current buffer and display historical events
-      stopRef.current?.();
+      setSelectedId(requestId);
       clear();
-      setRun(`session:${sessionId}`);
-      for (const ev of events) {
-        // tag as historical if no type
-        push(ev?.type ? ev : { type: "replay", ...ev });
-      }
-      toast.success("Session loaded", { description: sessionId });
+
+      const json = await getSessionByRequestId(requestId);
+      json.session.events.forEach((ev: any) => {
+        const type = ev.type;
+        const payload = ev.payload ?? {};
+        if (type === "metric") {
+          push({
+            type: "metric",
+            tokens: payload.tokens,
+            cost: payload.cost,
+            duration: payload.latency_ms,
+          });
+        } else if (type === "log") {
+          push({
+            type: "log",
+            level: payload.level ?? "info",
+            message: payload.message,
+          });
+        } else if (type === "status") {
+          push({ type: "status", message: payload.status });
+        } else {
+          push({ type, ...payload });
+        }
+      });
     } catch (e: any) {
       toast.error("Failed to load session", { description: e.message });
     }
   };
 
-  const exportJSON = () => {
-    const blob = new Blob([JSON.stringify(events, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `run-${runId || "current"}-events.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const attachLive = (id: string) => {
+    try {
+      stopRef.current?.();
+      setRun(id);
+      stopRef.current = streamRun(id, (data: any, type?: string) => {
+        if (type === "metric") {
+          push({
+            type: "metric",
+            tokens: data?.payload?.tokens,
+            cost: data?.payload?.cost,
+            duration: data?.payload?.latency_ms,
+          });
+        } else if (type === "log") {
+          push({
+            type: "log",
+            level: data?.payload?.level ?? "info",
+            message: data?.payload?.message,
+          });
+        } else if (type === "status") {
+          push({ type: "status", message: data?.payload?.status });
+        } else if (type === "done") {
+          push({ type: "status", message: "done" });
+        } else {
+          push(data);
+        }
+      });
+      toast.success("Attached to run", { description: id });
+    } catch (e: any) {
+      toast.error("Failed to attach", { description: e.message });
+    }
   };
 
-  const options: [string, string][] = sessions.map((s) => [
-    s.id,
-    `${s.id.slice(0, 8)} • ${s.status} • ${new Date(
-      s.startedAt
-    ).toLocaleString()}`,
-  ]);
+  const runQuickTest = async () => {
+    try {
+      const res = await startRun({
+        source: "clinic",
+        model: "gpt-4",
+        prompt: "Quick health check",
+      });
+      attachLive(res.runId);
+    } catch (e: any) {
+      toast.error("Quick run failed", { description: e.message });
+    }
+  };
 
-  // Build options for Select
-  const sessionOptions: [string, string][] = [
-    ["", loadingSessions ? "Loading sessions…" : "Load session…"],
-    ...options,
-  ];
+  const replay = async () => {
+    if (!selectedId) return;
+    try {
+      const res = await replaySession(selectedId);
+      toast.success("Replay started", { description: res.runId });
+
+      // clear old events & attach to new run
+      clear();
+      setRun(res.runId);
+      stopRef.current?.();
+      stopRef.current = streamRun(res.runId, (data: any, type?: string) => {
+        if (type === "metric") {
+          push({
+            type: "metric",
+            tokens: data?.payload?.tokens,
+            cost: data?.payload?.cost,
+            duration: data?.payload?.latency_ms,
+          });
+        } else if (type === "log") {
+          push({
+            type: "log",
+            level: data?.payload?.level ?? "info",
+            message: data?.payload?.message,
+          });
+        } else if (type === "status") {
+          push({ type: "status", message: data?.payload?.status });
+        } else if (type === "done") {
+          push({ type: "status", message: "done" });
+        } else {
+          push(data);
+        }
+      });
+    } catch (e: any) {
+      toast.error("Replay failed", { description: e.message });
+    }
+  };
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex flex-wrap items-center gap-2 p-2 border-b border-[hsl(var(--border))]">
-        {/* Live attach by runId */}
-        <Input
-          style={{ width: 260 }}
-          placeholder="Enter runId…"
-          value={localRunId}
-          onChange={(e) => setLocalRunId(e.target.value)}
-        />
-        <Button onClick={() => localRunId && attach(localRunId)}>Attach</Button>
-
-        {/* Replay currently attached run into a new run */}
-        <Button variant="secondary" onClick={replay} disabled={!runId}>
-          Replay
-        </Button>
-
-        {/* Load historical session (no SSE; fetched events) */}
-        <Select
-          value={selectedSessionId}
-          onChange={(id) => {
-            setSelectedSessionId(id);
-            if (id) loadSession(id);
-          }}
-          options={sessionOptions}
-        />
-
-        <Button
-          variant="outline"
-          onClick={() => {
-            setSelectedSessionId("");
-            (async () => {
-              setLoadingSessions(true);
-              try {
-                const { sessions } = await listSessions();
-                setSessions(sessions);
-                toast.success("Sessions refreshed");
-              } catch (e: any) {
-                toast.error("Failed to refresh sessions", {
-                  description: e.message,
-                });
-              } finally {
-                setLoadingSessions(false);
-              }
-            })();
-          }}
-        >
-          Refresh
-        </Button>
-
-        <Button variant="ghost" onClick={exportJSON}>
-          Export JSON
-        </Button>
-
-        <div className="ml-auto text-xs opacity-70">
-          Events: {events.length}
+    <div className="flex h-full bg-[hsl(var(--panel))]">
+      <div className="w-80 border-r border-[hsl(var(--border))]">
+        <div className="flex items-center gap-2 border-b border-[hsl(var(--border))] px-3 py-2 text-xs">
+          <span className="font-medium">Sessions</span>
+          <Button
+            className="ml-auto"
+            size="xs"
+            variant="secondary"
+            onClick={runQuickTest}
+          >
+            Quick run
+          </Button>
         </div>
+        {loading && (
+          <div className="p-3 text-xs opacity-70">Loading sessions…</div>
+        )}
+        <ul className="max-h-full overflow-auto text-xs">
+          {sessions.map((s) => (
+            <li
+              key={s.requestId}
+              className={`cursor-pointer px-3 py-2 hover:bg-[hsl(var(--muted))] ${
+                s.requestId === selectedId ? "bg-[hsl(var(--muted))]" : ""
+              }`}
+              onClick={() => openSession(s.requestId)}
+            >
+              <div className="flex items-center justify-between">
+                <span className="truncate">{s.requestId}</span>
+                <span className="text-[10px] uppercase opacity-60">
+                  {s.status}
+                </span>
+              </div>
+              <div className="mt-0.5 text-[10px] opacity-60">
+                {s.model} · {s.tokens ?? "?"} tok · {s.latencyMs ?? "?"}ms
+              </div>
+            </li>
+          ))}
+          {!loading && sessions.length === 0 && (
+            <li className="px-3 py-2 text-xs opacity-60">
+              No sessions yet. Run something from Pro.
+            </li>
+          )}
+        </ul>
       </div>
 
-      <div className="flex-1 overflow-auto p-3">
-        {events.length === 0 && (
-          <div className="opacity-60 text-sm">No events yet.</div>
-        )}
-        <ul className="space-y-2">
-          {events.map((e, idx) => (
+      <div className="flex-1">
+        <div className="flex items-center gap-2 border-b border-[hsl(var(--border))] px-3 py-2 text-xs">
+          <span className="font-medium">Timeline</span>
+          <Input
+            className="ml-auto max-w-xs"
+            placeholder="Filter (not wired yet)"
+          />
+          <Select
+            label=""
+            options={[
+              ["all", "All events"],
+              ["status", "Status only"],
+              ["log", "Logs only"],
+              ["metric", "Metrics only"],
+            ]}
+            value="all"
+            onChange={() => {}}
+          />
+          <Button
+            size="xs"
+            variant="secondary"
+            disabled={!selectedId}
+            onClick={replay}
+          >
+            Replay
+          </Button>
+          {runId && (
+            <span className="text-[10px] opacity-60">live run: {runId}</span>
+          )}
+        </div>
+        <ul className="max-h-full space-y-2 overflow-auto p-3 text-xs">
+          {events.map((e, i) => (
             <li
-              key={idx}
-              className="rounded-xl border border-[hsl(var(--border))] p-3"
+              key={i}
+              className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--bg))] p-2"
             >
-              <div className="text-xs uppercase opacity-70">
-                {e.type || "event"}
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase opacity-60">
+                  {e.type}
+                </span>
+                {"duration" in e && e.duration !== undefined && (
+                  <span className="text-[10px] opacity-60">
+                    {e.duration} ms
+                  </span>
+                )}
               </div>
-              {"message" in e && <div className="text-sm">{e.message}</div>}
-              {"step" in e && <div className="text-sm">Step: {e.step}</div>}
-              {"duration" in e && (
-                <div className="text-sm">Duration: {e.duration}ms</div>
+              {"message" in e && e.message && (
+                <div className="mt-1">{e.message}</div>
               )}
               {"tokens" in e && (
-                <div className="text-sm">
+                <div className="mt-1 text-[11px] opacity-80">
                   Tokens: {e.tokens} {"cost" in e ? `(cost: ${e.cost})` : ""}
                 </div>
               )}
             </li>
           ))}
+          {events.length === 0 && (
+            <li className="text-xs opacity-60 p-2">
+              Select a session to inspect its timeline.
+            </li>
+          )}
         </ul>
       </div>
     </div>

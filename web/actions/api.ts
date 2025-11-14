@@ -6,7 +6,7 @@ const API_KEY = process.env.ZAHARA_API_KEY as string;
 
 const Retry = { max: 2, backoffMs: 400 };
 
-export async function api(path: string, init: RequestInit = {}) {
+export const api = async (path: string, init: RequestInit = {}) => {
   let last: any;
   for (let attempt = 0; attempt <= Retry.max; attempt++) {
     try {
@@ -19,15 +19,19 @@ export async function api(path: string, init: RequestInit = {}) {
         },
         cache: "no-store",
       });
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status} ${res.statusText} – ${text}`);
+      }
       return await res.json();
     } catch (e) {
-      last = e;
-      if (attempt < Retry.max)
+      last = (e as Error).message;
+      if (attempt < Retry.max) {
         await new Promise((r) =>
           setTimeout(r, Retry.backoffMs * (attempt + 1))
         );
+      }
     }
   }
-  throw last;
-}
+  throw new Error(last ?? "Unknown API error");
+};

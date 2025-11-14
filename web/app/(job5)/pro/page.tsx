@@ -7,7 +7,7 @@ import Toolbar from "@/components/Pro/Toolbar";
 import dynamic from "next/dynamic";
 import { Suspense } from "react";
 
-const Editor = dynamic(() => import("@/components/Pro/Editor"), { ssr: false });
+const Editor = dynamic(() => import("@/components/Pro/Editor"));
 
 export default function ProPage() {
   return (

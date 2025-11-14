@@ -1,15 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
-import React, { useCallback } from "react";
+
+import { useCallback } from "react";
 import ReactFlow, {
+  addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
   Background,
   Connection,
   Controls,
   Edge,
+  EdgeChange,
   Node,
-  addEdge,
-  useEdgesState,
-  useNodesState,
+  NodeChange,
 } from "reactflow";
 import "reactflow/dist/style.css";
 
@@ -18,6 +21,7 @@ import { OutputNode } from "./nodes/OutputNode";
 import { StartNode } from "./nodes/StartNode";
 import { ToolNode } from "./nodes/ToolNode";
 import { useFlowStore } from "./store";
+import type { AnyNodeData } from "./types";
 
 const nodeTypes = {
   start: StartNode,
@@ -26,78 +30,42 @@ const nodeTypes = {
   output: OutputNode,
 };
 
-const initialNodes: Node[] = [
-  {
-    id: "start",
-    position: { x: 80, y: 160 },
-    type: "start",
-    data: { title: "Start", trigger: "manual" },
-  },
-  {
-    id: "model",
-    position: { x: 340, y: 160 },
-    type: "model",
-    data: {
-      title: "Model",
-      provider: "openai",
-      model: "gpt-4o-mini",
-      temperature: 0.5,
-    },
-  },
-  {
-    id: "tool",
-    position: { x: 640, y: 160 },
-    type: "tool",
-    data: { title: "Tool", toolName: "web-fetch", args: {} },
-  },
-  {
-    id: "output",
-    position: { x: 920, y: 160 },
-    type: "output",
-    data: { title: "Output", sink: "console" },
-  },
-];
-
-const initialEdges: Edge[] = [
-  { id: "e1", source: "start", target: "model" },
-  { id: "e2", source: "model", target: "tool" },
-  { id: "e3", source: "tool", target: "output" },
-];
-
 export default function Canvas() {
-  const {
-    setNodes: setStoreNodes,
-    setEdges: setStoreEdges,
-    select,
-  } = useFlowStore();
+  const { nodes, edges, setNodes, setEdges, select } = useFlowStore();
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      setNodes(applyNodeChanges(changes, nodes as Node<AnyNodeData>[]));
+    },
+    [nodes, setNodes]
+  );
+
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      setEdges(applyEdgeChanges(changes, edges as Edge[]));
+    },
+    [edges, setEdges]
+  );
 
   const onConnect = useCallback(
-    (c: Connection) => setEdges((eds) => addEdge(c, eds)),
-    [setEdges]
+    (connection: Connection) => {
+      setEdges(addEdge(connection, edges));
+    },
+    [edges, setEdges]
   );
+
   const onSelectionChange = useCallback(
-    ({ nodes }: { nodes: Node[] }) => {
-      select(nodes?.[0]?.id);
+    (params: { nodes?: Node[] } | null) => {
+      const first = params?.nodes?.[0];
+      select(first?.id);
     },
     [select]
   );
 
-  // mirror local state to store for save/load
-  React.useEffect(() => {
-    setStoreNodes(nodes as any);
-  }, [nodes, setStoreNodes]);
-  React.useEffect(() => {
-    setStoreEdges(edges);
-  }, [edges, setStoreEdges]);
-
   return (
-    <div className="h-[calc(100vh-8rem)]">
+    <div className="h-full w-full">
       <ReactFlow
-        nodes={nodes}
+        nodes={nodes as Node[]}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}

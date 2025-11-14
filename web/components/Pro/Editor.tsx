@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
+
 import { Button } from "@/components/ui/Button";
 import { writeFile } from "@/services/api";
 import Editor from "@monaco-editor/react";
@@ -18,27 +19,45 @@ export default function ProEditor() {
       markSaved(res.sha);
       toast.success("Saved", { description: `${activePath}` });
     } catch (e: any) {
-      toast.error("Save failed", { description: e.message });
+      toast.error("Save failed", {
+        description: e.message,
+      });
     }
   };
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex items-center gap-2 p-2 border-b border-[hsl(var(--border))]">
-        <Button variant="secondary" onClick={save}>
-          {dirty ? "Save *" : "Save"}
-        </Button>
-        <div className="text-xs opacity-70">
-          {activePath || "No file open"} {sha ? `(${sha.slice(0, 7)}…)` : ""}
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-2 border-b border-[hsl(var(--border))] px-3 py-2 text-xs">
+        <div className="truncate">
+          {activePath || <span className="opacity-60">No file selected</span>}
         </div>
+        {dirty && (
+          <span className="rounded-full bg-[hsl(var(--accent))]/10 px-2 py-0.5 text-[10px] text-[hsl(var(--accent))]">
+            unsaved
+          </span>
+        )}
+        <Button
+          className="ml-auto"
+          variant="secondary"
+          onClick={save}
+          disabled={!dirty}
+        >
+          Save
+        </Button>
       </div>
-      <Editor
-        height="100%"
-        defaultLanguage="typescript"
-        value={content}
-        onChange={(v) => setContent(v || "")}
-        options={{ minimap: { enabled: false }, fontSize: 14 }}
-      />
+      <div className="flex-1">
+        <Editor
+          height="100%"
+          defaultLanguage="typescript"
+          theme="vs-dark"
+          value={content}
+          onChange={(v) => setContent(v ?? "")}
+          options={{
+            minimap: { enabled: false },
+            fontSize: 13,
+          }}
+        />
+      </div>
     </div>
   );
 }

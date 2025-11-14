@@ -1,6 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
-import { Activity, Code2, Settings, Workflow } from "lucide-react";
+import {
+  Activity,
+  Code2,
+  LayoutDashboard,
+  Settings,
+  Workflow,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import ThemeToggle from "../ThemeToggle";
@@ -34,6 +40,7 @@ export default function LeftNav() {
       <div className="px-2 pb-2 text-xs uppercase tracking-wide opacity-70">
         Job 5
       </div>
+      <NavItem href="/" label="Dashboard" Icon={LayoutDashboard} />
       <NavItem href="/flow" label="Flow" Icon={Workflow} />
       <NavItem href="/pro" label="Pro" Icon={Code2} />
       <NavItem href="/clinic" label="Clinic" Icon={Activity} />
