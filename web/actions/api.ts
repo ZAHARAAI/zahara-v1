@@ -14,7 +14,7 @@ export const api = async (path: string, init: RequestInit = {}) => {
         ...init,
         headers: {
           "Content-Type": "application/json",
-          "X-API-Key": API_KEY,
+          Authorization: `Bearer ${API_KEY}`,
           ...(init.headers || {}),
         },
         cache: "no-store",

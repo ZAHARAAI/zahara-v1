@@ -157,6 +157,24 @@ export default function Timeline() {
     }
   };
 
+  const exportJson = async () => {
+    if (!selectedId) return;
+    try {
+      const res = await getSessionByRequestId(selectedId); // you already import this
+      const blob = new Blob([JSON.stringify(res.session, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `session-${selectedId}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      toast.error("Export failed", { description: e.message });
+    }
+  };
+
   return (
     <div className="flex h-full bg-[hsl(var(--panel))]">
       <div className="w-80 border-r border-[hsl(var(--border))]">
@@ -227,6 +245,14 @@ export default function Timeline() {
             onClick={replay}
           >
             Replay
+          </Button>
+          <Button
+            size="xs"
+            variant="secondary"
+            disabled={!selectedId}
+            onClick={exportJson}
+          >
+            Export JSON
           </Button>
           {runId && (
             <span className="text-[10px] opacity-60">live run: {runId}</span>

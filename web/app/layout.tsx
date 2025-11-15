@@ -1,6 +1,5 @@
 import LeftNav from "@/components/nav/LeftNav";
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import "./globals.css";
 import Providers from "./providers";
 
@@ -9,9 +8,7 @@ export const metadata: Metadata = {
   description: "Flow Builder, Pro IDE, Clinic, MCP",
 };
 
-const Job5Layout = async ({ children }: { children: React.ReactNode }) => {
-  if (process.env.JOB5_ENABLED !== "true") redirect("/");
-
+const RootLayout = ({ children }: { children: React.ReactNode }) => {
   return (
     <html lang="en" data-theme="dark">
       <head>
@@ -41,4 +38,4 @@ const Job5Layout = async ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-export default Job5Layout;
+export default RootLayout;
