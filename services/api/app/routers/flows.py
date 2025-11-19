@@ -91,7 +91,7 @@ class OkUpdated(BaseModel):
 
 
 @router.get("/", response_model=ListResponse)
-def test_flows(
+def list_flows(
     owner: Optional[str] = Query(default=None, description='e.g. "me"'),
     page: int = Query(default=1, ge=1),
     pageSize: int = Query(default=20, ge=1, le=200),
@@ -169,8 +169,3 @@ def update_flow(
         _flows[flow_id] = flow
 
     return OkUpdated(ok=True, updated=True)
-
-
-@router.get("/test")
-def list_flows(token: str = Depends(check_auth)):
-    return {"ok": True, "source": "zahara-ui"}
