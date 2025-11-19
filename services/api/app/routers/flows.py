@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import traceback
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
@@ -146,36 +147,51 @@ def list_flows(
     token: str = Depends(check_auth),
     db: Session = Depends(get_db),
 ):
-    """
-    List flows with pagination.
+    try:
+        """
+        List flows with pagination.
 
-    NOTE: `owner` is currently not wired to any user identity because
-    `check_auth` only validates a shared demo token. The column
-    `owner_id` exists on the flows table and can be connected later
-    when you have per-user auth.
-    """
-    query = db.query(FlowModel)
+        NOTE: `owner` is currently not wired to any user identity because
+        `check_auth` only validates a shared demo token. The column
+        `owner_id` exists on the flows table and can be connected later
+        when you have per-user auth.
+        """
+        query = db.query(FlowModel)
 
-    # In the future, you can filter by owner_id here once you have
-    # a real user identity associated with the token.
-    # if owner == "me":
-    #     query = query.filter(FlowModel.owner_id == current_user.id)
+        # In the future, you can filter by owner_id here once you have
+        # a real user identity associated with the token.
+        # if owner == "me":
+        #     query = query.filter(FlowModel.owner_id == current_user.id)
 
-    total = query.count()
+        total = query.count()
 
-    flows = (
-        query.order_by(
-            FlowModel.updated_at.desc().nullslast(),
-            FlowModel.created_at.desc().nullslast(),
+        flows = (
+            query.order_by(
+                FlowModel.updated_at.desc().nullslast(),
+                FlowModel.created_at.desc().nullslast(),
+            )
+            .offset((page - 1) * pageSize)
+            .limit(pageSize)
+            .all()
         )
-        .offset((page - 1) * pageSize)
-        .limit(pageSize)
-        .all()
-    )
 
-    items = [_db_flow_to_list_item(f) for f in flows]
+        items = [_db_flow_to_list_item(f) for f in flows]
 
-    return ListResponse(ok=True, items=items, page=page, pageSize=pageSize, total=total)
+        return ListResponse(
+            ok=True, items=items, page=page, pageSize=pageSize, total=total
+        )
+    except Exception as e:
+        # capture full traceback for logs
+        tb = traceback.format_exc()
+
+        # return safe json error to frontend
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": str(e),
+                "trace": tb,  # remove this in production if needed
+            },
+        )
 
 
 @router.post("/", response_model=FlowEnvelope, status_code=status.HTTP_201_CREATED)
