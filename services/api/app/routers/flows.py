@@ -108,7 +108,7 @@ def _require_api_key(x_api_key: Optional[str]) -> None:
 
 
 @router.get("/", response_model=ListResponse)
-def list_flows(
+def test_flows(
     owner: Optional[str] = Query(default=None, description='e.g. "me"'),
     page: int = Query(default=1, ge=1),
     pageSize: int = Query(default=20, ge=1, le=200),
@@ -190,3 +190,14 @@ def update_flow(
         _flows[flow_id] = flow
 
     return OkUpdated(ok=True, updated=True)
+
+
+@router.get("/test", response_model=ListResponse)
+def list_flows(
+    owner: Optional[str] = Query(default=None, description='e.g. "me"'),
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=200),
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+):
+    _require_api_key(x_api_key)
+    return ListResponse(ok=True, items=[])
