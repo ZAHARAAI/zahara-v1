@@ -1,3 +1,5 @@
+"use client";
+
 import BackToFlowBuilder from "@/components/Pro/BackToFlowBuilder";
 import FileTree from "@/components/Pro/FileTree";
 import LogPanel from "@/components/Pro/LogPanel";

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // components/Pro/Toolbar.tsx
 "use client";
+
 import { Button } from "@/components/ui/Button";
 import { useEventBus } from "@/hooks/useEventBus";
 import { startRun, streamRun } from "@/services/api";
@@ -14,37 +15,75 @@ const DEFAULT_ENTRY = "agents/hello.ts";
 export default function Toolbar() {
   const searchParams = useSearchParams();
   const flowId = searchParams.get("flowId") || undefined;
-  const [busy, setBusy] = useState(false);
-  const { runId, setRun, push } = useEventBus();
-  const { activePath } = useProStore();
 
-  // Use current file as entry if available
-  const entry = useMemo(() => activePath || DEFAULT_ENTRY, [activePath]);
+  const { activePath, content } = useProStore();
+  const { setRun, push, clear } = useEventBus();
+
+  const [busy, setBusy] = useState(false);
+  const [runId, setRunId] = useState<string | undefined>();
+
+  const entry = useMemo(
+    () => activePath || DEFAULT_ENTRY,
+    [activePath],
+  );
 
   const run = async () => {
-    setBusy(true);
     try {
-      // Include flowId as args context (backend can link run → flow)
-      const start = await startRun(entry, flowId ? { flowId } : {});
-      const id = start.runId;
-      setRun(id);
+      setBusy(true);
+      clear();
 
-      // Preserve named SSE event types in the log stream
-      const stop = streamRun(id, (data, type) =>
-        push(type ? { type, ...data } : data)
-      );
-      (window as any).__job5_stop = stop;
+      const payload: any = {
+        source: "pro-ide",
+        model: "gpt-4",
+        entry,
+        code: content,
+      };
+      if (flowId) payload.flowId = flowId;
 
-      toast.success("Run started", { description: id });
+      const res = await startRun(payload);
+      setRunId(res.runId);
+      setRun(res.runId);
+
+      const stop = streamRun(res.runId, (data: any, type?: string) => {
+        if (type === "metric") {
+          push({
+            type: "metric",
+            tokens: data?.payload?.tokens,
+            cost: data?.payload?.cost,
+            duration: data?.payload?.latency_ms,
+          });
+        } else if (type === "log") {
+          push({
+            type: "log",
+            level: data?.payload?.level ?? "info",
+            message: data?.payload?.message,
+          });
+        } else if (type === "status") {
+          push({
+            type: "status",
+            message: data?.payload?.status,
+          });
+        } else {
+          push(data);
+        }
+      });
+
+      // auto-stop when "done" appears
+      push({
+        type: "info",
+        message: `Streaming events for run ${res.runId}`,
+      });
+
+      return stop;
     } catch (e: any) {
-      toast.error("Run failed to start", { description: e.message });
+      toast.error("Run failed", { description: e.message });
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="flex items-center gap-2 p-2 border border-[hsl(var(--border))] rounded-2xl bg-[hsl(var(--panel))]">
+    <div className="flex items-center gap-2 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--panel))] px-3 py-2">
       <Button onClick={run} disabled={busy}>
         {busy ? "Running…" : "Run"}
       </Button>

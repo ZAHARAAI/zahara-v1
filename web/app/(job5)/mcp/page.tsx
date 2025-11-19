@@ -1,4 +1,5 @@
 "use client";
+
 import Panel from "@/components/MCP/Panel";
 export default function MCPPage() {
   return (

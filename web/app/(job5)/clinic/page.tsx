@@ -1,4 +1,5 @@
 "use client";
+
 import Timeline from "@/components/Clinic/Timeline";
 
 export default function ClinicPage() {

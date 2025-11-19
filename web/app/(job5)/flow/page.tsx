@@ -1,3 +1,5 @@
+"use client";
+
 import Canvas from "@/components/Flow/Canvas";
 import Inspector from "@/components/Flow/Inspector";
 import Toolbar from "@/components/Flow/Toolbar";

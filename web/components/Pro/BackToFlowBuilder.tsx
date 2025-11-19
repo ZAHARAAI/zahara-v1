@@ -14,13 +14,9 @@ function inferEntryFromFlow(flow: any): string | undefined {
 
   const nodes = flow?.graph?.nodes ?? [];
   for (const n of nodes) {
-    const file =
-      n?.data?.entry ||
-      n?.data?.file ||
-      n?.data?.path ||
-      n?.data?.script ||
-      n?.data?.source;
-    if (typeof file === "string" && file.includes(".")) return file;
+    if (n.data?.entryFile && typeof n.data.entryFile === "string") {
+      return n.data.entryFile;
+    }
   }
   return undefined;
 }
@@ -29,61 +25,41 @@ const BackToFlowBuilder = () => {
   const searchParams = useSearchParams();
   const flowId = searchParams.get("flowId") || undefined;
   const { setActiveFile } = useProStore();
-  const [flowName, setFlowName] = useState<string>("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    const hydrateFromFlow = async () => {
-      if (!flowId) return;
-
+    if (!flowId) return;
+    const load = async () => {
       try {
-        const env = await getFlow(flowId); // { ok, flow }
-        const flow = env.flow;
-        if (!flow) return;
-
-        if (!cancelled && typeof flow.name === "string") {
-          setFlowName(flow.name);
-        }
-
+        setLoading(true);
+        const flow = await getFlow(flowId);
         const entry = inferEntryFromFlow(flow);
-        if (entry) {
-          const f = await readFile(entry); // { ok, path, content, sha }
-          if (!cancelled) setActiveFile(f.path, f.content, f.sha);
-        }
+        if (!entry) return;
+        const file = await readFile(entry);
+        setActiveFile(file.path, file.content, file.sha);
       } catch (e: any) {
-        if (!cancelled) {
-          toast.error("Failed to preload flow entry", {
-            description: String(e?.message || e),
-          });
-        }
+        toast.error("Failed to load flow entry", { description: e.message });
+      } finally {
+        setLoading(false);
       }
     };
-    hydrateFromFlow();
-    return () => {
-      cancelled = true;
-    };
+    load();
   }, [flowId, setActiveFile]);
 
+  if (!flowId) return null;
+
   return (
-    <>
-      {flowId && (
-        <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--panel))] px-4 py-2 flex items-center text-sm">
-          <div className="flex-1">
-            <span className="font-medium">Flow:</span>{" "}
-            <span className="opacity-90">{flowName || "Loading..."}</span>
-            <span className="ml-3 text-xs opacity-70">id: {flowId}</span>
-          </div>
-          <Link
-            href={`/flow?flowId=${encodeURIComponent(flowId)}`}
-            className="inline-flex items-center justify-center rounded-2xl px-3.5 py-2 text-sm font-medium transition
-             bg-[hsl(var(--muted))] text-[hsl(var(--fg))] hover:bg-[hsl(var(--muted-2))] focus:outline-none
-             focus:ring-2 focus:ring-[hsl(var(--ring))]"
-          >
-            ← Back to Flow Builder
-          </Link>
-        </div>
-      )}
-    </>
+    <div className="mb-1 flex items-center justify-between text-xs">
+      <div className="opacity-70">
+        {loading ? "Loading flow entry…" : `Flow: ${flowId}`}
+      </div>
+      <Link
+        href={`/flow?flowId=${encodeURIComponent(flowId)}`}
+        className="inline-flex items-center justify-center rounded-2xl px-3 py-1.5 text-xs font-medium bg-[hsl(var(--muted))] text-[hsl(var(--fg))] hover:bg-[hsl(var(--muted-2))]"
+      >
+        ← Back to Flow Builder
+      </Link>
+    </div>
   );
 };
 
