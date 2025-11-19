@@ -115,18 +115,17 @@ def list_flows(
     x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
 ):
     _require_api_key(x_api_key)
-    # with _flow_lock:
-    #     all_items = [
-    #         FlowListItem(id=f.id, name=f.name, updatedAt=f.updatedAt)
-    #         for f in _flows.values()
-    #     ]
-    #     total = len(all_items)
-    #     start = (page - 1) * pageSize
-    #     end = start + pageSize
-    #     items = all_items[start:end]
+    with _flow_lock:
+        all_items = [
+            FlowListItem(id=f.id, name=f.name, updatedAt=f.updatedAt)
+            for f in _flows.values()
+        ]
+        total = len(all_items)
+        start = (page - 1) * pageSize
+        end = start + pageSize
+        items = all_items[start:end]
 
-    # return ListResponse(ok=True, items=items, page=page, pageSize=pageSize, total=total)
-    return ListResponse(ok=True, items=[])
+    return ListResponse(ok=True, items=items, page=page, pageSize=pageSize, total=total)
 
 
 @router.post("/", response_model=FlowEnvelope)
