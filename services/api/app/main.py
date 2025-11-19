@@ -13,7 +13,6 @@ from starlette.middleware.gzip import GZipMiddleware
 from . import compat  # ensure patch applied before router import  # noqa: F401
 from .auth import check_auth
 from .config import settings
-from .database import Base, engine
 from .middleware.observability import ObservabilityMiddleware
 from .middleware.rate_limit import RateLimitMiddleware
 from .routers import (
@@ -34,12 +33,12 @@ from .routers import (
 )
 
 # Create database tables (skip during testing)
-if not os.getenv("TESTING"):
-    try:
-        Base.metadata.create_all(bind=engine)
-    except Exception as e:
-        # Log error but don't fail startup
-        print(f"Warning: Could not create database tables: {e}")
+# if not os.getenv("TESTING"):
+#     try:
+#         Base.metadata.create_all(bind=engine)
+#     except Exception as e:
+#         # Log error but don't fail startup
+#         print(f"Warning: Could not create database tables: {e}")
 
 # Initialize FastAPI app
 app = FastAPI(
