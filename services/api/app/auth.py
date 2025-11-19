@@ -14,5 +14,14 @@ def check_auth(
     if not token and x_api_key:
         token = x_api_key.strip()
     if not token or token != DEMO_TOKEN:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "ok": False,
+                "error": {
+                    "code": "UNAUTHORIZED",
+                    "message": "Invalid or missing API key",
+                },
+            },
+        )
     return token

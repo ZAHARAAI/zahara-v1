@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import os
 import threading
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+
+from ..auth import check_auth
 
 router = APIRouter(prefix="/flows", tags=["flows"])
 
@@ -85,24 +86,6 @@ class OkUpdated(BaseModel):
 
 
 # ---------------------------
-# API Key guard
-# ---------------------------
-def _require_api_key(x_api_key: Optional[str]) -> None:
-    expected = os.getenv("DEMO_TOKEN", "zahara-demo-123")
-    if not x_api_key or x_api_key != expected:
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "ok": False,
-                "error": {
-                    "code": "UNAUTHORIZED",
-                    "message": "Invalid or missing API key",
-                },
-            },
-        )
-
-
-# ---------------------------
 # Routes
 # ---------------------------
 
@@ -112,9 +95,8 @@ def test_flows(
     owner: Optional[str] = Query(default=None, description='e.g. "me"'),
     page: int = Query(default=1, ge=1),
     pageSize: int = Query(default=20, ge=1, le=200),
-    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+    token: str = Depends(check_auth),
 ):
-    _require_api_key(x_api_key)
     with _flow_lock:
         all_items = [
             FlowListItem(id=f.id, name=f.name, updatedAt=f.updatedAt)
@@ -131,9 +113,8 @@ def test_flows(
 @router.post("/", response_model=FlowEnvelope)
 def create_flow(
     payload: FlowCreate,
-    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+    token: str = Depends(check_auth),
 ):
-    _require_api_key(x_api_key)
     flow = Flow(
         id=_new_flow_id(),
         name=payload.name,
@@ -147,9 +128,9 @@ def create_flow(
 
 @router.get("/{flow_id}", response_model=FlowEnvelope)
 def get_flow(
-    flow_id: str, x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")
+    flow_id: str,
+    token: str = Depends(check_auth),
 ):
-    _require_api_key(x_api_key)
     with _flow_lock:
         flow = _flows.get(flow_id)
     if not flow:
@@ -167,10 +148,8 @@ def get_flow(
 def update_flow(
     flow_id: str,
     payload: FlowUpdate,
-    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+    token: str = Depends(check_auth),
 ):
-    _require_api_key(x_api_key)
-
     with _flow_lock:
         flow = _flows.get(flow_id)
         if not flow:
@@ -192,12 +171,6 @@ def update_flow(
     return OkUpdated(ok=True, updated=True)
 
 
-@router.get("/test", response_model=ListResponse)
-def list_flows(
-    owner: Optional[str] = Query(default=None, description='e.g. "me"'),
-    page: int = Query(default=1, ge=1),
-    pageSize: int = Query(default=20, ge=1, le=200),
-    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
-):
-    _require_api_key(x_api_key)
-    return ListResponse(ok=True, items=[])
+@router.get("/test")
+def list_flows(token: str = Depends(check_auth)):
+    return {"ok": True, "source": "zahara-ui"}
