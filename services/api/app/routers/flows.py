@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import traceback
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
@@ -181,17 +180,7 @@ def list_flows(
             ok=True, items=items, page=page, pageSize=pageSize, total=total
         )
     except Exception as e:
-        # capture full traceback for logs
-        tb = traceback.format_exc()
-
-        # return safe json error to frontend
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": str(e),
-                "trace": tb,  # remove this in production if needed
-            },
-        )
+        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
 
 
 @router.post("/", response_model=FlowEnvelope, status_code=status.HTTP_201_CREATED)
@@ -200,23 +189,26 @@ def create_flow(
     token: str = Depends(check_auth),
     db: Session = Depends(get_db),
 ):
-    """
-    Create a new flow backed by the database.
-    """
-    flow_id = _new_flow_id()
+    try:
+        """
+        Create a new flow backed by the database.
+        """
+        flow_id = _new_flow_id()
 
-    db_flow = FlowModel(
-        id=flow_id,
-        name=payload.name,
-        graph=payload.graph.dict(),  # store as JSONB
-        # owner_id can be wired later when you have a per-user auth system
-    )
+        db_flow = FlowModel(
+            id=flow_id,
+            name=payload.name,
+            graph=payload.graph.dict(),  # store as JSONB
+            # owner_id can be wired later when you have a per-user auth system
+        )
 
-    db.add(db_flow)
-    db.commit()
-    db.refresh(db_flow)
+        db.add(db_flow)
+        db.commit()
+        db.refresh(db_flow)
 
-    return FlowEnvelope(ok=True, flow=_db_flow_to_flow(db_flow))
+        return FlowEnvelope(ok=True, flow=_db_flow_to_flow(db_flow))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
 
 
 @router.get("/{flow_id}", response_model=FlowEnvelope)
@@ -225,20 +217,23 @@ def get_flow(
     token: str = Depends(check_auth),
     db: Session = Depends(get_db),
 ):
-    """
-    Fetch a single flow by id.
-    """
-    db_flow = db.query(FlowModel).filter(FlowModel.id == flow_id).first()
-    if not db_flow:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "ok": False,
-                "error": {"code": "NOT_FOUND", "message": "Flow not found"},
-            },
-        )
+    try:
+        """
+        Fetch a single flow by id.
+        """
+        db_flow = db.query(FlowModel).filter(FlowModel.id == flow_id).first()
+        if not db_flow:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "ok": False,
+                    "error": {"code": "NOT_FOUND", "message": "Flow not found"},
+                },
+            )
 
-    return FlowEnvelope(ok=True, flow=_db_flow_to_flow(db_flow))
+        return FlowEnvelope(ok=True, flow=_db_flow_to_flow(db_flow))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
 
 
 @router.put("/{flow_id}", response_model=OkUpdated)
@@ -248,27 +243,30 @@ def update_flow(
     token: str = Depends(check_auth),
     db: Session = Depends(get_db),
 ):
-    """
-    Update flow name and/or graph.
-    """
-    db_flow = db.query(FlowModel).filter(FlowModel.id == flow_id).first()
-    if not db_flow:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "ok": False,
-                "error": {"code": "NOT_FOUND", "message": "Flow not found"},
-            },
-        )
+    try:
+        """
+        Update flow name and/or graph.
+        """
+        db_flow = db.query(FlowModel).filter(FlowModel.id == flow_id).first()
+        if not db_flow:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "ok": False,
+                    "error": {"code": "NOT_FOUND", "message": "Flow not found"},
+                },
+            )
 
-    if payload.name is not None:
-        db_flow.name = payload.name
-    if payload.graph is not None:
-        db_flow.graph = payload.graph.dict()
+        if payload.name is not None:
+            db_flow.name = payload.name
+        if payload.graph is not None:
+            db_flow.graph = payload.graph.dict()
 
-    # SQLAlchemy + DB will update updated_at for us (onupdate=func.now())
-    db.add(db_flow)
-    db.commit()
-    db.refresh(db_flow)
+        # SQLAlchemy + DB will update updated_at for us (onupdate=func.now())
+        db.add(db_flow)
+        db.commit()
+        db.refresh(db_flow)
 
-    return OkUpdated(ok=True, updated=True)
+        return OkUpdated(ok=True, updated=True)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})

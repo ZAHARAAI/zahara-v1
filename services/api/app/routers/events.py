@@ -4,7 +4,7 @@ import asyncio
 import json
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -82,8 +82,11 @@ async def stream_run_events(
     token: str = Depends(check_auth),
     db: Session = Depends(get_db),
 ):
-    """
-    SSE endpoint used by Pro/Clinic to stream run events.
-    """
-    generator = _event_stream(db, run_id)
-    return StreamingResponse(generator, media_type="text/event-stream")
+    try:
+        """
+        SSE endpoint used by Pro/Clinic to stream run events.
+        """
+        generator = _event_stream(db, run_id)
+        return StreamingResponse(generator, media_type="text/event-stream")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})

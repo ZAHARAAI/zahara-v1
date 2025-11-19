@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -32,72 +32,75 @@ class RunResponse(BaseModel):
 
 
 def _launch_run(body: RunRequest, db: Session) -> RunResponse:
-    """
-    Create a Run + RunEvent rows from a RunRequest.
-    Used by /run and by Clinic replay.
-    """
+    try:
+        """
+        Create a Run + RunEvent rows from a RunRequest.
+        Used by /run and by Clinic replay.
+        """
 
-    run_id = str(uuid4())
-    request_id = run_id  # or something else if you want stable external ids
+        run_id = str(uuid4())
+        request_id = run_id  # or something else if you want stable external ids
 
-    config: Dict[str, Any] = body.dict()
+        config: Dict[str, Any] = body.dict()
 
-    run = Run(
-        id=run_id,
-        request_id=request_id,
-        status="running",
-        model=body.model or "demo-model",
-        source=body.source or "pro-ide",
-        started_at=datetime.utcnow(),
-        config=config,  # 👈 store config for replay
-    )
-    db.add(run)
-    db.commit()
-    db.refresh(run)
-
-    events: list[RunEvent] = []
-
-    def add_event(event_type: str, payload: Dict[str, Any]) -> None:
-        events.append(
-            RunEvent(
-                run_id=run_id,
-                type=event_type,
-                payload=payload,
-            )
+        run = Run(
+            id=run_id,
+            request_id=request_id,
+            status="running",
+            model=body.model or "demo-model",
+            source=body.source or "pro-ide",
+            started_at=datetime.utcnow(),
+            config=config,  # 👈 store config for replay
         )
+        db.add(run)
+        db.commit()
+        db.refresh(run)
 
-    # --- demo events (replace with real executor later) ---
-    add_event("status", {"status": "started"})
-    add_event(
-        "log",
-        {
-            "level": "info",
-            "message": f"Run started (source={run.source}, model={run.model})",
-        },
-    )
-    if body.prompt:
-        add_event("log", {"level": "debug", "message": f"Prompt: {body.prompt}"})
+        events: list[RunEvent] = []
 
-    latency_ms = 180
-    tokens = 256
-    cost = 0.0008
+        def add_event(event_type: str, payload: Dict[str, Any]) -> None:
+            events.append(
+                RunEvent(
+                    run_id=run_id,
+                    type=event_type,
+                    payload=payload,
+                )
+            )
 
-    add_event("metric", {"latency_ms": latency_ms, "tokens": tokens, "cost": cost})
-    add_event("status", {"status": "succeeded"})
-    # ------------------------------------------------------
+        # --- demo events (replace with real executor later) ---
+        add_event("status", {"status": "started"})
+        add_event(
+            "log",
+            {
+                "level": "info",
+                "message": f"Run started (source={run.source}, model={run.model})",
+            },
+        )
+        if body.prompt:
+            add_event("log", {"level": "debug", "message": f"Prompt: {body.prompt}"})
 
-    db.add_all(events)
-    db.commit()
+        latency_ms = 180
+        tokens = 256
+        cost = 0.0008
 
-    run.status = "succeeded"
-    run.tokens = tokens
-    run.cost = cost
-    run.latency_ms = latency_ms
-    run.finished_at = datetime.utcnow()
-    db.add(run)
-    db.commit()
+        add_event("metric", {"latency_ms": latency_ms, "tokens": tokens, "cost": cost})
+        add_event("status", {"status": "succeeded"})
+        # ------------------------------------------------------
 
-    return RunResponse(ok=True, runId=run.id, requestId=run.request_id)
+        db.add_all(events)
+        db.commit()
+
+        run.status = "succeeded"
+        run.tokens = tokens
+        run.cost = cost
+        run.latency_ms = latency_ms
+        run.finished_at = datetime.utcnow()
+        db.add(run)
+        db.commit()
+
+        return RunResponse(ok=True, runId=run.id, requestId=run.request_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
 
 
 @router.post("", response_model=RunResponse)
