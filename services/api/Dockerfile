@@ -4,7 +4,8 @@ FROM python:3.12-slim AS base
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    ZAHARA_FS_ROOT=/app/data/agents
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential curl ca-certificates libpq-dev tini \
@@ -28,6 +29,9 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PORT=8000 \
     WORKERS=1 \
     LOG_LEVEL=info
+
+# Make sure the workspace directory exists and is writable
+RUN mkdir -p /app/data/agents && chown -R appuser:appuser /app
 
 # Non-root user
 RUN useradd -m appuser

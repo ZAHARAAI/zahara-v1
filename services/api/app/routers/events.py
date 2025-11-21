@@ -43,7 +43,7 @@ async def _event_stream(
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         # Yield a one-off error then end
-        yield _sse_event("error", {"error": "run_not_found"})
+        yield _sse_event("error", {"ok": False, "error": "run_not_found"})
         return
 
     # Load events in order

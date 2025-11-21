@@ -2,171 +2,261 @@ from __future__ import annotations
 
 import hashlib
 import os
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from ..auth import check_auth
 
 router = APIRouter(prefix="/files", tags=["filesystem"])
 
 # Root directory for the Pro IDE / agents.
-# You can override this with an env var, for example:
-#   AGENTS_ROOT=/workspace/agents
-FS_ROOT = Path(os.getenv("AGENTS_ROOT", "agents")).resolve()
+FS_ROOT = Path(os.getenv("ZAHARA_FS_ROOT", "./data/agents")).resolve()
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 def _ensure_root_exists() -> None:
-    """Make sure the root directory exists."""
+    """
+    Make sure FS_ROOT exists and is a directory.
+
+    This is called before any filesystem operation so that:
+    - The directory is created on first use.
+    - We fail with a clear 500 error if something is badly misconfigured
+      (e.g. FS_ROOT points to a regular file instead of a directory).
+    """
+    if FS_ROOT.exists() and not FS_ROOT.is_dir():
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "ok": False,
+                "error": f"FS_ROOT is not a directory: {FS_ROOT}",
+            },
+        )
     FS_ROOT.mkdir(parents=True, exist_ok=True)
 
 
 def _safe_path(rel_path: str) -> Path:
     """
     Resolve a user-supplied relative path safely under FS_ROOT.
-    Prevents directory traversal (../../../etc/passwd).
+
+    - Always joins with FS_ROOT.
+    - Resolves ".." etc.
+    - Rejects paths that would escape FS_ROOT (directory traversal).
+
+    This is critical so users cannot request something like:
+      ../../../etc/passwd
     """
     if rel_path.startswith("/"):
+        # Normalise: we always work with paths relative to FS_ROOT
         rel_path = rel_path.lstrip("/")
 
-    target = (FS_ROOT / rel_path).resolve()
-    if not str(target).startswith(str(FS_ROOT)):
-        raise HTTPException(
-            status_code=400, detail={"ok": False, "error": "invalid path"}
-        )
-    return target
+    full = (FS_ROOT / rel_path).resolve()
 
-
-def _sha256(content: str) -> str:
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
-
-
-@router.get("/list")
-def list_files(token: str = Depends(check_auth)) -> Dict[str, Any]:
     try:
-        """
-        List files and directories under FS_ROOT.
+        full.relative_to(FS_ROOT)
+    except ValueError:
+        # Path is outside FS_ROOT → reject
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "ok": False,
+                "error": "Invalid path (must be within workspace root)",
+            },
+        )
 
-        Frontend expects items like:
-        { path: "agents/hello.ts", type: "file" | "dir", size?, modified? }
-        """
+    return full
+
+
+def _sha256(data: str) -> str:
+    """
+    Compute a SHA-256 hex digest of the given text content.
+
+    Used by the Pro IDE to track file versions (sha field).
+    """
+    h = hashlib.sha256()
+    h.update(data.encode("utf-8"))
+    return h.hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Pro IDE - File List (GET /files)
+# ---------------------------------------------------------------------------
+
+
+@router.get("", summary="List files in the Pro IDE workspace")
+def list_files(token: str = Depends(check_auth)) -> Dict[str, Any]:
+    """
+    List all files and directories under FS_ROOT.
+
+    Spec example (Pro IDE - File List):
+
+    GET /files
+    Response:
+    {
+      "ok": true,
+      "files": [
+        { "path": "agents/hello.ts", "type": "file", "size": 532 },
+        { "path": "agents", "type": "dir" }
+      ]
+    }
+    """
+    try:
         _ensure_root_exists()
 
         items: List[Dict[str, Any]] = []
 
-        # Walk the tree. For simplicity, we return a flat list (no nested children).
+        # Walk recursively from FS_ROOT
         for p in FS_ROOT.rglob("*"):
             rel_path = p.relative_to(FS_ROOT).as_posix()
-
             if rel_path == "":
-                continue  # skip root
-
-            try:
-                stat = p.stat()
-                modified = datetime.fromtimestamp(stat.st_mtime).isoformat()
-            except OSError:
-                modified = None
+                continue  # skip root itself
 
             if p.is_dir():
+                # Directory: only path + type (to match the spec shape)
                 items.append(
                     {
                         "path": rel_path,
                         "type": "dir",
-                        "size": None,
-                        "modified": modified,
                     }
                 )
             elif p.is_file():
+                stat = p.stat()
                 items.append(
                     {
                         "path": rel_path,
                         "type": "file",
                         "size": stat.st_size,
-                        "modified": modified,
                     }
                 )
 
-        return {"ok": True, "items": items}
+        # Sort by path for stable output
+        items.sort(key=lambda x: x["path"])
+
+        return {"ok": True, "files": items}
+    except HTTPException:
+        # pass through explicit errors
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
 
 
-@router.get("/read")
-def read_file(
-    path: str = Query(..., description="Relative path under FS_ROOT"),
-    token: str = Depends(check_auth),
-) -> Dict[str, Any]:
-    try:
-        """
-        Read a single file under FS_ROOT.
+# ---------------------------------------------------------------------------
+# Pro IDE - Get File (GET /files/:path)
+# ---------------------------------------------------------------------------
 
-        Returns:
-        { ok, path, content, sha }
-        """
+
+@router.get(
+    "/{path:path}",
+    summary="Get a single file from the Pro IDE workspace",
+)
+def read_file(path: str, token: str = Depends(check_auth)) -> Dict[str, Any]:
+    """
+    Read a single file under FS_ROOT.
+
+    Spec example (Pro IDE - Get File):
+
+    GET /files/:path
+    Response:
+    {
+      "ok": true,
+      "path": "agents/hello.ts",
+      "content": "export default async function(){ return 'hi' }",
+      "sha": "e3b0c442..."
+    }
+    """
+    try:
         _ensure_root_exists()
         file_path = _safe_path(path)
 
         if not file_path.is_file():
             raise HTTPException(
-                status_code=404, detail={"ok": False, "error": "file not found"}
+                status_code=404,
+                detail={"ok": False, "error": "File not found"},
             )
 
-        try:
-            content = file_path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            raise HTTPException(
-                status_code=400, detail={"ok": False, "error": "file is not UTF-8 text"}
-            )
-
+        content = file_path.read_text(encoding="utf-8")
         sha = _sha256(content)
-        return {"ok": True, "path": path, "content": content, "sha": sha}
+
+        # Normalised path (relative to FS_ROOT)
+        rel_path = file_path.relative_to(FS_ROOT).as_posix()
+
+        return {
+            "ok": True,
+            "path": rel_path,
+            "content": content,
+            "sha": sha,
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
 
 
-@router.post("/write")
-def write_file(
-    body: Dict[str, Any],
+# ---------------------------------------------------------------------------
+# Pro IDE - Save File (PUT /files/:path)
+# ---------------------------------------------------------------------------
+
+
+class FileSaveRequest(BaseModel):
+    content: str
+    sha: Optional[str] = None  # previous sha (for future conflict detection, optional)
+
+
+@router.put(
+    "/{path:path}",
+    summary="Save a file into the Pro IDE workspace",
+)
+def save_file(
+    path: str,
+    body: FileSaveRequest,
     token: str = Depends(check_auth),
 ) -> Dict[str, Any]:
+    """
+    Save a file under FS_ROOT.
+
+    Spec example (Pro IDE - Save File):
+
+    PUT /files/:path
+    Request:
+    { "content": "export default async function(){ return 'hello' }", "sha": "e3b0c442..." }
+
+    Response:
+    { "ok": true, "saved": true, "sha": "9f86d081..." }
+    """
     try:
-        """
-        Write a file to FS_ROOT.
-
-        Body:
-        {
-            "path": "agents/hello.ts",
-            "content": "export default ...",
-            "sha": "optional previous sha"
-        }
-
-        Returns:
-        { ok, saved: true, path, sha }
-        """
         _ensure_root_exists()
-
-        path = body.get("path")
-        content: Optional[str] = body.get("content")
-        _ = body.get(
-            "sha"
-        )  # previous sha (optional; can be used for conflict detection)
 
         if not path:
             raise HTTPException(
-                status_code=400, detail={"ok": False, "error": "path is required"}
-            )
-        if content is None:
-            raise HTTPException(
-                status_code=400, detail={"ok": False, "error": "content is required"}
+                status_code=400,
+                detail={"ok": False, "error": "path is required"},
             )
 
+        # Normalised and safe path
         file_path = _safe_path(path)
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(content, encoding="utf-8")
 
-        sha = _sha256(content)
-        return {"ok": True, "saved": True, "path": path, "sha": sha}
+        # Write file content
+        file_path.write_text(body.content, encoding="utf-8")
+
+        new_sha = _sha256(body.content)
+
+        # NOTE: We ignore body.sha for now (no conflict detection),
+        # but you could compare it to the current sha if you want
+        # optimistic concurrency.
+
+        return {
+            "ok": True,
+            "saved": True,
+            "sha": new_sha,
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
