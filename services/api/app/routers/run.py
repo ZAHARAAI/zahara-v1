@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
@@ -17,89 +17,79 @@ router = APIRouter(prefix="/run", tags=["run"])
 
 
 class RunRequest(BaseModel):
-    prompt: Optional[str] = None
+    source: str
+    payload: Dict[str, Any]
     model: Optional[str] = None
-    source: Optional[str] = None
-    flowId: Optional[str] = None
-    entry: Optional[str] = None
-    code: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class RunResponse(BaseModel):
-    ok: bool
-    runId: str
-    requestId: str
+    run_id: str
+    request_id: str
+    status: str
+    started_at: str
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _isoformat(dt: datetime) -> str:
+    return dt.astimezone(timezone.utc).isoformat()
 
 
 def _launch_run(body: RunRequest, db: Session) -> RunResponse:
+    """Create a Run row and seed its initial status event.
+
+    Shared by:
+    - POST /run
+    - /clinic/replay (imports _launch_run)
+    """
     try:
-        """
-        Create a Run + RunEvent rows from a RunRequest.
-        Used by /run and by Clinic replay.
-        """
-
-        run_id = str(uuid4())
-        request_id = run_id  # or something else if you want stable external ids
-
-        config: Dict[str, Any] = body.dict()
+        run_id = f"r_{uuid4().hex[:10]}"
+        request_id = f"req_{uuid4().hex[:10]}"
+        now = _now_utc()
 
         run = Run(
             id=run_id,
             request_id=request_id,
             status="running",
-            model=body.model or "demo-model",
-            source=body.source or "pro-ide",
-            started_at=datetime.utcnow(),
-            config=config,  # 👈 store config for replay
+            model=body.model or "unknown",
+            source=body.source,
+            config={
+                "source": body.source,
+                "payload": body.payload,
+                "model": body.model,
+                "metadata": body.metadata,
+            },
+            started_at=now,
         )
         db.add(run)
-        db.commit()
-        db.refresh(run)
+        db.flush()  # make sure run.id is available
 
-        events: list[RunEvent] = []
-
-        def add_event(event_type: str, payload: Dict[str, Any]) -> None:
-            events.append(
-                RunEvent(
-                    run_id=run_id,
-                    type=event_type,
-                    payload=payload,
-                )
-            )
-
-        # --- demo events (replace with real executor later) ---
-        add_event("status", {"status": "started"})
-        add_event(
-            "log",
-            {
-                "level": "info",
-                "message": f"Run started (source={run.source}, model={run.model})",
+        # Initial status event
+        status_event = RunEvent(
+            run_id=run_id,
+            type="status",
+            payload={
+                "type": "status",
+                "status": "started",
+                "runId": run_id,
+                "requestId": request_id,
+                "ts": _isoformat(now),
             },
         )
-        if body.prompt:
-            add_event("log", {"level": "debug", "message": f"Prompt: {body.prompt}"})
-
-        latency_ms = 180
-        tokens = 256
-        cost = 0.0008
-
-        add_event("metric", {"latency_ms": latency_ms, "tokens": tokens, "cost": cost})
-        add_event("status", {"status": "succeeded"})
-        # ------------------------------------------------------
-
-        db.add_all(events)
+        db.add(status_event)
         db.commit()
 
-        run.status = "succeeded"
-        run.tokens = tokens
-        run.cost = cost
-        run.latency_ms = latency_ms
-        run.finished_at = datetime.utcnow()
-        db.add(run)
-        db.commit()
-
-        return RunResponse(ok=True, runId=run.id, requestId=run.request_id)
+        return RunResponse(
+            run_id=run_id,
+            request_id=request_id,
+            status=run.status,
+            started_at=_isoformat(now),
+        )
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
 
 
@@ -109,4 +99,5 @@ def start_run(
     token: str = Depends(check_auth),
     db: Session = Depends(get_db),
 ) -> RunResponse:
+    """Start a new run."""
     return _launch_run(body, db)

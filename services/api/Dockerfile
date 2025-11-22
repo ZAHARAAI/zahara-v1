@@ -20,8 +20,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 COPY requirements.txt /app/requirements.txt
 RUN pip install --upgrade pip setuptools wheel \
- && pip install -r /app/requirements.txt \
- && pip install "gunicorn>=21,<22"
+    && pip install -r /app/requirements.txt \
+    && pip install "gunicorn>=21,<22"
 
 # ---------- Runtime ----------
 FROM base AS runtime
@@ -30,11 +30,12 @@ ENV PATH="/opt/venv/bin:$PATH" \
     WORKERS=1 \
     LOG_LEVEL=info
 
+# Create non-root user first
+RUN useradd -m appuser
+
 # Make sure the workspace directory exists and is writable
 RUN mkdir -p /app/data/agents && chown -R appuser:appuser /app
 
-# Non-root user
-RUN useradd -m appuser
 USER appuser
 
 COPY --from=builder /opt/venv /opt/venv
@@ -43,7 +44,7 @@ COPY . /app
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD \
-  curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1
+    curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1
 
 ENTRYPOINT ["/usr/bin/tini","--"]
 CMD ["sh","-c","gunicorn app.main:app -k uvicorn.workers.UvicornWorker -w ${WORKERS} -b 0.0.0.0:${PORT} --timeout 120 --keep-alive 75 --log-level ${LOG_LEVEL}"]
