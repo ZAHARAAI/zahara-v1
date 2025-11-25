@@ -1,11 +1,12 @@
 {
-   "cSpell.words": [
-      "fastapi",
-      "groq",
-      "Normalised",
-      "psycopg",
-      "qdrant",
-      "reactflow",
-      "ZAHARA"
-   ]
+  "cSpell.words": [
+    "fastapi",
+    "groq",
+    "Normalise",
+    "Normalised",
+    "psycopg",
+    "qdrant",
+    "reactflow",
+    "ZAHARA"
+  ],
 }

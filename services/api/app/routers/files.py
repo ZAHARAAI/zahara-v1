@@ -93,18 +93,6 @@ def _sha256(data: str) -> str:
 def list_files(token: str = Depends(check_auth)) -> Dict[str, Any]:
     """
     List all files and directories under FS_ROOT.
-
-    Spec example (Pro IDE - File List):
-
-    GET /files
-    Response:
-    {
-      "ok": true,
-      "files": [
-        { "path": "agents/hello.ts", "type": "file", "size": 532 },
-        { "path": "agents", "type": "dir" }
-      ]
-    }
     """
     try:
         _ensure_root_exists()
@@ -158,17 +146,6 @@ def list_files(token: str = Depends(check_auth)) -> Dict[str, Any]:
 def read_file(path: str, token: str = Depends(check_auth)) -> Dict[str, Any]:
     """
     Read a single file under FS_ROOT.
-
-    Spec example (Pro IDE - Get File):
-
-    GET /files/:path
-    Response:
-    {
-      "ok": true,
-      "path": "agents/hello.ts",
-      "content": "export default async function(){ return 'hi' }",
-      "sha": "e3b0c442..."
-    }
     """
     try:
         _ensure_root_exists()
@@ -219,15 +196,6 @@ def save_file(
 ) -> Dict[str, Any]:
     """
     Save a file under FS_ROOT.
-
-    Spec example (Pro IDE - Save File):
-
-    PUT /files/:path
-    Request:
-    { "content": "export default async function(){ return 'hello' }", "sha": "e3b0c442..." }
-
-    Response:
-    { "ok": true, "saved": true, "sha": "9f86d081..." }
     """
     try:
         _ensure_root_exists()

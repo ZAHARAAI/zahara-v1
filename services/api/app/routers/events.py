@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from ..auth import check_auth
 from ..database import get_db
 from ..models.run import Run
 from ..models.run_event import RunEvent
@@ -107,7 +106,7 @@ async def _event_stream(db: Session, run_id: str) -> AsyncGenerator[str, None]:
 @router.get("/{run_id}")
 async def stream_run_events(
     run_id: str,
-    token: str = Depends(check_auth),
+    # token: str = Depends(check_auth),
     db: Session = Depends(get_db),
 ):
     """SSE endpoint used by Pro/Clinic to stream run events.
