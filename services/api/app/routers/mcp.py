@@ -24,6 +24,7 @@ def mcp_connectors(
                     "id": c.id,
                     "name": c.name,
                     "enabled": c.enabled,
+                    "meta": c.meta,
                     "status": c.last_test_status,
                 }
                 for c in rows

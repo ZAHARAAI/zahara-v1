@@ -43,7 +43,7 @@ def _launch_run(body: RunRequest, db: Session) -> RunResponse:
 
     Shared by:
     - POST /run
-    - /clinic/replay (imports _launch_run)
+    - /clinic/replay/{run_id} (imports _launch_run)
     """
     try:
         run_id = f"r_{uuid4().hex[:10]}"

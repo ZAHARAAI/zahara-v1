@@ -97,7 +97,7 @@ def list_files(token: str = Depends(check_auth)) -> Dict[str, Any]:
     try:
         _ensure_root_exists()
 
-        items: List[Dict[str, Any]] = []
+        files: List[Dict[str, Any]] = []
 
         # Walk recursively from FS_ROOT
         for p in FS_ROOT.rglob("*"):
@@ -107,7 +107,7 @@ def list_files(token: str = Depends(check_auth)) -> Dict[str, Any]:
 
             if p.is_dir():
                 # Directory: only path + type (to match the spec shape)
-                items.append(
+                files.append(
                     {
                         "path": rel_path,
                         "type": "dir",
@@ -115,7 +115,7 @@ def list_files(token: str = Depends(check_auth)) -> Dict[str, Any]:
                 )
             elif p.is_file():
                 stat = p.stat()
-                items.append(
+                files.append(
                     {
                         "path": rel_path,
                         "type": "file",
@@ -124,9 +124,9 @@ def list_files(token: str = Depends(check_auth)) -> Dict[str, Any]:
                 )
 
         # Sort by path for stable output
-        items.sort(key=lambda x: x["path"])
+        files.sort(key=lambda x: x["path"])
 
-        return {"ok": True, "files": items}
+        return {"ok": True, "files": files}
     except HTTPException:
         # pass through explicit errors
         raise
