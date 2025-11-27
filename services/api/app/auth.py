@@ -20,7 +20,7 @@ def check_auth(
                 "ok": False,
                 "error": {
                     "code": "UNAUTHORIZED",
-                    "message": "Invalid or missing API key",
+                    "message": f"Invalid or missing API {token} key",
                 },
             },
         )
