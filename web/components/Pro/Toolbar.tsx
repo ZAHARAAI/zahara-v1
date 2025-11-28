@@ -1,96 +1,127 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// components/Pro/Toolbar.tsx
 "use client";
 
-import { Button } from "@/components/ui/Button";
 import { useEventBus } from "@/hooks/useEventBus";
-import { startRun, streamRun } from "@/services/api";
-import { useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
-import { toast } from "sonner";
-import { useProStore } from "./store";
+import { useProStore } from "@/hooks/useProStore";
+import { startRun, streamRun, type RunEvent } from "@/services/api";
+import { Loader2, Play, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Button } from "../ui/Button";
 
-const DEFAULT_ENTRY = "agents/hello.ts";
+const Toolbar = () => {
+  const { selectedPath, content } = useProStore();
 
-export default function Toolbar() {
-  const searchParams = useSearchParams();
-  const flowId = searchParams.get("flowId") || undefined;
+  const { setRunId, pushEvent, clearEvents } = useEventBus();
 
-  const { activePath, content } = useProStore();
-  const { setRun, push, clear } = useEventBus();
+  const [running, setRunning] = useState(false);
+  const [lastRunId, setLastRunId] = useState<string | null>(null);
+  const stopRef = useRef<null | (() => void)>(null);
 
-  const [busy, setBusy] = useState(false);
-  const [runId, setRunId] = useState<string | undefined>();
+  useEffect(() => {
+    // Cleanup SSE on unmount or route change
+    return () => {
+      stopRef.current?.();
+    };
+  }, []);
 
-  const entry = useMemo(
-    () => activePath || DEFAULT_ENTRY,
-    [activePath],
-  );
+  async function handleRun() {
+    if (!selectedPath) return;
 
-  const run = async () => {
+    setRunning(true);
+    clearEvents();
+
     try {
-      setBusy(true);
-      clear();
-
-      const payload: any = {
-        source: "pro-ide",
-        model: "gpt-4",
-        entry,
-        code: content,
-      };
-      if (flowId) payload.flowId = flowId;
-
-      const res = await startRun(payload);
-      setRunId(res.runId);
-      setRun(res.runId);
-
-      const stop = streamRun(res.runId, (data: any, type?: string) => {
-        if (type === "metric") {
-          push({
-            type: "metric",
-            tokens: data?.payload?.tokens,
-            cost: data?.payload?.cost,
-            duration: data?.payload?.latency_ms,
-          });
-        } else if (type === "log") {
-          push({
-            type: "log",
-            level: data?.payload?.level ?? "info",
-            message: data?.payload?.message,
-          });
-        } else if (type === "status") {
-          push({
-            type: "status",
-            message: data?.payload?.status,
-          });
-        } else {
-          push(data);
-        }
+      const { runId, requestId } = await startRun({
+        source: "pro_ide",
+        payload: {
+          path: selectedPath,
+          content,
+        },
+        metadata: {
+          surface: "pro",
+        },
       });
 
-      // auto-stop when "done" appears
-      push({
-        type: "info",
-        message: `Streaming events for run ${res.runId}`,
+      setRunId(runId);
+      setLastRunId(runId);
+
+      const stop = streamRun(runId, (evt: RunEvent) => {
+        // Ignore events without a type for safety
+        if (!evt || typeof evt.type !== "string") return;
+
+        // If you want to hide heartbeats, uncomment this:
+        // if (evt.type === "heartbeat") return;
+
+        pushEvent(evt);
       });
 
-      return stop;
-    } catch (e: any) {
-      toast.error("Run failed", { description: e.message });
+      stopRef.current = stop;
+
+      // Seed a synthetic event for UX
+      pushEvent({
+        type: "status",
+        ts: new Date().toISOString(),
+        runId,
+        requestId,
+        status: "started",
+        message: "Run started from Pro IDE",
+      });
+    } catch (err) {
+      console.error("Failed to start run", err);
+      pushEvent({
+        type: "error",
+        ts: new Date().toISOString(),
+        message: "Failed to start run. Check console / network tab.",
+        level: "error",
+      });
     } finally {
-      setBusy(false);
+      setRunning(false);
     }
-  };
+  }
 
   return (
-    <div className="flex items-center gap-2 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--panel))] px-3 py-2">
-      <Button onClick={run} disabled={busy}>
-        {busy ? "Running…" : "Run"}
-      </Button>
-      <div className="text-xs opacity-70">entry: {entry}</div>
-      {flowId && <div className="text-xs opacity-70">flow: {flowId}</div>}
-      {runId && <div className="text-xs opacity-70">run: {runId}</div>}
-      <div className="ml-auto text-xs opacity-70">Pro IDE</div>
+    <div className="flex items-center justify-between rounded-2xl border border-[hsl(var(--border))] px-4 py-2 text-xs">
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <Sparkles className="h-3 w-3" />
+        <span className="font-medium">Pro IDE</span>
+        {selectedPath && (
+          <span className="text-[11px] text-muted-foreground">
+            editing <span className="font-mono">{selectedPath}</span>
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-3">
+        {lastRunId && (
+          <span className="text-[11px] text-muted-foreground">
+            Last run: <span className="font-mono">{lastRunId}</span>
+          </span>
+        )}
+
+        <Button
+          type="button"
+          onClick={handleRun}
+          disabled={!selectedPath || running}
+          className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium hover:bg-accent hover:text-accent-foreground ${
+            !selectedPath || running
+              ? "cursor-not-allowed opacity-60 hover:bg-transparent hover:text-muted-foreground"
+              : ""
+          }`}
+        >
+          {running ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Running…
+            </>
+          ) : (
+            <>
+              <Play className="h-3 w-3" />
+              Run
+            </>
+          )}
+        </Button>
+      </div>
     </div>
   );
-}
+};
+
+export default Toolbar;

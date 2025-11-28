@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
+import { useFlowStore } from "@/hooks/useFlowStore";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { useFlowStore } from "./store";
 import type { AnyNodeData } from "./types";
 
 const TABS = ["config", "prompt", "logs"] as const;
@@ -35,7 +35,11 @@ export default function Inspector() {
       // still allow opening Pro without flow
       router.push("/pro");
     } else {
-      router.push(`/pro?flowId=${encodeURIComponent(flowId)}`);
+      router.push(
+        `/pro?flowId=${encodeURIComponent(flowId)}&name=${encodeURIComponent(
+          flowName || ""
+        )}`
+      );
     }
   };
 
@@ -74,13 +78,27 @@ export default function Inspector() {
               onChange={(e) => updateNodeData({ title: e.target.value } as any)}
               placeholder="Node title"
             />
+
+            {/* Start data */}
+            {"trigger" in (selected.data || {}) && (
+              <Select
+                label="Trigger"
+                value={(selected.data as any).trigger || "http"}
+                onChange={(v: string) => updateNodeData({ trigger: v as any })}
+                options={[
+                  ["http", "Http"],
+                  ["schedule", "Schedule"],
+                  ["manual", "Manual"],
+                ]}
+              />
+            )}
+
+            {/* Model data */}
             {"provider" in (selected.data || {}) && (
               <Select
                 label="Provider"
                 value={(selected.data as any).provider || "openai"}
-                onChange={(e: any) =>
-                  updateNodeData({ provider: e.target.value as any })
-                }
+                onChange={(v: string) => updateNodeData({ provider: v as any })}
                 options={[
                   ["openai", "OpenAI"],
                   ["anthropic", "Anthropic"],
@@ -95,6 +113,76 @@ export default function Inspector() {
                 onChange={(e) =>
                   updateNodeData({ model: e.target.value } as any)
                 }
+              />
+            )}
+            {"temperature" in (selected.data || {}) && (
+              <Input
+                label="Temperature"
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                value={(selected.data as any).temperature || ""}
+                onChange={(e) =>
+                  updateNodeData({ temperature: Number(e.target.value) } as any)
+                }
+              />
+            )}
+            {"maxTokens" in (selected.data || {}) && (
+              <Input
+                label="Max Tokens"
+                type="number"
+                step="1"
+                min="1"
+                value={(selected.data as any).maxTokens || ""}
+                onChange={(e) =>
+                  updateNodeData({ maxTokens: Number(e.target.value) } as any)
+                }
+              />
+            )}
+
+            {/* Tool Data */}
+            {"toolName" in (selected.data || {}) && (
+              <Input
+                label="Tool Name"
+                value={(selected.data as any).toolName || ""}
+                onChange={(e) =>
+                  updateNodeData({ toolName: e.target.value } as any)
+                }
+              />
+            )}
+            {"mode" in (selected.data || {}) && (
+              <Select
+                label="Mode"
+                value={(selected.data as any).mode || "mcp"}
+                onChange={(v: string) => updateNodeData({ mode: v as any })}
+                options={[
+                  ["mcp", "MCP"],
+                  ["standard", "Standard"],
+                ]}
+              />
+            )}
+            {"entry" in (selected.data || {}) && (
+              <Input
+                label="Entry"
+                value={(selected.data as any).entry || ""}
+                onChange={(e) =>
+                  updateNodeData({ entry: e.target.value } as any)
+                }
+              />
+            )}
+
+            {/* Output Data */}
+            {"sink" in (selected.data || {}) && (
+              <Select
+                label="Sink"
+                value={(selected.data as any).sink || "console"}
+                onChange={(v: string) => updateNodeData({ sink: v as any })}
+                options={[
+                  ["console", "Console"],
+                  ["webhook", "Webhook"],
+                  ["file", "File"],
+                ]}
               />
             )}
           </>

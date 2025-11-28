@@ -15,24 +15,34 @@ export type StartNodeData = BaseNodeData & {
 export type ModelNodeData = BaseNodeData & {
   provider: "openai" | "anthropic" | "groq";
   model: string;
-  temperature: number;
+  temperature?: number;
   prompt?: string;
+  maxTokens?: number;
 };
 
 export type ToolNodeData = BaseNodeData & {
   toolName: string;
-  args: Record<string, any>;
+  args?: Record<string, any>;
+  mode?: "mcp" | "standard";
+  entry?: string;
 };
 
 export type OutputNodeData = BaseNodeData & {
   sink: "console" | "webhook" | "file";
 };
 
-export type AnyNodeData = StartNodeData | ModelNodeData | ToolNodeData | OutputNodeData;
+export type AnyNodeData =
+  | StartNodeData
+  | ModelNodeData
+  | ToolNodeData
+  | OutputNodeData;
 
 export type FlowGraph = {
-  id?: string;
+  name?: string;
   nodes: Node<AnyNodeData>[];
   edges: Edge[];
-  updatedAt?: string;
+  meta?: {
+    entry?: string;
+    [key: string]: any;
+  };
 };

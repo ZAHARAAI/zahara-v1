@@ -4,15 +4,15 @@
 import { Button } from "@/components/ui/Button";
 import {
   listConnectors,
+  McpConnector,
   patchConnector,
   testConnector,
-  type Connector,
 } from "@/services/api";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 export default function Panel() {
-  const [items, setItems] = useState<Connector[]>([]);
+  const [items, setItems] = useState<McpConnector[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {

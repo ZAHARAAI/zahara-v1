@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use server";
 
-const BASE = process.env.API_BASE_URL as string;
+const BASE = process.env.NEXT_PUBLIC_API_BASE_URL as string;
 const API_KEY = process.env.ZAHARA_API_KEY as string;
 
 const Retry = { max: 2, backoffMs: 400 };
@@ -10,13 +10,13 @@ export const api = async (path: string, init: RequestInit = {}) => {
   let last: any;
   for (let attempt = 0; attempt <= Retry.max; attempt++) {
     try {
-      const res = await fetch(`${BASE}${path}`, {
-        ...init,
+      const res = await fetch(`${BASE.replace(/\/$/, "")}${path}`, {
         headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${API_KEY}`,
           ...(init.headers || {}),
+          "Content-Type": "application/json",
+          "x-api-key": API_KEY,
         },
+        ...init,
         cache: "no-store",
       });
       if (!res.ok) {

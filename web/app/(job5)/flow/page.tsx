@@ -7,7 +7,7 @@ import { Suspense } from "react";
 
 export default function FlowPage() {
   return (
-    <div className="h-[calc(100vh-2rem)]">
+    <div className="h-[calc(100vh-3rem)]">
       <Suspense fallback={<div className="p-4 text-sm">Loading flow…</div>}>
         <Toolbar />
       </Suspense>

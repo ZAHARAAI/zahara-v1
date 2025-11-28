@@ -16,11 +16,11 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 
+import { DEFAULT_GRAPH, useFlowStore } from "@/hooks/useFlowStore";
 import { ModelNode } from "./nodes/ModelNode";
 import { OutputNode } from "./nodes/OutputNode";
 import { StartNode } from "./nodes/StartNode";
 import { ToolNode } from "./nodes/ToolNode";
-import { DEFAULT_GRAPH, useFlowStore } from "./store";
 import type { AnyNodeData } from "./types";
 
 const nodeTypes = {
@@ -44,7 +44,7 @@ export default function Canvas() {
 
   useEffect(() => {
     if (!flowId && nodes.length === 0) {
-      setGraph(DEFAULT_GRAPH.nodes, DEFAULT_GRAPH.edges);
+      setGraph(DEFAULT_GRAPH.nodes as any, DEFAULT_GRAPH.edges);
       setFlowMeta(undefined, "New Flow");
     }
   }, [flowId, nodes.length, setGraph, setFlowMeta]);
