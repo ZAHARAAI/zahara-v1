@@ -1,32 +1,30 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+"use client";
+
+import type { RunEvent } from "@/services/api";
 import { create } from "zustand";
 
-export type RunEvent = {
-  type: string;
-  level?: "info" | "warn" | "error";
-  step?: string;
-  message?: string;
-  duration?: number;
-  tokens?: number;
-  cost?: number;
-  [k: string]: any;
-};
-
-type Bus = {
-  runId?: string;
+interface EventBusState {
+  runId: string | null;
   events: RunEvent[];
-  push: (e: RunEvent) => void;
-  clear: () => void;
-  setRun: (id?: string) => void;
-};
+  setRunId: (id: string | null) => void;
+  pushEvent: (event: RunEvent) => void;
+  clearEvents: () => void;
+}
 
-export const useEventBus = create<Bus>((set) => ({
-  runId: undefined,
+export const useEventBus = create<EventBusState>((set) => ({
+  runId: null,
   events: [],
-  push: (e) =>
-    set((s) => ({
-      events: [...s.events, e],
-    })),
-  clear: () => set({ events: [] }),
-  setRun: (id) => set({ runId: id, events: [] }),
+  setRunId(id) {
+    set({ runId: id, events: [] });
+  },
+  pushEvent(event) {
+    // Ignore completely unknown shapes if needed to match spec
+    if (!event || typeof event.type !== "string") return;
+    set((state) => ({
+      events: [...state.events, event],
+    }));
+  },
+  clearEvents() {
+    set({ events: [] });
+  },
 }));

@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// components/Clinic/Timeline.tsx
 
 "use client";
 
@@ -11,11 +10,13 @@ import { toast } from "sonner";
 
 import { useEventBus } from "@/hooks/useEventBus";
 import {
+  exportSession,
   getSessionByRequestId,
   listSessions,
   replaySession,
   startRun,
   streamRun,
+  type RunEvent,
   type SessionSummary,
 } from "@/services/api";
 
@@ -24,7 +25,7 @@ export default function Timeline() {
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | undefined>();
 
-  const { runId, events, setRun, push, clear } = useEventBus();
+  const { runId, events, setRunId, pushEvent, clearEvents } = useEventBus();
   const stopRef = useRef<null | (() => void)>(null);
 
   useEffect(() => {
@@ -40,67 +41,125 @@ export default function Timeline() {
       }
     };
     load();
+
+    return () => {
+      stopRef.current?.();
+    };
   }, []);
 
   const openSession = async (requestId: string) => {
     try {
       setSelectedId(requestId);
-      clear();
+      clearEvents();
 
       const json = await getSessionByRequestId(requestId);
-      json.session.events.forEach((ev: any) => {
-        const type = ev.type;
-        const payload = ev.payload ?? {};
-        if (type === "metric") {
-          push({
-            type: "metric",
-            tokens: payload.tokens,
-            cost: payload.cost,
-            duration: payload.latency_ms,
-          });
-        } else if (type === "log") {
-          push({
-            type: "log",
-            level: payload.level ?? "info",
-            message: payload.message,
-          });
-        } else if (type === "status") {
-          push({ type: "status", message: payload.status });
-        } else {
-          push({ type, ...payload });
+
+      json.session.events.forEach(
+        (ev: { type: string; payload: any; ts?: string }) => {
+          const { type, payload, ts } = ev;
+
+          if (type === "metric") {
+            pushEvent({
+              type: "metric",
+              ts,
+              tokens: payload.tokens,
+              cost: payload.cost,
+              duration: payload.latency_ms ?? payload.latencyMs,
+              payload,
+            } as RunEvent);
+          } else if (type === "log") {
+            pushEvent({
+              type: "log",
+              ts,
+              level: payload.level ?? "info",
+              message: payload.message,
+              payload,
+            } as RunEvent);
+          } else if (type === "status") {
+            pushEvent({
+              type: "status",
+              ts,
+              status: payload.status,
+              message: payload.status,
+              payload,
+            } as RunEvent);
+          } else if (
+            type === "heartbeat" ||
+            type === "done" ||
+            type === "error"
+          ) {
+            pushEvent({
+              type: type as RunEvent["type"],
+              ts,
+              message: payload.message ?? payload.status,
+              error: payload.error,
+              payload,
+            } as RunEvent);
+          } else {
+            // Fallback: still show unknown event shapes in the timeline
+            pushEvent({
+              type: "log",
+              ts,
+              level: "warn",
+              message: `Unknown event type "${type}" from session; see payload`,
+              payload: { type, ...payload },
+            } as RunEvent);
+          }
         }
-      });
+      );
     } catch (e: any) {
       toast.error("Failed to load session", { description: e.message });
+    }
+  };
+
+  const handleSseEvent = (evt: RunEvent) => {
+    if (!evt || typeof evt.type !== "string") return;
+
+    if (evt.type === "metric") {
+      const payload = evt.payload ?? {};
+      pushEvent({
+        ...evt,
+        tokens: payload.tokens ?? (evt as any).tokens,
+        cost: payload.cost ?? (evt as any).cost,
+        duration:
+          payload.latency_ms ??
+          payload.latencyMs ??
+          (evt as any).latency_ms ??
+          (evt as any).latencyMs,
+      } as RunEvent);
+    } else if (evt.type === "log") {
+      pushEvent({
+        ...evt,
+        level: evt.level ?? evt.payload?.level ?? "info",
+        message: evt.message ?? evt.payload?.message,
+      } as RunEvent);
+    } else if (
+      evt.type === "status" ||
+      evt.type === "done" ||
+      evt.type === "heartbeat"
+    ) {
+      pushEvent({
+        ...evt,
+        message: evt.message ?? evt.status ?? evt.payload?.status,
+      } as RunEvent);
+    } else if (evt.type === "error") {
+      pushEvent({
+        ...evt,
+        level: evt.level ?? "error",
+        message: evt.message ?? evt.error ?? evt.payload?.message,
+      } as RunEvent);
+    } else {
+      // Unknown type – this should already be filtered by streamRun, but
+      // keeping a fallback here makes the UI more robust.
+      pushEvent(evt);
     }
   };
 
   const attachLive = (id: string) => {
     try {
       stopRef.current?.();
-      setRun(id);
-      stopRef.current = streamRun(id, (data: any, type?: string) => {
-        if (type === "metric") {
-          push({
-            type: "metric",
-            tokens: data?.payload?.tokens,
-            cost: data?.payload?.cost,
-            duration: data?.payload?.latency_ms,
-          });
-        } else if (type === "log") {
-          push({
-            type: "log",
-            level: data?.payload?.level ?? "info",
-            message: data?.payload?.message,
-          });
-        } else if (type === "status") {
-          push({ type: "status", message: data?.payload?.status });
-        } else if (type === "done") {
-          push({ type: "status", message: "done" });
-        } else {
-          push(data);
-        }
-      });
+      setRunId(id);
+      stopRef.current = streamRun(id, handleSseEvent);
       toast.success("Attached to run", { description: id });
     } catch (e: any) {
       toast.error("Failed to attach", { description: e.message });
@@ -111,8 +170,9 @@ export default function Timeline() {
     try {
       const res = await startRun({
         source: "clinic",
+        payload: { prompt: "Quick health check" },
         model: "gpt-4",
-        prompt: "Quick health check",
+        metadata: { surface: "clinic", mode: "quick-test" },
       });
       attachLive(res.runId);
     } catch (e: any) {
@@ -126,32 +186,10 @@ export default function Timeline() {
       const res = await replaySession(selectedId);
       toast.success("Replay started", { description: res.runId });
 
-      // clear old events & attach to new run
-      clear();
-      setRun(res.runId);
+      clearEvents();
+      setRunId(res.runId);
       stopRef.current?.();
-      stopRef.current = streamRun(res.runId, (data: any, type?: string) => {
-        if (type === "metric") {
-          push({
-            type: "metric",
-            tokens: data?.payload?.tokens,
-            cost: data?.payload?.cost,
-            duration: data?.payload?.latency_ms,
-          });
-        } else if (type === "log") {
-          push({
-            type: "log",
-            level: data?.payload?.level ?? "info",
-            message: data?.payload?.message,
-          });
-        } else if (type === "status") {
-          push({ type: "status", message: data?.payload?.status });
-        } else if (type === "done") {
-          push({ type: "status", message: "done" });
-        } else {
-          push(data);
-        }
-      });
+      stopRef.current = streamRun(res.runId, handleSseEvent);
     } catch (e: any) {
       toast.error("Replay failed", { description: e.message });
     }
@@ -160,7 +198,7 @@ export default function Timeline() {
   const exportJson = async () => {
     if (!selectedId) return;
     try {
-      const res = await getSessionByRequestId(selectedId); // you already import this
+      const res = await exportSession(selectedId);
       const blob = new Blob([JSON.stringify(res.session, null, 2)], {
         type: "application/json",
       });
@@ -176,8 +214,9 @@ export default function Timeline() {
   };
 
   return (
-    <div className="flex h-full bg-[hsl(var(--panel))]">
-      <div className="w-80 border-r border-[hsl(var(--border))]">
+    <div className="flex h-full">
+      {/* Left: session list */}
+      <div className="w-80 border-r border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20">
         <div className="flex items-center gap-2 border-b border-[hsl(var(--border))] px-3 py-2 text-xs">
           <span className="font-medium">Sessions</span>
           <Button
@@ -192,7 +231,7 @@ export default function Timeline() {
         {loading && (
           <div className="p-3 text-xs opacity-70">Loading sessions…</div>
         )}
-        <ul className="max-h-full overflow-auto text-xs">
+        <ul className="max-h-[calc(100vh-80px)] overflow-auto text-xs">
           {sessions.map((s) => (
             <li
               key={s.requestId}
@@ -220,72 +259,87 @@ export default function Timeline() {
         </ul>
       </div>
 
-      <div className="flex-1">
+      {/* Right: timeline view */}
+      <div className="flex flex-1 flex-col">
         <div className="flex items-center gap-2 border-b border-[hsl(var(--border))] px-3 py-2 text-xs">
           <span className="font-medium">Timeline</span>
-          <Input
-            className="ml-auto max-w-xs"
-            placeholder="Filter (not wired yet)"
-          />
-          <Select
-            label=""
-            options={[
-              ["all", "All events"],
-              ["status", "Status only"],
-              ["log", "Logs only"],
-              ["metric", "Metrics only"],
-            ]}
-            value="all"
-            onChange={() => {}}
-          />
-          <Button
-            size="xs"
-            variant="secondary"
-            disabled={!selectedId}
-            onClick={replay}
-          >
-            Replay
-          </Button>
-          <Button
-            size="xs"
-            variant="secondary"
-            disabled={!selectedId}
-            onClick={exportJson}
-          >
-            Export JSON
-          </Button>
           {runId && (
-            <span className="text-[10px] opacity-60">live run: {runId}</span>
+            <span className="text-[11px] opacity-70">
+              Live run: <span className="font-mono">{runId}</span>
+            </span>
           )}
-        </div>
-        <ul className="max-h-full space-y-2 overflow-auto p-3 text-xs">
-          {events.map((e, i) => (
-            <li
-              key={i}
-              className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--bg))] p-2"
+          <div className="ml-auto flex items-center gap-1">
+            <Input
+              className="h-7 w-40 text-xs"
+              placeholder="Attach run ID…"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const value = (e.target as HTMLInputElement).value.trim();
+                  if (value) attachLive(value);
+                }
+              }}
+            />
+            <Select
+              label=""
+              options={[
+                ["all", "All events"],
+                ["log", "Logs only"],
+                ["metric", "Metrics only"],
+              ]}
+              value="all"
+              onChange={() => {}}
+            />
+            <Button
+              size="xs"
+              variant="primary"
+              className="hover:bg-green-700"
+              type="button"
+              onClick={replay}
+              disabled={!selectedId}
             >
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-[10px] uppercase opacity-60">
+              Replay
+            </Button>
+            <Button
+              size="xs"
+              variant="ghost"
+              type="button"
+              onClick={exportJson}
+              disabled={!selectedId}
+            >
+              Export JSON
+            </Button>
+          </div>
+        </div>
+
+        <ul className="flex-1 space-y-1.5 overflow-auto p-3 text-xs">
+          {events.map((e, idx) => (
+            <li
+              key={`${idx}-${e.type}-${e.ts ?? "no-ts"}`}
+              className="rounded border border-[hsl(var(--border))] bg-background/80 px-3 py-1.5"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-[11px] uppercase opacity-70">
                   {e.type}
                 </span>
-                {"duration" in e && e.duration !== undefined && (
+                {"duration" in e && (e as any).duration !== undefined && (
                   <span className="text-[10px] opacity-60">
-                    {e.duration} ms
+                    {(e as any).duration} ms
                   </span>
                 )}
               </div>
               {"message" in e && e.message && (
-                <div className="mt-1">{e.message}</div>
+                <div className="mt-0.5 text-[11px] opacity-80">{e.message}</div>
               )}
-              {"tokens" in e && (
-                <div className="mt-1 text-[11px] opacity-80">
-                  Tokens: {e.tokens} {"cost" in e ? `(cost: ${e.cost})` : ""}
+              {"tokens" in e && (e as any).tokens !== undefined && (
+                <div className="mt-0.5 text-[10px] opacity-60">
+                  Tokens: {(e as any).tokens}{" "}
+                  {"cost" in e ? `(cost: ${(e as any).cost})` : ""}
                 </div>
               )}
             </li>
           ))}
           {events.length === 0 && (
-            <li className="text-xs opacity-60 p-2">
+            <li className="p-2 text-xs opacity-60">
               Select a session to inspect its timeline.
             </li>
           )}

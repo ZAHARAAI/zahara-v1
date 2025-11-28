@@ -4,11 +4,13 @@
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { useFlowStore } from "@/hooks/useFlowStore";
+import { inferEntryFromNodes } from "@/lib/utilities";
 import { createFlow, getFlow, listFlows, updateFlow } from "@/services/api";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { useFlowStore } from "./store";
+import { FlowGraph } from "./types";
 
 type Option = [string, string];
 
@@ -29,21 +31,22 @@ export default function Toolbar() {
   );
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true);
-        const flows = await listFlows();
-        setOptions(
-          flows.map((f) => [f.id, f.name || `Untitled (${f.id.slice(0, 8)})`])
-        );
-      } catch (e: any) {
-        toast.error("Failed to load flows", { description: e.message });
-      } finally {
-        setLoading(false);
-      }
-    };
     load();
   }, []);
+
+  async function load() {
+    try {
+      setLoading(true);
+      const flows = await listFlows();
+      setOptions(
+        flows.map((f) => [f.id, f.name || `Untitled (${f.id.slice(0, 8)})`])
+      );
+    } catch (e: any) {
+      toast.error("Failed to load flows", { description: e.message });
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (!flowIdParam) return;
@@ -52,7 +55,7 @@ export default function Toolbar() {
         setLoading(true);
         const json = await getFlow(flowIdParam);
         setFlowMeta(json.id, json.name);
-        setGraph(json.graph?.nodes ?? [], json.graph?.edges ?? []);
+        setGraph((json.graph?.nodes as any) ?? [], json.graph?.edges ?? []);
       } catch (e: any) {
         toast.error("Failed to open flow", { description: e.message });
       } finally {
@@ -60,7 +63,8 @@ export default function Toolbar() {
       }
     };
     open();
-  }, [flowIdParam, setFlowMeta, setGraph]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowIdParam]);
 
   const onSelect = async (id: string) => {
     if (!id) {
@@ -79,22 +83,22 @@ export default function Toolbar() {
       });
     }
 
-    const graph = { nodes, edges };
     try {
       setLoading(true);
+      // Extract entry value from nodes
+      const entry = inferEntryFromNodes(nodes);
+      const graph = { nodes, edges, meta: { entry } } as FlowGraph;
       if (flowId) {
-        const res = await updateFlow(flowId, {
-          name: flowName || "Untitled Flow",
-          graph,
-        });
-        setFlowMeta(res.id, res.name);
-        toast.success("Flow updated", { description: res.name });
+        await updateFlow(flowId, flowName, graph);
+        setFlowMeta(flowId, flowName);
+        toast.success("Flow updated", { description: flowName });
       } else {
-        const res = await createFlow(flowName || "Untitled Flow", graph);
-        setFlowMeta(res.id, res.name);
-        router.replace(`/flow?flowId=${encodeURIComponent(res.id)}`);
-        toast.success("Flow created", { description: res.name });
+        const json = await createFlow(flowName || "Untitled Flow", graph);
+        setFlowMeta(json.id, json.name);
+        router.replace(`/flow?flowId=${encodeURIComponent(json.id)}`);
+        toast.success("Flow created", { description: json.name });
       }
+      await load();
     } catch (e: any) {
       toast.error("Save failed", { description: e.message });
     } finally {
@@ -107,7 +111,7 @@ export default function Toolbar() {
       <Select
         label="Flow"
         value={flowId || ""}
-        onChange={(e: any) => onSelect(e.target.value)}
+        onChange={(v: string) => onSelect(v)}
         options={selectOptions}
       />
 

@@ -1,7 +1,12 @@
 import LeftNav from "@/components/nav/LeftNav";
 import type { Metadata } from "next";
+import { Geist } from "next/font/google";
 import "./globals.css";
 import Providers from "./providers";
+
+const geistSans = Geist({
+  subsets: ["latin"],
+});
 
 export const metadata: Metadata = {
   title: "Job 5 Dashboard",
@@ -10,7 +15,7 @@ export const metadata: Metadata = {
 
 const RootLayout = ({ children }: { children: React.ReactNode }) => {
   return (
-    <html lang="en" data-theme="dark">
+    <html lang="en" data-theme="dark" className={geistSans.className}>
       <head>
         <script
           dangerouslySetInnerHTML={{
@@ -30,9 +35,8 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
 
       <body className="flex min-h-screen bg-[hsl(var(--bg))] text-[hsl(var(--fg))] min-w-[1300px]">
         <LeftNav />
-        <main className="flex-1 p-4">
-          <Providers>{children}</Providers>
-        </main>
+
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

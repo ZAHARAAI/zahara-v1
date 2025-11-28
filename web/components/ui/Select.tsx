@@ -14,10 +14,11 @@ export function Select({
   disabled?: boolean;
 }) {
   return (
-    <label className="block">
-      {label && <div className="text-xs mb-1 opacity-70">{label}</div>}
+    <div>
+      {label && <div className="text-xs mb-1 ms-1 opacity-70">{label}</div>}
       <select
         value={value}
+        name={label}
         onChange={(e) => onChange(e.target.value)}
         className="w-full rounded-xl border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
         disabled={disabled}
@@ -28,6 +29,6 @@ export function Select({
           </option>
         ))}
       </select>
-    </label>
+    </div>
   );
 }
