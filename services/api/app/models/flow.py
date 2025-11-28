@@ -9,7 +9,7 @@ class Flow(Base):
 
     id = Column(String, primary_key=True, index=True)  # use uuid4 as string
     name = Column(String, nullable=False)
-    # Store your React Flow graph here: { nodes: [...], edges: [...] }
+    # Store your React Flow graph here: { nodes: [...], edges: [...], meta: {...} }
     graph = Column(JSONB, nullable=False)
 
     owner_id = Column(String, ForeignKey("users.id"), nullable=True)
