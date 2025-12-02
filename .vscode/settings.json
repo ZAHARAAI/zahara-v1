@@ -1,9 +1,12 @@
 {
   "cSpell.words": [
+    "agui",
     "fastapi",
     "groq",
     "Normalise",
     "Normalised",
+    "ondelete",
+    "onupdate",
     "psycopg",
     "qdrant",
     "reactflow",
