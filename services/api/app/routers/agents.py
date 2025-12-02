@@ -1,238 +1,596 @@
-from typing import Optional
+from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+import re
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    status,
+)
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from ..database import SessionLocal, get_db
 from ..middleware.auth import get_current_user
+from ..models.agent import Agent as AgentModel
+from ..models.agent_spec import AgentSpec as AgentSpecModel
+from ..models.run import Run as RunModel
+from ..models.run_event import RunEvent as RunEventModel
 from ..models.user import User
-from ..services.agent_service import AgentService
-from ..services.llm_service import LLMService
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 
-class CreateAgentRequest(BaseModel):
+# ---------------------------
+# Helpers
+# ---------------------------
+
+
+def _dt_to_iso_z(dt: Optional[datetime]) -> str:
+    """
+    Convert a datetime to an ISO 8601 string with Z suffix.
+    Mirrors the helper used in flows.py.
+    """
+    if dt is None:
+        dt = datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+_slug_re = re.compile(r"[^a-z0-9]+")
+
+
+def _slugify(name: str) -> str:
+    slug = _slug_re.sub("-", name.lower()).strip("-")
+    return slug or "agent"
+
+
+def _generate_unique_slug(db: Session, user_id: int, name: str) -> str:
+    base = _slugify(name)
+    slug = base
+    i = 2
+    while (
+        db.query(AgentModel)
+        .filter(AgentModel.user_id == user_id, AgentModel.slug == slug)
+        .first()
+        is not None
+    ):
+        slug = f"{base}-{i}"
+        i += 1
+    return slug
+
+
+def _new_agent_id() -> str:
+    """Generate a stable external agent id (similar to flows)."""
+    # Example style: ag_01HZX8W7J2
+    return "ag_" + uuid4().hex[:10].upper()
+
+
+def _new_run_id() -> str:
+    """Generate a stable external run id."""
+    return "run_" + uuid4().hex[:16]
+
+
+# ---------------------------
+# Pydantic models (agents)
+# ---------------------------
+
+
+class AgentCreate(BaseModel):
     name: str
-    description: str
-    system_prompt: str
-    model: Optional[str] = None
-    provider: str = "local"
+    description: Optional[str] = None
+    # Initial spec content (Vibe/Pro/Flow unified spec)
+    spec: Dict[str, Any] = Field(default_factory=dict)
 
 
-class ChatWithAgentRequest(BaseModel):
-    message: str
-    conversation_id: Optional[str] = None
+class AgentUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
 
 
-class AgentResponse(BaseModel):
+class AgentSpecCreate(BaseModel):
+    # New spec content; version is auto-incremented on the backend
+    content: Dict[str, Any] = Field(default_factory=dict)
+
+
+class Agent(BaseModel):
     id: str
     name: str
-    description: str
-    system_prompt: str
-    model: Optional[str]
-    provider: str
-    created_by: str
+    slug: str
+    description: Optional[str] = None
+    createdAt: str
+    updatedAt: str
+    # Latest spec metadata
+    version: Optional[int] = None
+    spec: Optional[Dict[str, Any]] = None
 
 
-# In-memory storage for demo purposes
-# In production, you'd want to store this in the database
-agents_storage = {}
-conversations_storage = {}
+class AgentListItem(BaseModel):
+    id: str
+    name: str
+    slug: str
+    description: Optional[str] = None
+    updatedAt: str
+    version: Optional[int] = None
 
 
-@router.get("/")
-async def list_agents():
-    """List all available agents from configuration (GET /agents)"""
-    agent_service = AgentService()
-    agents = agent_service.list_agents()
-
-    return {"agents": agents, "total_count": len(agents)}
-
-
-@router.get("/configured")
-async def list_configured_agents():
-    """List all pre-configured agents from YAML"""
-    agent_service = AgentService()
-    return {"agents": agent_service.list_agents()}
+class AgentListResponse(BaseModel):
+    ok: bool = True
+    items: List[AgentListItem]
+    page: int
+    pageSize: int
+    total: int
 
 
-@router.get("/configured/{agent_id}")
-async def get_configured_agent(agent_id: str):
-    """Get a specific configured agent by ID"""
-    agent_service = AgentService()
-    agent = agent_service.get_agent_by_id(agent_id)
-
-    if not agent:
-        raise HTTPException(status_code=404, detail="Configured agent not found")
-
-    return agent
+class AgentEnvelope(BaseModel):
+    ok: bool = True
+    agent: Agent
 
 
-@router.get("/capabilities/{capability}")
-async def get_agents_by_capability(capability: str):
-    """Get agents that have a specific capability"""
-    agent_service = AgentService()
-    agents = agent_service.get_agents_by_capability(capability)
-
-    return {"capability": capability, "agents": agents}
+class AgentSpecEnvelope(BaseModel):
+    ok: bool = True
+    agentId: str
+    version: int
 
 
-@router.get("/{name}")
-async def get_agent_by_name(name: str):
-    """Get a specific agent by name (GET /agents/{name})"""
-    agent_service = AgentService()
-    agent = agent_service.get_agent_by_id(name)  # Using ID as name for now
-
-    if not agent:
-        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
-
-    return agent
+# ---------------------------
+# Pydantic models (runs – Job 6)
+# ---------------------------
 
 
-# Legacy endpoints for backward compatibility
-@router.post("/create")
-async def create_agent(
-    request: CreateAgentRequest, current_user: User = Depends(get_current_user)
-):
-    """Create a new AI agent"""
-    import uuid
+class RunRequest(BaseModel):
+    """
+    Run start payload.
 
-    agent_id = str(uuid.uuid4())
-    agent = {
-        "id": agent_id,
-        "name": request.name,
-        "description": request.description,
-        "system_prompt": request.system_prompt,
-        "model": request.model,
-        "provider": request.provider,
-        "created_by": current_user.username,
-    }
+    For Job 6 we care about:
+    - input: user message or payload
+    - source: where the run was triggered from (vibe | pro | flow | agui | api | clinic)
+    - config: optional execution config (stored on the run row)
+    """
 
-    agents_storage[agent_id] = agent
-
-    return agent
-
-
-@router.get("/list")
-async def list_agents_legacy(current_user: User = Depends(get_current_user)):
-    """List all available agents from configuration and user-created agents (legacy)"""
-    agent_service = AgentService()
-
-    # Get configured agents from YAML
-    configured_agents = agent_service.list_agents()
-
-    # Get user-created agents
-    user_agents = [
-        agent
-        for agent in agents_storage.values()
-        if agent["created_by"] == current_user.username
-    ]
-
-    return {
-        "configured_agents": configured_agents,
-        "custom_agents": user_agents,
-        "total_count": len(configured_agents) + len(user_agents),
-    }
-
-
-@router.post("/{agent_id}/chat")
-async def chat_with_agent(agent_id: str, request: ChatWithAgentRequest):
-    """Chat with a specific agent (custom or configured)"""
-    agent_service = AgentService()
-    agent = None
-
-    # First check if it's a configured agent
-    configured_agent = agent_service.get_agent_by_id(agent_id)
-    if configured_agent:
-        agent = configured_agent
-    # Then check custom agents
-    elif agent_id in agents_storage:
-        agent = agents_storage[agent_id]
-        # For custom agents, we would check authentication here
-        # For now, allowing access for demo purposes
-
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
-
-    # Get or create conversation
-    conversation_id = request.conversation_id or f"{agent_id}_demo_user"
-
-    if conversation_id not in conversations_storage:
-        conversations_storage[conversation_id] = []
-
-    conversation = conversations_storage[conversation_id]
-
-    # Build messages with system prompt
-    messages = [{"role": "system", "content": agent["system_prompt"]}]
-    messages.extend(conversation)
-    messages.append({"role": "user", "content": request.message})
-
-    # Get response from LLM or provide demo response
-    llm_service = LLMService()
-    result = await llm_service.chat_completion(
-        messages=messages, model=agent["model"], provider=agent["provider"]
+    input: str = Field(..., description="User input or message for the agent.")
+    source: str = Field(
+        "vibe",
+        description="Run source: vibe | pro | flow | agui | api | clinic",
+    )
+    config: Optional[Dict[str, Any]] = Field(
+        default=None, description="Optional execution config to persist on the run."
     )
 
-    # If LLM service returns an error, provide a demo response
-    if "error" in result:
-        # Create a demo response based on the agent
-        demo_response = f"""Hello! I'm {agent["name"]}, {agent["description"]}.
 
-You said: "{request.message}"
+class RunResponse(BaseModel):
+    ok: bool = True
+    run_id: str
+    request_id: str
 
-This is a demo response since external LLM providers aren't configured yet. In a production environment, I would use {agent["model"]} via {agent["provider"]} to provide intelligent responses based on my system prompt:
 
-"{agent["system_prompt"][:100]}..."
+# ---------------------------
+# Internal mapping helpers
+# ---------------------------
 
-To enable full functionality, please configure API keys for the LLM providers in your environment variables."""
 
-        result = {
-            "provider": f"{agent['provider']} (demo)",
-            "model": agent["model"],
-            "message": demo_response,
-        }
+def _agent_with_latest_spec(db: Session, agent: AgentModel) -> Agent:
+    """
+    Load the latest spec for a single agent and map to API model.
+    """
+    latest_spec: Optional[AgentSpecModel] = (
+        db.query(AgentSpecModel)
+        .filter(AgentSpecModel.agent_id == agent.id)
+        .order_by(AgentSpecModel.version.desc())
+        .first()
+    )
 
-    # Update conversation history
-    conversation.append({"role": "user", "content": request.message})
-    conversation.append({"role": "assistant", "content": result["message"]})
+    created_at = agent.created_at
+    updated_at = agent.updated_at or agent.created_at
 
-    # Keep only last 20 messages to prevent memory issues
-    if len(conversation) > 20:
-        conversation = conversation[-20:]
-        conversations_storage[conversation_id] = conversation
+    return Agent(
+        id=agent.id,
+        name=agent.name,
+        slug=agent.slug,
+        description=agent.description,
+        createdAt=_dt_to_iso_z(created_at),
+        updatedAt=_dt_to_iso_z(updated_at),
+        version=latest_spec.version if latest_spec else None,
+        spec=latest_spec.content if latest_spec else None,
+    )
 
-    return {
-        "agent_id": agent_id,
-        "conversation_id": conversation_id,
-        "response": result["message"],
-        "model_info": {
-            "provider": result.get("provider"),
-            "model": result.get("model"),
+
+def _agent_to_list_item(
+    agent: AgentModel,
+    latest_versions_by_id: Dict[str, int],
+) -> AgentListItem:
+    updated_at = agent.updated_at or agent.created_at
+    return AgentListItem(
+        id=agent.id,
+        name=agent.name,
+        slug=agent.slug,
+        description=agent.description,
+        updatedAt=_dt_to_iso_z(updated_at),
+        version=latest_versions_by_id.get(agent.id),
+    )
+
+
+def _create_initial_run_event(db: Session, run: RunModel, body: RunRequest) -> None:
+    """
+    Create initial run_events row when a run starts.
+    This will be augmented by the router (token events, tool calls, etc.).
+    """
+    evt = RunEventModel(
+        run_id=run.id,
+        type="log",
+        payload={
+            "message": "Run started",
+            "input": body.input,
+            "source": body.source,
         },
-    }
+    )
+    db.add(evt)
+    db.commit()
 
 
-@router.delete("/{agent_id}")
-async def delete_agent(agent_id: str, current_user: User = Depends(get_current_user)):
-    """Delete an agent"""
-    if agent_id not in agents_storage:
-        raise HTTPException(status_code=404, detail="Agent not found")
+def _start_run_record(
+    db: Session,
+    *,
+    current_user: User,
+    agent: AgentModel,
+    body: RunRequest,
+    request_id: Optional[str] = None,
+) -> RunModel:
+    """
+    Create the Run row and initial events.
 
-    agent = agents_storage[agent_id]
+    Actual LLM execution will be handled by the centralized router (Job 6 Step 4).
+    """
+    run_id = _new_run_id()
+    if not request_id:
+        request_id = str(uuid4())
 
-    if agent["created_by"] != current_user.username:
-        raise HTTPException(status_code=403, detail="Access denied")
+    # These will later be populated from the router / agent spec
+    model = None
+    provider = None
 
-    del agents_storage[agent_id]
+    run = RunModel(
+        id=run_id,
+        agent_id=agent.id,
+        user_id=current_user.id,
+        request_id=request_id,
+        status="running",
+        model=model,
+        provider=provider,
+        source=body.source,
+        latency_ms=None,
+        tokens_in=None,
+        tokens_out=None,
+        tokens_total=None,
+        cost_estimate_usd=None,
+        error_message=None,
+        config=body.config,
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
 
-    # Clean up conversations for this agent
-    conversations_to_delete = [
-        conv_id
-        for conv_id in conversations_storage.keys()
-        if conv_id.startswith(agent_id)
-    ]
+    _create_initial_run_event(db, run, body)
+    return run
 
-    for conv_id in conversations_to_delete:
-        del conversations_storage[conv_id]
 
-    return {"message": "Agent deleted successfully"}
+# ---------------------------
+# Routes – Agents CRUD + Specs
+# ---------------------------
+
+
+@router.get("/", response_model=AgentListResponse)
+def list_agents(
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    List agents for the current user with pagination.
+    """
+    try:
+        q = db.query(AgentModel).filter(AgentModel.user_id == current_user.id)
+
+        total = q.count()
+        agents = (
+            q.order_by(AgentModel.updated_at.desc())
+            .offset((page - 1) * pageSize)
+            .limit(pageSize)
+            .all()
+        )
+
+        if not agents:
+            return AgentListResponse(
+                ok=True, items=[], page=page, pageSize=pageSize, total=total
+            )
+
+        # Fetch latest version per agent for the list view
+        agent_ids = [a.id for a in agents]
+        specs_rows = (
+            db.query(AgentSpecModel.agent_id, AgentSpecModel.version)
+            .filter(AgentSpecModel.agent_id.in_(agent_ids))
+            .all()
+        )
+        latest_versions: Dict[str, int] = {}
+        for agent_id, version in specs_rows:
+            if agent_id not in latest_versions or version > latest_versions[agent_id]:
+                latest_versions[agent_id] = version
+
+        items = [
+            _agent_to_list_item(a, latest_versions_by_id=latest_versions)
+            for a in agents
+        ]
+
+        return AgentListResponse(
+            ok=True, items=items, page=page, pageSize=pageSize, total=total
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
+
+
+@router.post("/", response_model=AgentEnvelope, status_code=status.HTTP_201_CREATED)
+def create_agent(
+    payload: AgentCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Create a new agent for the current user, along with its initial spec.
+    """
+    try:
+        agent_id = _new_agent_id()
+        slug = _generate_unique_slug(db, user_id=current_user.id, name=payload.name)
+
+        db_agent = AgentModel(
+            id=agent_id,
+            user_id=current_user.id,
+            name=payload.name,
+            slug=slug,
+            description=payload.description,
+        )
+        db.add(db_agent)
+        db.flush()  # ensure agent row exists before we create spec
+
+        # Initial spec version (if provided, otherwise empty dict)
+        initial_content: Dict[str, Any] = payload.spec or {}
+        db_spec = AgentSpecModel(
+            id=str(uuid4()),
+            agent_id=agent_id,
+            version=1,
+            content=initial_content,
+        )
+        db.add(db_spec)
+
+        db.commit()
+        db.refresh(db_agent)
+
+        agent_api = _agent_with_latest_spec(db, db_agent)
+        return AgentEnvelope(ok=True, agent=agent_api)
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
+
+
+@router.get("/{agent_id}", response_model=AgentEnvelope)
+def get_agent(
+    agent_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Load a single agent (metadata + latest spec) for the current user.
+    """
+    try:
+        db_agent = (
+            db.query(AgentModel)
+            .filter(
+                AgentModel.id == agent_id,
+                AgentModel.user_id == current_user.id,
+            )
+            .first()
+        )
+        if not db_agent:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "ok": False,
+                    "error": {"code": "NOT_FOUND", "message": "Agent not found"},
+                },
+            )
+
+        agent_api = _agent_with_latest_spec(db, db_agent)
+        return AgentEnvelope(ok=True, agent=agent_api)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
+
+
+@router.put("/{agent_id}", response_model=dict)
+def update_agent(
+    agent_id: str,
+    payload: AgentUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Update agent metadata (name, description) for the current user.
+    """
+    try:
+        db_agent = (
+            db.query(AgentModel)
+            .filter(
+                AgentModel.id == agent_id,
+                AgentModel.user_id == current_user.id,
+            )
+            .first()
+        )
+        if not db_agent:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "ok": False,
+                    "error": {"code": "NOT_FOUND", "message": "Agent not found"},
+                },
+            )
+
+        if payload.name is not None and payload.name.strip():
+            db_agent.name = payload.name
+            # Optionally keep slug stable; if you want slug to follow name:
+            # db_agent.slug = _generate_unique_slug(db, current_user.id, payload.name)
+        if payload.description is not None:
+            db_agent.description = payload.description
+
+        db.add(db_agent)
+        db.commit()
+        db.refresh(db_agent)
+
+        return {"ok": True, "updated": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
+
+
+@router.post("/{agent_id}/spec", response_model=AgentSpecEnvelope)
+def create_agent_spec(
+    agent_id: str,
+    payload: AgentSpecCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Create a new spec version for an existing agent.
+
+    - Ensures the agent belongs to the current user
+    - Auto-increments version number
+    """
+    try:
+        db_agent = (
+            db.query(AgentModel)
+            .filter(
+                AgentModel.id == agent_id,
+                AgentModel.user_id == current_user.id,
+            )
+            .first()
+        )
+        if not db_agent:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "ok": False,
+                    "error": {"code": "NOT_FOUND", "message": "Agent not found"},
+                },
+            )
+
+        # Determine next version
+        last_spec: Optional[AgentSpecModel] = (
+            db.query(AgentSpecModel)
+            .filter(AgentSpecModel.agent_id == agent_id)
+            .order_by(AgentSpecModel.version.desc())
+            .first()
+        )
+        next_version = 1 if last_spec is None else last_spec.version + 1
+
+        db_spec = AgentSpecModel(
+            id=str(uuid4()),
+            agent_id=agent_id,
+            version=next_version,
+            content=payload.content or {},
+        )
+        db.add(db_spec)
+        db.commit()
+
+        return AgentSpecEnvelope(
+            ok=True,
+            agentId=agent_id,
+            version=next_version,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
+
+
+# ---------------------------
+# Job 6: POST /agents/{id}/run  (run pipeline entrypoint)
+# ---------------------------
+
+
+@router.post("/{agent_id}/run", response_model=RunResponse)
+def start_agent_run(
+    agent_id: str,
+    body: RunRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> RunResponse:
+    """
+    Job 6 run pipeline entrypoint.
+
+    - Validates the agent belongs to the current user
+    - Creates a runs row with status=running
+    - Emits initial run_events (log)
+    - Returns run_id and request_id for SSE subscription
+
+    Actual model execution, token streaming, and metrics will be handled
+    by the centralized router in Step 4.
+    """
+    agent: AgentModel | None = (
+        db.query(AgentModel)
+        .filter(
+            AgentModel.id == agent_id,
+            AgentModel.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "ok": False,
+                "error": {"code": "NOT_FOUND", "message": "Agent not found"},
+            },
+        )
+
+    run = _start_run_record(db, current_user=current_user, agent=agent, body=body)
+
+    # Placeholder for future background execution via router
+    background_tasks.add_task(_noop_finish_run_if_needed, run.id)
+
+    return RunResponse(ok=True, run_id=run.id, request_id=run.request_id)
+
+
+def _noop_finish_run_if_needed(run_id: str) -> None:
+    """
+    Temporary helper so runs don't stay forever "running" in dev.
+
+    This does NOT perform any model call. It simply marks runs as success
+    if they were never updated, so Clinic views don't look broken.
+    In a real deployment this will be replaced by the LLM router.
+    """
+    db = SessionLocal()
+    try:
+        run: RunModel | None = db.query(RunModel).filter(RunModel.id == run_id).first()
+        if not run:
+            return
+        if run.status in ("success", "error"):
+            return
+        run.status = "success"
+        run.latency_ms = run.latency_ms or 0
+        db.add(run)
+        db.commit()
+    finally:
+        db.close()

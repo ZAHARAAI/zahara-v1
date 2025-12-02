@@ -21,7 +21,6 @@ from .routers import (
     auth,
     clinic,
     dev,
-    events,
     files,
     flows,
     health,
@@ -123,9 +122,8 @@ app.include_router(api_keys.router)
 app.include_router(auth.router)
 app.include_router(clinic.router)
 # app.include_router(dev.router)
-app.include_router(events.router)
-app.include_router(flows.router)
 app.include_router(files.router)
+app.include_router(flows.router)
 app.include_router(health.router)
 app.include_router(llm_router.router)
 app.include_router(llm_router.v1_router)
