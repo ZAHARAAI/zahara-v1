@@ -16,13 +16,14 @@ from fastapi import (
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from ..database import SessionLocal, get_db
+from ..database import get_db
 from ..middleware.auth import get_current_user
 from ..models.agent import Agent as AgentModel
 from ..models.agent_spec import AgentSpec as AgentSpecModel
 from ..models.run import Run as RunModel
 from ..models.run_event import RunEvent as RunEventModel
 from ..models.user import User
+from ..services.run_executor import execute_run_via_router
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -271,7 +272,12 @@ def _start_run_record(
         tokens_total=None,
         cost_estimate_usd=None,
         error_message=None,
-        config=body.config,
+        # Persist input + any extra config so the executor can reconstruct the call
+        config={
+            "input": body.input,
+            "source": body.source,
+            "config": body.config or {},
+        },
     )
     db.add(run)
     db.commit()
@@ -543,10 +549,8 @@ def start_agent_run(
     - Validates the agent belongs to the current user
     - Creates a runs row with status=running
     - Emits initial run_events (log)
+    - Kicks off background execution via the central router
     - Returns run_id and request_id for SSE subscription
-
-    Actual model execution, token streaming, and metrics will be handled
-    by the centralized router in Step 4.
     """
     agent: AgentModel | None = (
         db.query(AgentModel)
@@ -567,30 +571,7 @@ def start_agent_run(
 
     run = _start_run_record(db, current_user=current_user, agent=agent, body=body)
 
-    # Placeholder for future background execution via router
-    background_tasks.add_task(_noop_finish_run_if_needed, run.id)
+    # Background execution via the central router executor
+    background_tasks.add_task(execute_run_via_router, run.id)
 
     return RunResponse(ok=True, run_id=run.id, request_id=run.request_id)
-
-
-def _noop_finish_run_if_needed(run_id: str) -> None:
-    """
-    Temporary helper so runs don't stay forever "running" in dev.
-
-    This does NOT perform any model call. It simply marks runs as success
-    if they were never updated, so Clinic views don't look broken.
-    In a real deployment this will be replaced by the LLM router.
-    """
-    db = SessionLocal()
-    try:
-        run: RunModel | None = db.query(RunModel).filter(RunModel.id == run_id).first()
-        if not run:
-            return
-        if run.status in ("success", "error"):
-            return
-        run.status = "success"
-        run.latency_ms = run.latency_ms or 0
-        db.add(run)
-        db.commit()
-    finally:
-        db.close()
