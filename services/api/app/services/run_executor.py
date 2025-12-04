@@ -15,9 +15,7 @@ from ..models.run_event import RunEvent as RunEventModel
 logger = logging.getLogger("zahara.api.run_executor")
 
 # Where the router service is running. Override via env if needed.
-ROUTER_BASE_URL = (
-    os.getenv("LLM_ROUTER_URL") or os.getenv("ROUTER_BASE_URL") or "http://router:8000"
-)
+ROUTER_BASE_URL = os.getenv("LLM_ROUTER_URL") or "http://router:8000"
 
 
 def _estimate_cost_usd(model: Optional[str], usage: Dict[str, Any]) -> Optional[float]:
