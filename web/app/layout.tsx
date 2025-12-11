@@ -9,8 +9,8 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "Job 5 Dashboard",
-  description: "Flow Builder, Pro IDE, Clinic, MCP",
+  title: "Job 6 Dashboard",
+  description: "Vibe, Flow Builder, Pro IDE, Clinic",
 };
 
 const RootLayout = ({ children }: { children: React.ReactNode }) => {

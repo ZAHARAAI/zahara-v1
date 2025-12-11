@@ -1,7 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { AnyNodeData } from "@/components/Flow/types";
 import { FlowGraph } from "@/services/api";
+import { RunEvent } from "@/services/job6";
 import type { Edge, Node } from "reactflow";
 import { create } from "zustand";
 
@@ -11,11 +13,19 @@ type State = {
   selectedId?: string;
   flowId?: string;
   flowName: string;
+  meta?: {
+    agentId?: string;
+    agentVersion?: number;
+    description?: string;
+    [key: string]: any;
+  };
   setGraph: (nodes: Node<AnyNodeData>[], edges: Edge[]) => void;
   setNodes: (n: Node<AnyNodeData>[]) => void;
   setEdges: (e: Edge[]) => void;
   select: (id?: string) => void;
-  setFlowMeta: (id: string | undefined, name: string) => void;
+  setFlowMeta: (meta: Record<string, any>) => void;
+  clearRunEvents: () => void;
+  pushRunEvent: (ev: RunEvent) => void;
 };
 
 export const useFlowStore = create<State>((set) => ({
@@ -24,11 +34,14 @@ export const useFlowStore = create<State>((set) => ({
   selectedId: undefined,
   flowId: undefined,
   flowName: "Untitled Flow",
+  meta: {},
   setGraph: (nodes, edges) => set({ nodes, edges }),
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
   select: (selectedId) => set({ selectedId }),
-  setFlowMeta: (flowId, flowName) => set({ flowId, flowName }),
+  setFlowMeta: (meta) => set({ meta }),
+  clearRunEvents: () => {},
+  pushRunEvent: (ev: RunEvent) => {},
 }));
 
 export const DEFAULT_GRAPH: FlowGraph = {

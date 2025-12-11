@@ -9,22 +9,21 @@ from sqlalchemy.orm import Session
 from ..database import SessionLocal
 from ..models.agent import Agent as AgentModel
 from ..models.agent_spec import AgentSpec as AgentSpecModel
+from ..models.provider_key import ProviderKey as ProviderKeyModel
 from ..models.run import Run as RunModel
 from ..models.run_event import RunEvent as RunEventModel
 
 logger = logging.getLogger("zahara.api.run_executor")
 
-# Where the router service is running. Override via env if needed.
-ROUTER_BASE_URL = os.getenv("LLM_ROUTER_URL") or "http://router:8000"
+ROUTER_BASE_URL = os.getenv("LLM_ROUTER_URL")
+
+
+def _decrypt_secret(enc: str) -> str:
+    # If you later add real encryption, plug it in here.
+    return enc
 
 
 def _estimate_cost_usd(model: Optional[str], usage: Dict[str, Any]) -> Optional[float]:
-    """
-    Very simple cost estimation.
-
-    Job 6 wants a cost estimate; this uses a flat price per 1K tokens with
-    a couple of rough tweaks by model family. You can refine this table later.
-    """
     if not usage:
         return None
 
@@ -38,9 +37,7 @@ def _estimate_cost_usd(model: Optional[str], usage: Dict[str, Any]) -> Optional[
     if total_tokens <= 0:
         return None
 
-    # Default "cheap" price per 1K tokens
     per_1k = 0.000002
-
     model_lower = (model or "").lower()
     if "gpt-4.1" in model_lower or "gpt-4o" in model_lower:
         per_1k = 0.00001
@@ -51,17 +48,48 @@ def _estimate_cost_usd(model: Optional[str], usage: Dict[str, Any]) -> Optional[
     return round(cost, 6)
 
 
+def _resolve_provider_and_model(spec_content: Dict[str, Any]) -> tuple[str, str]:
+    """
+    Extract provider + model from the agent spec.
+
+    We assume Job 6 unified spec roughly follows:
+    {
+      "mode": "flow" | "pro" | "vibe" | ...,
+      "model": "gpt-4.1-mini",
+      "provider": "openai",
+      ...
+    }
+    """
+    provider = spec_content.get("provider") or "openai"
+    model = spec_content.get("model") or os.getenv("DEFAULT_MODEL", "gpt-4.1-mini")
+    return provider, model
+
+
+def _lookup_provider_key(
+    db: Session, user_id: Optional[int], provider: str
+) -> Optional[ProviderKeyModel]:
+    if not user_id:
+        return None
+    return (
+        db.query(ProviderKeyModel)
+        .filter(
+            ProviderKeyModel.user_id == user_id,
+            ProviderKeyModel.provider == provider,
+        )
+        .order_by(ProviderKeyModel.created_at.desc())
+        .first()
+    )
+
+
 def execute_run_via_router(run_id: str) -> None:
     """
     Central LLM router executor.
 
-    This is called in the background from POST /agents/{id}/run and is
-    responsible for:
-
-    - Loading the run + agent + latest agent_spec
-    - Calling the router's /v1/chat/completions endpoint
-    - Writing token + done events into run_events
-    - Updating runs with model / provider / usage / latency / cost / status
+    - Load run + agent + latest spec
+    - Resolve provider + model
+    - Look up user's provider key for that provider
+    - Call router /v1/chat/completions with the key
+    - Write token + done events and update metrics on the run
     """
     db: Session = SessionLocal()
     try:
@@ -88,7 +116,6 @@ def execute_run_via_router(run_id: str) -> None:
             db.commit()
             return
 
-        # Agent + latest spec
         agent: Optional[AgentModel] = (
             db.query(AgentModel).filter(AgentModel.id == run.agent_id).first()
         )
@@ -122,23 +149,55 @@ def execute_run_via_router(run_id: str) -> None:
             db.commit()
             return
 
-        # Config saved when run was created
         config: Dict[str, Any] = run.config or {}
-        input_text = config.get("input")
+        input_text = config.get("input") or ""
         if not input_text:
-            logger.warning(
-                "execute_run_via_router: run %s has no input in config", run_id
-            )
-            input_text = ""
+            logger.warning("execute_run_via_router: run %s has empty input", run_id)
 
         spec_content: Dict[str, Any] = spec.content or {}
-        model = spec_content.get("model") or os.getenv("DEFAULT_MODEL", "gpt-4.1-mini")
-        temperature = spec_content.get("temperature", 0.7)
+        provider, model = _resolve_provider_and_model(spec_content)
         system_prompt = (
             spec_content.get("systemPrompt")
             or spec_content.get("system_prompt")
             or "You are a helpful assistant."
         )
+        temperature = spec_content.get("temperature", 0.7)
+
+        # Resolve provider key for the user
+        provider_key = _lookup_provider_key(db, run.user_id, provider)
+        if not provider_key:
+            logger.error(
+                "execute_run_via_router: no provider key for user %s provider %s",
+                run.user_id,
+                provider,
+            )
+            run.status = "error"
+            run.error_message = (
+                f"No provider key configured for provider '{provider}'. "
+                "Add a key in the Provider Settings."
+            )
+            db.add(run)
+            db.add(
+                RunEventModel(
+                    run_id=run.id,
+                    type="error",
+                    payload={
+                        "message": "No provider key configured",
+                        "provider": provider,
+                    },
+                )
+            )
+            db.add(
+                RunEventModel(
+                    run_id=run.id,
+                    type="done",
+                    payload={"status": "error", "request_id": run.request_id},
+                )
+            )
+            db.commit()
+            return
+
+        key_secret = _decrypt_secret(provider_key.secret_encrypted)
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -147,16 +206,28 @@ def execute_run_via_router(run_id: str) -> None:
 
         payload = {
             "model": model,
+            "provider": provider,
             "messages": messages,
             "temperature": temperature,
         }
 
         url = ROUTER_BASE_URL.rstrip("/") + "/v1/chat/completions"
-        logger.info("execute_run_via_router: run %s -> %s model=%s", run_id, url, model)
+        logger.info(
+            "execute_run_via_router: run %s -> %s model=%s provider=%s",
+            run_id,
+            url,
+            model,
+            provider,
+        )
 
         start = time.time()
         try:
-            resp = httpx.post(url, json=payload, timeout=60.0)
+            resp = httpx.post(
+                url,
+                json=payload,
+                headers={"X-Provider-Api-Key": key_secret},
+                timeout=60.0,
+            )
         except Exception as e:
             logger.exception("Router request failed for run %s", run_id)
             run.status = "error"
@@ -215,7 +286,7 @@ def execute_run_via_router(run_id: str) -> None:
 
         data = resp.json()
         usage = data.get("usage") or {}
-        provider = data.get("provider")
+        provider_from_resp = data.get("provider") or provider
         assistant_content = ""
         try:
             choices = data.get("choices") or []
@@ -225,9 +296,8 @@ def execute_run_via_router(run_id: str) -> None:
         except Exception:
             assistant_content = ""
 
-        # Update run metrics
         run.model = data.get("model") or model
-        run.provider = provider
+        run.provider = provider_from_resp
         run.tokens_in = usage.get("prompt_tokens")
         run.tokens_out = usage.get("completion_tokens")
         run.tokens_total = usage.get("total_tokens")
@@ -235,7 +305,6 @@ def execute_run_via_router(run_id: str) -> None:
         run.status = "success"
         db.add(run)
 
-        # Emit token + done events for SSE
         if assistant_content:
             db.add(
                 RunEventModel(

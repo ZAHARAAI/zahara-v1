@@ -2,12 +2,12 @@
 "use client";
 
 import {
-   IdeFile,
-   IdeFileEntry,
-   listFiles,
-   readFile,
-   saveFile,
-   SaveFileResponse,
+  IdeFile,
+  IdeFileEntry,
+  listFiles,
+  readFile,
+  saveFile,
+  SaveFileResponse,
 } from "@/services/api";
 import { create } from "zustand";
 
@@ -21,6 +21,7 @@ interface ProState {
   saving: boolean;
   dirty: boolean;
   error: string | null;
+  agentId?: string | null;
 
   // actions
   loadFiles: () => Promise<void>;
@@ -28,6 +29,7 @@ interface ProState {
   setContent: (value: string) => void;
   saveCurrentFile: () => Promise<void>;
   clearError: () => void;
+  setAgentId?: (id: string | null) => void;
 }
 
 export const useProStore = create<ProState>((set, get) => ({
@@ -40,8 +42,10 @@ export const useProStore = create<ProState>((set, get) => ({
   saving: false,
   dirty: false,
   error: null,
+  agentId: null,
 
-  async loadFiles() {
+  //actions
+  loadFiles: async () => {
     set({ loadingFiles: true, error: null });
     try {
       const files = await listFiles();
@@ -54,7 +58,7 @@ export const useProStore = create<ProState>((set, get) => ({
     }
   },
 
-  async openFile(path: string) {
+  openFile: async (path: string) => {
     if (!path) return;
     set({ loadingFile: true, error: null });
     try {
@@ -73,7 +77,7 @@ export const useProStore = create<ProState>((set, get) => ({
     }
   },
 
-  setContent(value: string) {
+  setContent: (value: string) => {
     const { content } = get();
     set({
       content: value,
@@ -81,7 +85,7 @@ export const useProStore = create<ProState>((set, get) => ({
     });
   },
 
-  async saveCurrentFile() {
+  saveCurrentFile: async () => {
     const { selectedPath, content, sha } = get();
     if (!selectedPath) {
       set({ error: "No file selected to save" });
@@ -104,7 +108,6 @@ export const useProStore = create<ProState>((set, get) => ({
     }
   },
 
-  clearError() {
-    set({ error: null });
-  },
+  clearError: () => set({ error: null }),
+  setAgentId: (id) => set({ agentId: id }),
 }));

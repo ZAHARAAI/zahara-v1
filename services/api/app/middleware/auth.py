@@ -6,6 +6,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
+from ..auth import check_auth
 from ..config import settings
 from ..database import get_db
 from ..models.user import User
@@ -60,12 +61,34 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         )
 
 
+# def get_current_user(
+#     username: str = Depends(verify_token), db: Session = Depends(get_db)
+# ):
+#     user = db.query(User).filter(User.username == username).first()
+#     if user is None:
+#         raise HTTPException(
+#             status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
+#         )
+#     return user
+
+
 def get_current_user(
-    username: str = Depends(verify_token), db: Session = Depends(get_db)
-):
-    user = db.query(User).filter(User.username == username).first()
-    if user is None:
+    token: str = Depends(check_auth),
+    db: Session = Depends(get_db),
+) -> User:
+    """
+    TEMPORARY (Job 6 demo): resolve current_user from the API key instead of JWT.
+
+    - Uses check_auth (X-API-Key / Authorization) to verify the request
+    - Then returns the first user in the DB (seed_data creates an admin user)
+
+    This lets all existing Depends(get_current_user) work with the
+    current web frontend, which only sends X-API-Key and has no login UI.
+    """
+    user = db.query(User).order_by(User.id.asc()).first()
+    if not user:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No demo user found. Run seed_data.py to create a default user.",
         )
     return user

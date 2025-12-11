@@ -1,6 +1,6 @@
 "use client";
 
-import type { RunEvent } from "@/services/api";
+import type { RunEvent } from "@/services/job6";
 import { create } from "zustand";
 
 interface EventBusState {
@@ -14,17 +14,20 @@ interface EventBusState {
 export const useEventBus = create<EventBusState>((set) => ({
   runId: null,
   events: [],
-  setRunId(id) {
+
+  //actions
+  setRunId: (id) => {
     set({ runId: id, events: [] });
   },
-  pushEvent(event) {
+  pushEvent: (event) => {
     // Ignore completely unknown shapes if needed to match spec
     if (!event || typeof event.type !== "string") return;
     set((state) => ({
       events: [...state.events, event],
     }));
   },
-  clearEvents() {
+
+  clearEvents: () => {
     set({ events: [] });
   },
 }));

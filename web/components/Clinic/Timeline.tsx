@@ -2,348 +2,269 @@
 
 "use client";
 
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-
-import { useEventBus } from "@/hooks/useEventBus";
 import {
-  exportSession,
-  getSessionByRequestId,
-  listSessions,
-  replaySession,
-  startRun,
-  streamRun,
-  type RunEvent,
-  type SessionSummary,
-} from "@/services/api";
+  getRunDetail,
+  listRuns,
+  type RunDetailResponse,
+  type RunListItem,
+} from "@/services/job6";
+
+/**
+ * Job 6 Clinic timeline
+ *
+ * - Left side: list of recent runs (/runs)
+ * - Right side: details & events for the selected run (/runs/{id})
+ *
+ * This intentionally does NOT use SSE – we read from the stored run + run_events
+ * so that historical runs can be inspected long after they complete.
+ */
+
+const options: [string, string][] = [
+  ["", "All statuses"],
+  ["pending", "Pending"],
+  ["running", "Running"],
+  ["success", "Success"],
+  ["error", "Error"],
+];
 
 export default function Timeline() {
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | undefined>();
-
-  const { runId, events, setRunId, pushEvent, clearEvents } = useEventBus();
-  const stopRef = useRef<null | (() => void)>(null);
+  const [runs, setRuns] = useState<RunListItem[]>([]);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<RunDetailResponse | null>(null);
+  const [loadingRuns, setLoadingRuns] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string | "">("");
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true);
-        const list = await listSessions();
-        setSessions(list);
-      } catch (e: any) {
-        toast.error("Failed to load sessions", { description: e.message });
-      } finally {
-        setLoading(false);
+    void loadRuns();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter]);
+
+  async function loadRuns() {
+    try {
+      setLoadingRuns(true);
+      const res = await listRuns(50, 0);
+      let items = res.items ?? [];
+      if (statusFilter) {
+        items = items.filter((r) => r.status === statusFilter);
       }
-    };
-    load();
+      setRuns(items);
+      if (!selectedRunId && items.length > 0) {
+        setSelectedRunId(items[0].id);
+      }
+    } catch (err: any) {
+      console.error("Failed to load runs", err);
+      toast.error(err?.message ?? "Failed to load runs");
+    } finally {
+      setLoadingRuns(false);
+    }
+  }
 
-    return () => {
-      stopRef.current?.();
-    };
-  }, []);
+  useEffect(() => {
+    if (!selectedRunId) return;
+    void loadDetail(selectedRunId);
+  }, [selectedRunId]);
 
-  const openSession = async (requestId: string) => {
+  async function loadDetail(runId: string) {
     try {
-      setSelectedId(requestId);
-      clearEvents();
-
-      const json = await getSessionByRequestId(requestId);
-
-      json.session.events.forEach(
-        (ev: { type: string; payload: any; ts?: string }) => {
-          const { type, payload, ts } = ev;
-
-          if (type === "metric") {
-            pushEvent({
-              type: "metric",
-              ts,
-              tokens: payload.tokens,
-              cost: payload.cost,
-              duration: payload.latency_ms ?? payload.latencyMs,
-              payload,
-            } as RunEvent);
-          } else if (type === "log") {
-            pushEvent({
-              type: "log",
-              ts,
-              level: payload.level ?? "info",
-              message: payload.message,
-              payload,
-            } as RunEvent);
-          } else if (type === "status") {
-            pushEvent({
-              type: "status",
-              ts,
-              status: payload.status,
-              message: payload.status,
-              payload,
-            } as RunEvent);
-          } else if (
-            type === "heartbeat" ||
-            type === "done" ||
-            type === "error"
-          ) {
-            pushEvent({
-              type: type as RunEvent["type"],
-              ts,
-              message: payload.message ?? payload.status,
-              error: payload.error,
-              payload,
-            } as RunEvent);
-          } else {
-            // Fallback: still show unknown event shapes in the timeline
-            pushEvent({
-              type: "log",
-              ts,
-              level: "warn",
-              message: `Unknown event type "${type}" from session; see payload`,
-              payload: { type, ...payload },
-            } as RunEvent);
-          }
-        }
-      );
-    } catch (e: any) {
-      toast.error("Failed to load session", { description: e.message });
+      setLoadingDetail(true);
+      const res = await getRunDetail(runId);
+      setDetail(res);
+    } catch (err: any) {
+      console.error("Failed to load run detail", err);
+      toast.error(err?.message ?? "Failed to load run detail");
+    } finally {
+      setLoadingDetail(false);
     }
-  };
+  }
 
-  const handleSseEvent = (evt: RunEvent) => {
-    if (!evt || typeof evt.type !== "string") return;
-
-    if (evt.type === "metric") {
-      const payload = evt.payload ?? {};
-      pushEvent({
-        ...evt,
-        tokens: payload.tokens ?? (evt as any).tokens,
-        cost: payload.cost ?? (evt as any).cost,
-        duration:
-          payload.latency_ms ??
-          payload.latencyMs ??
-          (evt as any).latency_ms ??
-          (evt as any).latencyMs,
-      } as RunEvent);
-    } else if (evt.type === "log") {
-      pushEvent({
-        ...evt,
-        level: evt.level ?? evt.payload?.level ?? "info",
-        message: evt.message ?? evt.payload?.message,
-      } as RunEvent);
-    } else if (
-      evt.type === "status" ||
-      evt.type === "done" ||
-      evt.type === "heartbeat"
-    ) {
-      pushEvent({
-        ...evt,
-        message: evt.message ?? evt.status ?? evt.payload?.status,
-      } as RunEvent);
-    } else if (evt.type === "error") {
-      pushEvent({
-        ...evt,
-        level: evt.level ?? "error",
-        message: evt.message ?? evt.error ?? evt.payload?.message,
-      } as RunEvent);
-    } else {
-      // Unknown type – this should already be filtered by streamRun, but
-      // keeping a fallback here makes the UI more robust.
-      pushEvent(evt);
-    }
-  };
-
-  const attachLive = (id: string) => {
-    try {
-      stopRef.current?.();
-      setRunId(id);
-      stopRef.current = streamRun(id, handleSseEvent);
-      toast.success("Attached to run", { description: id });
-    } catch (e: any) {
-      toast.error("Failed to attach", { description: e.message });
-    }
-  };
-
-  const runQuickTest = async () => {
-    try {
-      const res = await startRun({
-        source: "clinic",
-        payload: { prompt: "Quick health check" },
-        model: "gpt-4",
-        metadata: { surface: "clinic", mode: "quick-test" },
-      });
-      attachLive(res.runId);
-    } catch (e: any) {
-      toast.error("Quick run failed", { description: e.message });
-    }
-  };
-
-  const replay = async () => {
-    if (!selectedId) return;
-    try {
-      const res = await replaySession(selectedId);
-      toast.success("Replay started", { description: res.runId });
-
-      clearEvents();
-      setRunId(res.runId);
-      stopRef.current?.();
-      stopRef.current = streamRun(res.runId, handleSseEvent);
-    } catch (e: any) {
-      toast.error("Replay failed", { description: e.message });
-    }
-  };
-
-  const exportJson = async () => {
-    if (!selectedId) return;
-    try {
-      const res = await exportSession(selectedId);
-      const blob = new Blob([JSON.stringify(res.session, null, 2)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `session-${selectedId}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e: any) {
-      toast.error("Export failed", { description: e.message });
-    }
-  };
+  const selectedRun = runs.find((r) => r.id === selectedRunId) ?? null;
 
   return (
     <div className="flex h-full">
-      {/* Left: session list */}
-      <div className="w-80 border-r border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20">
-        <div className="flex items-center gap-2 border-b border-[hsl(var(--border))] px-3 py-2 text-xs">
-          <span className="font-medium">Sessions</span>
+      {/* Left pane: run list + filters */}
+      <div className="w-80 border-r border-[hsl(var(--border))] bg-[hsl(var(--panel))] flex flex-col">
+        <div className="border-b border-[hsl(var(--border))] p-3 flex items-center justify-between gap-2">
+          <div className="text-[13px] font-medium">Runs</div>
           <Button
-            className="ml-auto"
             size="xs"
-            variant="secondary"
-            onClick={runQuickTest}
+            variant="outline"
+            disabled={loadingRuns}
+            onClick={() => loadRuns()}
           >
-            Quick run
+            Refresh
           </Button>
         </div>
-        {loading && (
-          <div className="p-3 text-xs opacity-70">Loading sessions…</div>
-        )}
-        <ul className="max-h-[calc(100vh-80px)] overflow-auto text-xs">
-          {sessions.map((s) => (
-            <li
-              key={s.requestId}
-              className={`cursor-pointer px-3 py-2 hover:bg-[hsl(var(--muted))] ${
-                s.requestId === selectedId ? "bg-[hsl(var(--muted))]" : ""
-              }`}
-              onClick={() => openSession(s.requestId)}
-            >
-              <div className="flex items-center justify-between">
-                <span className="truncate">{s.requestId}</span>
-                <span className="text-[10px] uppercase opacity-60">
-                  {s.status}
-                </span>
-              </div>
-              <div className="mt-0.5 text-[10px] opacity-60">
-                {s.model} · {s.tokens ?? "?"} tok · {s.latencyMs ?? "?"}ms
-              </div>
-            </li>
-          ))}
-          {!loading && sessions.length === 0 && (
-            <li className="px-3 py-2 text-xs opacity-60">
-              No sessions yet. Run something from Pro.
-            </li>
+
+        <div className="p-3 flex flex-col gap-2">
+          <Select
+            label="Status"
+            value={statusFilter}
+            onChange={(value) => setStatusFilter(value)}
+            options={options}
+          />
+          <Input
+            label="Search by run id"
+            placeholder="run_..."
+            onChange={(e) => {
+              const value = e.target.value.trim();
+              if (!value) {
+                void loadRuns();
+                return;
+              }
+              const exact = runs.find((r) => r.id === value);
+              if (exact) {
+                setSelectedRunId(exact.id);
+              }
+            }}
+          />
+        </div>
+
+        <div className="flex-1 overflow-auto">
+          {loadingRuns && runs.length === 0 ? (
+            <div className="p-3 text-[12px] text-[hsl(var(--muted-fg))]">
+              Loading runs…
+            </div>
+          ) : runs.length === 0 ? (
+            <div className="p-3 text-[12px] text-[hsl(var(--muted-fg))]">
+              No runs yet. Trigger runs from Vibe / Pro / Flow and they will
+              appear here.
+            </div>
+          ) : (
+            <ul className="divide-y divide-[hsl(var(--border))]">
+              {runs.map((run) => {
+                const active = run.id === selectedRunId;
+                return (
+                  <li key={run.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRunId(run.id)}
+                      className={[
+                        "w-full text-left px-3 py-2 text-[12px] flex flex-col gap-1 hover:bg-[hsl(var(--muted))]",
+                        active ? "bg-[hsl(var(--muted))]" : "",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium truncate">{run.id}</span>
+                        <span className="rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide">
+                          {run.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-[hsl(var(--muted-fg))]">
+                        <span className="truncate">
+                          {run.model ?? "model: n/a"}
+                        </span>
+                        <span>
+                          {new Date(run.created_at).toLocaleTimeString()}
+                        </span>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
-        </ul>
+        </div>
       </div>
 
-      {/* Right: timeline view */}
-      <div className="flex flex-1 flex-col">
-        <div className="flex items-center gap-2 border-b border-[hsl(var(--border))] px-3 py-2 text-xs">
-          <span className="font-medium">Timeline</span>
-          {runId && (
-            <span className="text-[11px] opacity-70">
-              Live run: <span className="font-mono">{runId}</span>
-            </span>
-          )}
-          <div className="ml-auto flex items-center gap-1">
-            <Input
-              className="h-7 w-40 text-xs"
-              placeholder="Attach run ID…"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  const value = (e.target as HTMLInputElement).value.trim();
-                  if (value) attachLive(value);
-                }
-              }}
-            />
-            <Select
-              label=""
-              options={[
-                ["all", "All events"],
-                ["log", "Logs only"],
-                ["metric", "Metrics only"],
-              ]}
-              value="all"
-              onChange={() => {}}
-            />
-            <Button
-              size="xs"
-              variant="primary"
-              className="hover:bg-green-700"
-              type="button"
-              onClick={replay}
-              disabled={!selectedId}
-            >
-              Replay
-            </Button>
-            <Button
-              size="xs"
-              variant="ghost"
-              type="button"
-              onClick={exportJson}
-              disabled={!selectedId}
-            >
-              Export JSON
-            </Button>
+      {/* Right pane: details */}
+      <div className="flex-1 flex flex-col bg-[hsl(var(--bg))]">
+        <div className="border-b border-[hsl(var(--border))] px-4 py-3 flex items-center justify-between">
+          <div className="flex flex-col gap-1">
+            <div className="text-[13px] font-medium">
+              {selectedRun ? selectedRun.id : "Run details"}
+            </div>
+            {selectedRun && (
+              <div className="text-[11px] text-[hsl(var(--muted-fg))]">
+                Status: {selectedRun.status} · Model:{" "}
+                {selectedRun.model ?? "n/a"} · Latency:{" "}
+                {selectedRun.latency_ms ?? 0}ms · Tokens:{" "}
+                {selectedRun.tokens_total ?? 0} · Cost: $
+                {(selectedRun.cost_estimate_usd ?? 0).toFixed(6)}
+              </div>
+            )}
           </div>
         </div>
 
-        <ul className="flex-1 space-y-1.5 overflow-auto p-3 text-xs">
-          {events.map((e, idx) => (
-            <li
-              key={`${idx}-${e.type}-${e.ts ?? "no-ts"}`}
-              className="rounded border border-[hsl(var(--border))] bg-background/80 px-3 py-1.5"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-mono text-[11px] uppercase opacity-70">
-                  {e.type}
-                </span>
-                {"duration" in e && (e as any).duration !== undefined && (
-                  <span className="text-[10px] opacity-60">
-                    {(e as any).duration} ms
-                  </span>
-                )}
+        <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 overflow-auto px-4 py-3">
+            {loadingDetail && (
+              <div className="text-[12px] text-[hsl(var(--muted-fg))]">
+                Loading run detail…
               </div>
-              {"message" in e && e.message && (
-                <div className="mt-0.5 text-[11px] opacity-80">{e.message}</div>
-              )}
-              {"tokens" in e && (e as any).tokens !== undefined && (
-                <div className="mt-0.5 text-[10px] opacity-60">
-                  Tokens: {(e as any).tokens}{" "}
-                  {"cost" in e ? `(cost: ${(e as any).cost})` : ""}
-                </div>
-              )}
-            </li>
-          ))}
-          {events.length === 0 && (
-            <li className="p-2 text-xs opacity-60">
-              Select a session to inspect its timeline.
-            </li>
-          )}
-        </ul>
+            )}
+            {!loadingDetail && !detail && (
+              <div className="text-[12px] text-[hsl(var(--muted-fg))]">
+                Select a run on the left to see details.
+              </div>
+            )}
+            {!loadingDetail && detail && (
+              <div className="space-y-4">
+                <section>
+                  <h2 className="text-[12px] font-semibold mb-2">Metadata</h2>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-[11px]">
+                    <span className="text-[hsl(var(--muted-fg))]">Run ID</span>
+                    <span>{detail.run.id}</span>
+                    <span className="text-[hsl(var(--muted-fg))]">
+                      Agent ID
+                    </span>
+                    <span>{detail.run.agent_id ?? "—"}</span>
+                    <span className="text-[hsl(var(--muted-fg))]">Status</span>
+                    <span>{detail.run.status}</span>
+                    <span className="text-[hsl(var(--muted-fg))]">Model</span>
+                    <span>{detail.run.model ?? "—"}</span>
+                    <span className="text-[hsl(var(--muted-fg))]">Source</span>
+                    <span>{detail.run.source ?? "—"}</span>
+                    <span className="text-[hsl(var(--muted-fg))]">Created</span>
+                    <span>
+                      {new Date(detail.run.created_at).toLocaleString()}
+                    </span>
+                    <span className="text-[hsl(var(--muted-fg))]">Updated</span>
+                    <span>
+                      {new Date(detail.run.updated_at).toLocaleString()}
+                    </span>
+                  </div>
+                </section>
+
+                <section>
+                  <h2 className="text-[12px] font-semibold mb-2">Events</h2>
+                  {detail.events.length === 0 ? (
+                    <div className="text-[11px] text-[hsl(var(--muted-fg))]">
+                      No events recorded for this run.
+                    </div>
+                  ) : (
+                    <ul className="space-y-1.5 text-[11px]">
+                      {detail.events.map((e) => (
+                        <li
+                          key={e.id}
+                          className="rounded-md bg-[hsl(var(--panel))] px-3 py-2"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-mono text-[10px] uppercase">
+                              {e.type}
+                            </span>
+                            <span className="text-[10px] text-[hsl(var(--muted-fg))]">
+                              {new Date(e.created_at).toLocaleTimeString()}
+                            </span>
+                          </div>
+                          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap wrap-break-word text-[10px]">
+                            {JSON.stringify(e.payload ?? {}, null, 2)}
+                          </pre>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

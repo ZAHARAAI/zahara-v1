@@ -1,33 +1,39 @@
 "use client";
 
-import BackToFlowBuilder from "@/components/Pro/BackToFlowBuilder";
+import { useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+
+import Toolbar from "@/components/Pro/Toolbar";
+import Editor from "@/components/Pro/Editor";
 import FileTree from "@/components/Pro/FileTree";
 import LogPanel from "@/components/Pro/LogPanel";
-import Toolbar from "@/components/Pro/Toolbar";
-import dynamic from "next/dynamic";
-import { Suspense } from "react";
-
-const Editor = dynamic(() => import("@/components/Pro/Editor"));
+import { useProStore } from "@/hooks/useProStore";
 
 export default function ProPage() {
+  const searchParams = useSearchParams();
+  const { agentId, setAgentId } = useProStore();
+
+  useEffect(() => {
+    const fromQuery = searchParams.get("agentId");
+    if (fromQuery && fromQuery !== agentId) {
+      setAgentId?.(fromQuery);
+    }
+  }, [searchParams, agentId, setAgentId]);
+
   return (
-    <div className="grid grid-rows-[auto_auto_1fr_180px] gap-3 h-[calc(100vh-2rem)] overflow-auto ">
-      <Suspense fallback={<></>}>
-        <BackToFlowBuilder />
-      </Suspense>
-
+    <div className="flex h-[calc(100vh-3rem)] flex-col gap-3">
       <Toolbar />
-
-      <div className="grid grid-cols-12 gap-3">
-        <div className="col-span-3 border border-[hsl(var(--border))] rounded-2xl overflow-hidden">
+      <div className="flex flex-1 gap-3 overflow-hidden">
+        <div className="w-64 border border-[hsl(var(--border))] rounded-2xl overflow-hidden">
           <FileTree />
         </div>
-        <div className="col-span-9 border border-[hsl(var(--border))] rounded-2xl overflow-hidden">
+        <div className="flex-1 border border-[hsl(var(--border))] rounded-2xl overflow-hidden">
           <Editor />
         </div>
+        <div className="w-80 border border-[hsl(var(--border))] rounded-2xl overflow-hidden">
+          <LogPanel />
+        </div>
       </div>
-
-      <LogPanel />
     </div>
   );
 }
