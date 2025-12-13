@@ -4,8 +4,7 @@ import time
 from typing import Dict, List, Optional
 
 import litellm
-import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -26,6 +25,7 @@ class ChatCompletionRequest(BaseModel):
     model: str
     messages: List[ChatMessage]
     temperature: Optional[float] = 0.7
+    provider: Optional[str] = None
 
 
 # ---------- Config ----------
@@ -154,9 +154,14 @@ async def list_models():
 
 # ---------- Chat Completions (OpenAI-compatible) ----------
 @app.post("/v1/chat/completions")
-async def chat_completions(req: ChatCompletionRequest):
-    provider = router_config.provider_for_model(req.model)
-    if not router_config.has_provider_key(provider):
+async def chat_completions(
+    req: ChatCompletionRequest,
+    x_provider_api_key: Optional[str] = Header(None, alias="X-Provider-Api-Key"),
+):
+    provider = req.provider or router_config.provider_for_model(req.model)
+
+    # If no per-user key, we require env key for that provider
+    if not x_provider_api_key and not router_config.has_provider_key(provider):
         raise HTTPException(
             status_code=501,
             detail=f"Not implemented: No {provider} API keys configured for model '{req.model}'",
@@ -164,18 +169,21 @@ async def chat_completions(req: ChatCompletionRequest):
 
     # Convert messages
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
-
-    # Map provider to litellm model id if needed
     model = req.model
+
     try:
         start = time.time()
-        # Let litellm route based on the model string; keys are in env already
+
+        # Use per-user key if provided, otherwise fall back to env
         resp = litellm.completion(
-            model=model, messages=messages, temperature=req.temperature or 0.7
+            model=model,
+            messages=messages,
+            temperature=req.temperature or 0.7,
+            api_key=x_provider_api_key or None,
         )
+
         elapsed_ms = int((time.time() - start) * 1000)
 
-        # resp is already OpenAI-like; normalize a minimal subset
         choice = resp.choices[0]
         message = getattr(choice, "message", None) or (
             choice.get("message") if isinstance(choice, dict) else None
@@ -208,11 +216,7 @@ async def chat_completions(req: ChatCompletionRequest):
             "provider": provider,
             "latency_ms": elapsed_ms,
         }
+
     except Exception as e:
         logger.exception("Provider error")
         raise HTTPException(status_code=502, detail=f"Provider error: {e}")
-
-
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", "8000"))
-    uvicorn.run(app, host="0.0.0.0", port=port)

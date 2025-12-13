@@ -197,7 +197,7 @@ def execute_run_via_router(run_id: str) -> None:
             db.commit()
             return
 
-        key_secret = _decrypt_secret(provider_key.secret_encrypted)
+        key_secret = _decrypt_secret(provider_key.encrypted_key)
 
         messages = [
             {"role": "system", "content": system_prompt},

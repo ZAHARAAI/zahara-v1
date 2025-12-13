@@ -6,7 +6,8 @@ DEMO_TOKEN = os.getenv("DEMO_TOKEN", "zahara-demo-123")
 
 
 def check_auth(
-    authorization: str | None = Header(None), x_api_key: str | None = Header(None)
+    authorization: str | None = Header(None, alias="Authorization"),
+    x_api_key: str | None = Header(None, alias="x-api-key"),
 ) -> str:
     token = None
     if authorization:

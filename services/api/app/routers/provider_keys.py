@@ -76,7 +76,7 @@ def _to_item(model: ProviderKeyModel) -> ProviderKeyItem:
         if model.last_tested_at
         else None,
         created_at=_dt_to_iso_z(model.created_at),
-        updated_at=_dt_to_iso_z(model.updated_at),
+        updated_at=_dt_to_iso_z(model.last_tested_at),
     )
 
 
@@ -108,7 +108,7 @@ def create_provider_key(
             user_id=current_user.id,
             provider=payload.provider,
             label=payload.label,
-            secret_encrypted=enc,
+            encrypted_key=enc,
         )
         db.add(pk)
         db.commit()
@@ -173,7 +173,7 @@ def test_provider_key(
             },
         )
 
-    secret = _decrypt_secret(pk.secret_encrypted)
+    secret = _decrypt_secret(pk.encrypted_key)
     status_value = "error"
     message: Optional[str] = None
 
