@@ -156,67 +156,53 @@ async def list_models():
 @app.post("/v1/chat/completions")
 async def chat_completions(
     req: ChatCompletionRequest,
-    x_provider_api_key: Optional[str] = Header(None, alias="X-Provider-Api-Key"),
+    x_provider_api_key: str | None = Header(default=None, alias="X-Provider-Api-Key"),
 ):
+    """
+    Central LLM router endpoint.
+
+    - Supports per-user provider keys via X-Provider-Api-Key
+    - Falls back to env-based provider keys if header is not present
+    """
+
+    start = time.time()
+
+    # 1. Resolve provider
     provider = req.provider or router_config.provider_for_model(req.model)
 
-    # If no per-user key, we require env key for that provider
-    if not x_provider_api_key and not router_config.has_provider_key(provider):
-        raise HTTPException(
-            status_code=501,
-            detail=f"Not implemented: No {provider} API keys configured for model '{req.model}'",
-        )
+    # 2. Resolve API key
+    if x_provider_api_key:
+        api_key = x_provider_api_key
+    else:
+        api_key = router_config.api_key_for_provider(provider)
 
-    # Convert messages
-    messages = [{"role": m.role, "content": m.content} for m in req.messages]
-    model = req.model
+    if not api_key:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No API key available for provider '{provider}'",
+        )
 
     try:
-        start = time.time()
-
-        # Use per-user key if provided, otherwise fall back to env
-        resp = litellm.completion(
-            model=model,
-            messages=messages,
-            temperature=req.temperature or 0.7,
-            api_key=x_provider_api_key or None,
+        response = litellm.completion(
+            model=req.model,
+            messages=req.messages,
+            temperature=req.temperature,
+            api_key=api_key,  # 🔑 key injection
         )
-
-        elapsed_ms = int((time.time() - start) * 1000)
-
-        choice = resp.choices[0]
-        message = getattr(choice, "message", None) or (
-            choice.get("message") if isinstance(choice, dict) else None
-        )
-        content = (
-            message.get("content")
-            if isinstance(message, dict)
-            else getattr(message, "content", "")
-        )
-
-        return {
-            "id": getattr(resp, "id", "chatcmpl-router"),
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": model,
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": content},
-                    "finish_reason": getattr(choice, "finish_reason", None)
-                    or (
-                        choice.get("finish_reason")
-                        if isinstance(choice, dict)
-                        else None
-                    ),
-                }
-            ],
-            "usage": getattr(resp, "usage", None)
-            or {"prompt_tokens": None, "completion_tokens": None, "total_tokens": None},
-            "provider": provider,
-            "latency_ms": elapsed_ms,
-        }
-
     except Exception as e:
-        logger.exception("Provider error")
-        raise HTTPException(status_code=502, detail=f"Provider error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=str(e),
+        )
+
+    latency_ms = int((time.time() - start) * 1000)
+
+    # Normalize response (OpenAI-style)
+    return {
+        "id": response.get("id"),
+        "model": response.get("model", req.model),
+        "provider": provider,
+        "choices": response.get("choices", []),
+        "usage": response.get("usage", {}),
+        "latency_ms": latency_ms,
+    }

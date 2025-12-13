@@ -3,6 +3,7 @@
     "agui",
     "fastapi",
     "groq",
+    "litellm",
     "Normalise",
     "Normalised",
     "ondelete",
