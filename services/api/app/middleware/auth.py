@@ -85,10 +85,13 @@ def get_current_user(
     This lets all existing Depends(get_current_user) work with the
     current web frontend, which only sends X-API-Key and has no login UI.
     """
-    user = db.query(User).order_by(User.id.asc()).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No demo user found. Run seed_data.py to create a default user.",
-        )
-    return user
+    try:
+        user = db.query(User).order_by(User.id.asc()).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="No demo user found. Run seed_data.py to create a default user.",
+            )
+        return user
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
