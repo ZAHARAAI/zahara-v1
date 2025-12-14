@@ -395,3 +395,88 @@ export async function getRunDetail(runId: string): Promise<RunDetailResponse> {
   }
   return data;
 }
+
+/* -------------------- Provider keys -------------------- */
+
+export interface ProviderKey {
+  id: string;
+  provider: string;
+  label: string;
+  last_test_status?: string | null;
+  last_tested_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ProviderKeyListResponse {
+  ok: boolean;
+  items: ProviderKey[];
+}
+
+export async function listProviderKeys(): Promise<ProviderKey[]> {
+  const json = await api("/provider-keys");
+  const data = json as ProviderKeyListResponse & { error?: any };
+  if (data.ok === false) {
+    const msg = data.error?.message ?? "Failed to list provider keys";
+    throw new Error(msg);
+  }
+  return data.items ?? [];
+}
+
+export async function createProviderKey(params: {
+  provider: string;
+  label: string;
+  secret: string;
+}): Promise<ProviderKey> {
+  const json = await api("/provider-keys", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+  const data = json as ProviderKey & { ok?: boolean; error?: any };
+  // Router returns the item directly with 201.
+  if ((data as any).ok === false) {
+    const msg = (data as any).error?.message ?? "Failed to create provider key";
+    throw new Error(msg);
+  }
+  return data;
+}
+
+export async function deleteProviderKey(id: string): Promise<void> {
+  const json = await api(`/provider-keys/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  const data = json as { ok?: boolean; error?: any };
+  if (data.ok === false) {
+    const msg = data.error?.message ?? "Failed to delete provider key";
+    throw new Error(msg);
+  }
+}
+
+export async function testProviderKey(id: string): Promise<{
+  id: string;
+  status: string;
+  message?: string;
+  last_tested_at?: string;
+}> {
+  const json = await api(`/provider-keys/${encodeURIComponent(id)}/test`, {
+    method: "POST",
+  });
+  const data = json as {
+    ok: boolean;
+    id: string;
+    status: string;
+    message?: string;
+    last_tested_at?: string;
+    error?: any;
+  };
+  if (data.ok === false) {
+    const msg = data.error?.message ?? "Failed to test provider key";
+    throw new Error(msg);
+  }
+  return {
+    id: data.id,
+    status: data.status,
+    message: data.message,
+    last_tested_at: data.last_tested_at,
+  };
+}

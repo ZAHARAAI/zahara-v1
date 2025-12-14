@@ -1,97 +1,49 @@
-from datetime import datetime, timedelta
+from __future__ import annotations
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
-from passlib.context import CryptContext
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from ..auth import check_auth
-from ..config import settings
+from ..context.request_context import set_request_context
 from ..database import get_db
 from ..models.user import User
-
-security = HTTPBearer()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+from ..security.jwt_auth import decode_token
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    """
+    Production JWT auth:
+      Authorization: Bearer <token>
 
-
-def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
-
-
-def create_access_token(data: dict, expires_delta: timedelta = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(
-            minutes=settings.access_token_expire_minutes
-        )
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(
-        to_encode, settings.secret_key.get_secret_value(), algorithm=settings.algorithm
+    Sets request context for logging:
+      user_id + auth_type
+    """
+    auth = (
+        request.headers.get("authorization")
+        or request.headers.get("Authorization")
+        or ""
     )
-    return encoded_jwt
-
-
-def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    try:
-        payload = jwt.decode(
-            credentials.credentials,
-            settings.secret_key.get_secret_value(),
-            algorithms=[settings.algorithm],
-        )
-        username: str = payload.get("sub")
-        if username is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Could not validate credentials",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        return username
-    except JWTError:
+    if not auth.lower().startswith("bearer "):
+        set_request_context(user_id=None, auth_type="anonymous")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="unauthorized"
         )
 
-
-# def get_current_user(
-#     username: str = Depends(verify_token), db: Session = Depends(get_db)
-# ):
-#     user = db.query(User).filter(User.username == username).first()
-#     if user is None:
-#         raise HTTPException(
-#             status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
-#         )
-#     return user
-
-
-def get_current_user(
-    token: str = Depends(check_auth),
-    db: Session = Depends(get_db),
-) -> User:
-    """
-    TEMPORARY (Job 6 demo): resolve current_user from the API key instead of JWT.
-
-    - Uses check_auth (X-API-Key / Authorization) to verify the request
-    - Then returns the first user in the DB (seed_data creates an admin user)
-
-    This lets all existing Depends(get_current_user) work with the
-    current web frontend, which only sends X-API-Key and has no login UI.
-    """
+    token = auth.split(" ", 1)[1].strip()
     try:
-        user = db.query(User).order_by(User.id.asc()).first()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="No demo user found. Run seed_data.py to create a default user.",
-            )
-        return user
-    except Exception as e:
-        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
+        payload = decode_token(token)
+        user_id = int(payload.get("uid"))
+    except Exception:
+        set_request_context(user_id=None, auth_type="anonymous")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="unauthorized"
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        set_request_context(user_id=None, auth_type="anonymous")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="unauthorized"
+        )
+
+    set_request_context(user_id=user.id, auth_type="jwt")
+    return user

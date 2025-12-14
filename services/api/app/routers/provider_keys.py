@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -13,34 +12,25 @@ from ..database import get_db
 from ..middleware.auth import get_current_user
 from ..models.provider_key import ProviderKey as ProviderKeyModel
 from ..models.user import User
+from ..security.provider_keys_crypto import decrypt_secret, encrypt_secret
 
-router = APIRouter(prefix="/provider-keys", tags=["provider-keys"])
-
-ROUTER_BASE_URL = os.getenv("LLM_ROUTER_URL")
+router = APIRouter(prefix="/keys", tags=["provider_keys"])
 
 
-def _dt_to_iso_z(dt: Optional[datetime]) -> str:
-    if dt is None:
-        return ""
+def _dt_to_iso_z(dt: datetime) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-# NOTE: In a real deployment you should use a proper KMS or encryption library.
-# For now these are no-ops so we don't add new dependencies in this sprint.
-def _encrypt_secret(raw: str) -> str:
-    return raw
-
-
-def _decrypt_secret(enc: str) -> str:
-    return enc
-
-
-class ProviderKeyCreate(BaseModel):
-    provider: str = Field(..., description="Provider id, e.g. openai, anthropic")
-    label: str = Field(..., description="Friendly name for this key")
-    secret: str = Field(..., description="The provider API key")
+def _mask(raw: str) -> str:
+    # Do not show secrets. Show only last 4.
+    raw = (raw or "").strip()
+    if not raw:
+        return "****"
+    if len(raw) <= 4:
+        return "****"
+    return "****" + raw[-4:]
 
 
 class ProviderKeyItem(BaseModel):
@@ -50,12 +40,26 @@ class ProviderKeyItem(BaseModel):
     last_test_status: Optional[str] = None
     last_tested_at: Optional[str] = None
     created_at: str
-    updated_at: str
+    updated_at: Optional[str] = None
 
 
 class ProviderKeyListResponse(BaseModel):
     ok: bool = True
     items: List[ProviderKeyItem]
+
+
+class ProviderKeyCreate(BaseModel):
+    provider: str = Field(..., description="Provider id, e.g. openai, anthropic")
+    label: str = Field(..., description="Friendly label for the key")
+    key: str = Field(..., description="Raw API key to store encrypted-at-rest")
+
+
+class ProviderKeyCreateResponse(BaseModel):
+    ok: bool = True
+    id: str
+    provider: str
+    label: str
+    masked_key: str
 
 
 class ProviderKeyTestResponse(BaseModel):
@@ -76,7 +80,7 @@ def _to_item(model: ProviderKeyModel) -> ProviderKeyItem:
         if model.last_tested_at
         else None,
         created_at=_dt_to_iso_z(model.created_at),
-        updated_at=_dt_to_iso_z(model.last_tested_at),
+        updated_at=_dt_to_iso_z(model.last_tested_at) if model.last_tested_at else None,
     )
 
 
@@ -88,41 +92,73 @@ def list_provider_keys(
     rows = (
         db.query(ProviderKeyModel)
         .filter(ProviderKeyModel.user_id == current_user.id)
-        .order_by(ProviderKeyModel.created_at.asc())
+        .order_by(ProviderKeyModel.created_at.desc())
         .all()
     )
-    items = [_to_item(r) for r in rows]
-    return ProviderKeyListResponse(ok=True, items=items)
+    return ProviderKeyListResponse(ok=True, items=[_to_item(r) for r in rows])
 
 
-@router.post("/", response_model=ProviderKeyItem, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=ProviderKeyCreateResponse)
 def create_provider_key(
-    payload: ProviderKeyCreate,
+    body: ProviderKeyCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> ProviderKeyItem:
-    try:
-        enc = _encrypt_secret(payload.secret)
+) -> ProviderKeyCreateResponse:
+    provider = body.provider.strip().lower()
+    label = body.label.strip()
 
-        pk = ProviderKeyModel(
-            user_id=current_user.id,
-            provider=payload.provider,
-            label=payload.label,
-            encrypted_key=enc,
-        )
-        db.add(pk)
-        db.commit()
-        db.refresh(pk)
-        return _to_item(pk)
-    except Exception as e:
-        db.rollback()
+    if not provider:
         raise HTTPException(
-            status_code=500,
-            detail={"ok": False, "error": f"Failed to create provider key: {e}"},
+            status_code=400,
+            detail={
+                "ok": False,
+                "error": {"code": "INVALID", "message": "provider is required"},
+            },
+        )
+    if not label:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "ok": False,
+                "error": {"code": "INVALID", "message": "label is required"},
+            },
         )
 
+    raw_key = body.key.strip()
+    if not raw_key:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "ok": False,
+                "error": {"code": "INVALID", "message": "key is required"},
+            },
+        )
 
-@router.delete("/{key_id}", response_model=dict)
+    enc = encrypt_secret(raw_key)
+
+    pk = ProviderKeyModel(
+        user_id=current_user.id,
+        provider=provider,
+        label=label,
+        encrypted_key=enc,
+        last_test_status="never",
+        last_tested_at=None,
+    )
+
+    db.add(pk)
+    db.commit()
+    db.refresh(pk)
+
+    return ProviderKeyCreateResponse(
+        ok=True,
+        id=pk.id,
+        provider=pk.provider,
+        label=pk.label,
+        masked_key=_mask(raw_key),
+    )
+
+
+@router.delete("/{key_id}")
 def delete_provider_key(
     key_id: str,
     current_user: User = Depends(get_current_user),
@@ -173,34 +209,51 @@ def test_provider_key(
             },
         )
 
-    secret = _decrypt_secret(pk.encrypted_key)
-    status_value = "error"
-    message: Optional[str] = None
+    # Decrypt safely
+    try:
+        raw_key = decrypt_secret(pk.encrypted_key)
+    except ValueError as e:
+        pk.last_test_status = "error"
+        pk.last_tested_at = datetime.now(timezone.utc)
+        db.add(pk)
+        db.commit()
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "ok": False,
+                "error": {"code": "DECRYPT_FAILED", "message": str(e)},
+            },
+        )
 
-    url = ROUTER_BASE_URL.rstrip("/") + "/v1/chat/completions"
-    payload = {
-        "model": "gpt-4.1-mini",
-        "messages": [{"role": "user", "content": "ping"}],
-        "temperature": 0.0,
-        "provider": pk.provider,
-    }
+    provider = (pk.provider or "").lower()
+    status_value = "error"
+    message = None
 
     try:
-        resp = httpx.post(
-            url,
-            json=payload,
-            headers={"X-Provider-Api-Key": secret},
-            timeout=15.0,
-        )
-        if resp.status_code == 200:
-            status_value = "ok"
-            message = "Provider key test succeeded"
+        # Minimal cheap test calls (no spending / minimal)
+        timeout = httpx.Timeout(10.0, connect=5.0)
+        async_client = httpx.Client(timeout=timeout)
+
+        if provider == "openai":
+            r = async_client.get(
+                "https://api.openai.com/v1/models",
+                headers={"Authorization": f"Bearer {raw_key}"},
+            )
+            if r.status_code == 200:
+                status_value = "ok"
+                message = "OpenAI key is valid."
+            else:
+                message = f"OpenAI returned {r.status_code}: {r.text[:200]}"
+
         else:
+            message = f"Provider '{provider}' test not implemented yet."
             status_value = "error"
-            message = f"Router HTTP {resp.status_code}"
+
+        async_client.close()
+
     except Exception as e:
         status_value = "error"
-        message = f"Router error: {e}"
+        message = f"Test call failed: {e}"
 
     pk.last_test_status = status_value
     pk.last_tested_at = datetime.now(timezone.utc)

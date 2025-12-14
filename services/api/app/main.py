@@ -28,6 +28,7 @@ from .routers import (
     mcp,
     provider_keys,
     run,
+    usage,
     vector,
     version,
 )
@@ -131,6 +132,7 @@ app.include_router(llm_router.v1_router)
 app.include_router(mcp.router)
 app.include_router(provider_keys.router)
 app.include_router(run.router)
+app.include_router(usage.router)
 app.include_router(vector.router)
 app.include_router(version.router)
 

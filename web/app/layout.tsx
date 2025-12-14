@@ -33,7 +33,7 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
         />
       </head>
 
-      <body className="flex min-h-screen bg-[hsl(var(--bg))] text-[hsl(var(--fg))] min-w-[1300px]">
+      <body className="flex min-h-screen bg-[hsl(var(--bg))] text-[hsl(var(--fg))] min-w-[1200px]">
         <LeftNav />
 
         <Providers>{children}</Providers>

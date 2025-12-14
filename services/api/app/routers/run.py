@@ -15,13 +15,12 @@ from fastapi import (
     status,
 )
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..auth import check_auth  # legacy demo auth for /run
 from ..database import get_db
 from ..middleware.auth import get_current_user
-from ..models.agent import Agent as AgentModel
 from ..models.run import Run as RunModel
 from ..models.run_event import RunEvent as RunEventModel
 from ..models.user import User
@@ -51,22 +50,15 @@ def _new_run_id() -> str:
 
 class RunRequest(BaseModel):
     """
-    Run start payload used by both new and legacy endpoints.
-
-    For Job 6 we care about:
-    - input: user message or payload
-    - source: where the run was triggered from (vibe | pro | flow | agui | api | clinic)
-    - config: optional execution config (stored on the run row)
+    Run start payload used for legacy /runs and compatibility shims.
+    New Job6 flow is typically /agents/{id}/run, but keeping this for old clients.
     """
 
-    input: str = Field(..., description="User input or message for the agent.")
-    source: str = Field(
-        "vibe",
-        description="Run source: vibe | pro | flow | agui | api | clinic",
-    )
-    config: Optional[Dict[str, Any]] = Field(
-        default=None, description="Optional execution config to persist on the run."
-    )
+    prompt: str = ""
+    model: str = "gpt-4o-mini"
+    provider: Optional[str] = None
+    source: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
 
 
 class RunResponse(BaseModel):
@@ -171,81 +163,52 @@ def _run_to_detail(run: RunModel) -> RunDetail:
     )
 
 
-def _format_sse(event: str, data: Any) -> str:
-    if not isinstance(data, str):
-        data_str = json.dumps(data)
-    else:
-        data_str = data
-    return f"event: {event}\ndata: {data_str}\n\n"
+def _event_to_dto(ev: RunEventModel) -> RunEventDTO:
+    return RunEventDTO(
+        id=ev.id,
+        type=ev.type,
+        payload=ev.payload,
+        created_at=_dt_to_iso_z(ev.created_at),
+    )
+
+
+def _create_event(
+    db: Session, run_id: str, type_: str, payload: Dict[str, Any]
+) -> None:
+    ev = RunEventModel(
+        run_id=run_id,
+        type=type_,
+        payload=payload,
+    )
+    db.add(ev)
+    db.commit()
 
 
 def _create_initial_events(db: Session, run: RunModel, body: RunRequest) -> None:
-    """
-    Create initial run events for the newly-started run.
-
-    These are simple and will be augmented by the LLM router in Job 6 Step 4.
-    """
-    evt = RunEventModel(
-        run_id=run.id,
-        type="log",
-        payload={
-            "message": "Run started",
-            "input": body.input,
-            "source": body.source,
+    _create_event(
+        db,
+        run.id,
+        "system",
+        {
+            "request_id": run.request_id,
+            "run_id": run.id,
+            "ts": _dt_to_iso_z(datetime.now(timezone.utc)),
+            "model": run.model,
+            "provider": run.provider,
+            "source": run.source,
         },
     )
-    db.add(evt)
-    db.commit()
-
-
-def _start_run_record(
-    db: Session,
-    *,
-    current_user: User,
-    agent: AgentModel,
-    body: RunRequest,
-    request_id: Optional[str] = None,
-) -> RunModel:
-    """
-    Create the Run row and initial events.
-
-    Actual LLM execution will be handled by the centralized router (Job 6).
-    """
-    run_id = _new_run_id()
-    if not request_id:
-        request_id = str(uuid4())
-
-    # These will later be populated from the router / agent spec
-    model = None
-    provider = None
-
-    run = RunModel(
-        id=run_id,
-        agent_id=agent.id,
-        user_id=current_user.id,
-        request_id=request_id,
-        status="running",
-        model=model,
-        provider=provider,
-        source=body.source,
-        latency_ms=None,
-        tokens_in=None,
-        tokens_out=None,
-        tokens_total=None,
-        cost_estimate_usd=None,
-        error_message=None,
-        config=body.config,
-    )
-    db.add(run)
-    db.commit()
-    db.refresh(run)
-
-    _create_initial_events(db, run, body)
-    return run
+    if body.prompt:
+        _create_event(
+            db,
+            run.id,
+            "log",
+            {"message": "prompt_received", "prompt_preview": body.prompt[:200]},
+        )
 
 
 # ---------------------------------------------------------------------------
-# Job 6: runs listing + detail for Clinic
+# Job6: Clinic list endpoint
 # ---------------------------------------------------------------------------
 
 
@@ -263,10 +226,22 @@ def list_runs(
     db: Session = Depends(get_db),
 ) -> RunListResponse:
     """
-    List runs for the authenticated user, optionally filtered by agent_id and status.
+    List runs for the authenticated user (Clinic).
 
-    Matches Job 6 spec semantics for Clinic.
+    Supports pagination via limit/offset and optional filters:
+    - agent_id: limit results to a single agent
+    - status: pending|running|success|error
     """
+    allowed_status = {"pending", "running", "success", "error"}
+    if status_filter is not None and status_filter not in allowed_status:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_status",
+                "message": f"Invalid status '{status_filter}'. Allowed: {sorted(allowed_status)}",
+            },
+        )
+
     q = db.query(RunModel).filter(RunModel.user_id == current_user.id)
 
     if agent_id:
@@ -288,169 +263,118 @@ def list_runs(
     )
 
 
+# ---------------------------------------------------------------------------
+# Run detail + events + SSE
+# ---------------------------------------------------------------------------
+
+
 @router.get("/{run_id}", response_model=RunDetailResponse)
-def get_run(
+def get_run_detail(
     run_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> RunDetailResponse:
-    """Return full run details plus associated events for Clinic detail view."""
-    run: RunModel | None = (
+    run = (
         db.query(RunModel)
-        .filter(
-            RunModel.id == run_id,
-            RunModel.user_id == current_user.id,
-        )
+        .filter(RunModel.id == run_id, RunModel.user_id == current_user.id)
         .first()
     )
     if not run:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "ok": False,
-                "error": {"code": "NOT_FOUND", "message": "Run not found"},
-            },
-        )
+        raise HTTPException(status_code=404, detail="run_not_found")
 
-    events: List[RunEventModel] = (
+    events = (
         db.query(RunEventModel)
         .filter(RunEventModel.run_id == run_id)
         .order_by(RunEventModel.created_at.asc())
+        .limit(5000)
         .all()
     )
-    events_dto = [
-        RunEventDTO(
-            id=e.id,
-            type=e.type,
-            payload=e.payload or {},
-            created_at=_dt_to_iso_z(e.created_at),
-        )
-        for e in events
-    ]
 
     return RunDetailResponse(
         ok=True,
         run=_run_to_detail(run),
-        events=events_dto,
+        events=[_event_to_dto(e) for e in events],
     )
-
-
-# ---------------------------------------------------------------------------
-# Job 6: SSE streaming – GET /runs/{run_id}/events
-# ---------------------------------------------------------------------------
-
-
-async def _event_stream(
-    db: Session,
-    run: RunModel,
-    current_user: User,
-) -> AsyncGenerator[str, None]:
-    """
-    Async generator yielding Server-Sent Events for a run.
-
-    Events:
-    - token:       streaming text tokens (to be added by router in Step 4)
-    - log:         log / debug messages
-    - tool_call:   tool invocations
-    - tool_result: tool responses
-    - error:       error events
-    - done:        terminal event
-    - ping:        heartbeat every HEARTBEAT_INTERVAL_SECONDS
-
-    The generator terminates after a done event has been sent or the run
-    status is success/error and no more events are arriving.
-    """
-    last_event_created_at: Optional[datetime] = None
-    sent_done = False
-    last_heartbeat = time.monotonic()
-
-    while True:
-        # Reload run status periodically
-        db.refresh(run)
-
-        # Fetch new events since last_event_created_at
-        q = db.query(RunEventModel).filter(RunEventModel.run_id == run.id)
-        if last_event_created_at is not None:
-            q = q.filter(RunEventModel.created_at > last_event_created_at)
-        events = q.order_by(RunEventModel.created_at.asc()).all()
-
-        for ev in events:
-            last_event_created_at = ev.created_at
-            payload = ev.payload or {}
-            event_type = ev.type or "log"
-            yield _format_sse(event_type, payload)
-            if event_type == "done":
-                sent_done = True
-
-        now = time.monotonic()
-        if now - last_heartbeat >= HEARTBEAT_INTERVAL_SECONDS:
-            last_heartbeat = now
-            # Heartbeat ping with empty payload
-            yield _format_sse("ping", {})
-
-        # If we've already sent done OR run is completed, send a final done and exit
-        if run.status in ("success", "error"):
-            if not sent_done:
-                yield _format_sse(
-                    "done",
-                    {
-                        "status": run.status,
-                        "request_id": run.request_id,
-                    },
-                )
-            break
-
-        # Avoid tight loop; also controls how quickly we see new events
-        await asyncio.sleep(1.0)
 
 
 @router.get("/{run_id}/events")
-async def stream_run_events(
+def stream_run_events(
     run_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-):
+) -> StreamingResponse:
     """
-    SSE endpoint used by V1 UI (Pro/Clinic) to stream run events.
-
-    Client usage example:
-
-        const es = new EventSource(`/runs/${runId}/events`);
-        es.addEventListener("token", ...);
-        es.addEventListener("log", ...);
-        es.addEventListener("error", ...);
-        es.addEventListener("done", ...);
-        es.addEventListener("ping", ...);
-
-    Includes a stable 3-minute heartbeat (`ping` events) as required by Job 6.
+    SSE stream of run events.
+    Emits a stable heartbeat ping every 180 seconds.
+    Injects request_id into every event payload (propagation).
     """
-    run: RunModel | None = (
+
+    run = (
         db.query(RunModel)
-        .filter(
-            RunModel.id == run_id,
-            RunModel.user_id == current_user.id,
-        )
+        .filter(RunModel.id == run_id, RunModel.user_id == current_user.id)
         .first()
     )
     if not run:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "ok": False,
-                "error": {"code": "NOT_FOUND", "message": "Run not found"},
-            },
-        )
+        raise HTTPException(status_code=404, detail="run_not_found")
 
-    generator = _event_stream(db, run, current_user)
-    return StreamingResponse(generator, media_type="text/event-stream")
+    async def event_generator() -> AsyncGenerator[bytes, None]:
+        last_id = 0
+        last_ping = time.time()
+        rid = run.request_id
+
+        while True:
+            new_events = (
+                db.query(RunEventModel)
+                .filter(RunEventModel.run_id == run_id, RunEventModel.id > last_id)
+                .order_by(RunEventModel.id.asc())
+                .limit(200)
+                .all()
+            )
+
+            for ev in new_events:
+                last_id = ev.id
+
+                payload = ev.payload or {}
+                # Propagate request_id into each event payload
+                if isinstance(payload, dict) and "request_id" not in payload:
+                    payload = {**payload, "request_id": rid}
+
+                out = {
+                    "type": ev.type,
+                    "payload": payload,
+                    "created_at": _dt_to_iso_z(ev.created_at),
+                    "request_id": rid,  # also top-level for convenience
+                }
+                yield f"data: {json.dumps(out)}\n\n".encode("utf-8")
+
+                if ev.type in {"done", "error"}:
+                    return
+
+            now = time.time()
+            if now - last_ping >= HEARTBEAT_INTERVAL_SECONDS:
+                last_ping = now
+                ping_out = {
+                    "type": "ping",
+                    "payload": {
+                        "ts": _dt_to_iso_z(datetime.now(timezone.utc)),
+                        "request_id": rid,
+                    },
+                    "created_at": _dt_to_iso_z(datetime.now(timezone.utc)),
+                    "request_id": rid,
+                }
+                yield f"data: {json.dumps(ping_out)}\n\n".encode("utf-8")
+
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 # ---------------------------------------------------------------------------
-# Legacy /run endpoint for backwards compatibility
+# Legacy /runs endpoint retained for backward compatibility
 # ---------------------------------------------------------------------------
 
 
-@router.post("/runs", response_model=RunResponse)
+@router.post("", response_model=RunResponse)
 def legacy_start_run(
     body: RunRequest,
     token: str = Depends(check_auth),
@@ -468,11 +392,11 @@ def legacy_start_run(
     run = RunModel(
         id=run_id,
         agent_id=None,
-        user_id=None,
+        user_id=1,  # legacy demo auth user
         request_id=request_id,
-        status="running",
-        model=None,
-        provider=None,
+        status="pending",
+        model=body.model,
+        provider=body.provider,
         source=body.source,
         latency_ms=None,
         tokens_in=None,
@@ -494,9 +418,7 @@ def legacy_start_run(
 # For Clinic.replay compatibility; older code imports `_launch_run`
 def _launch_run(body: RunRequest, db: Session) -> RunResponse:
     """
-    Compatibility shim used by `clinic.py` for replay.
-
-    It behaves like the legacy /run endpoint but can be called directly.
+    Compatibility shim used by `clinic.py` for repl
     """
     request_id = str(uuid4())
     run_id = _new_run_id()
@@ -504,24 +426,16 @@ def _launch_run(body: RunRequest, db: Session) -> RunResponse:
     run = RunModel(
         id=run_id,
         agent_id=None,
-        user_id=None,
+        user_id=1,  # legacy user
         request_id=request_id,
-        status="running",
-        model=None,
-        provider=None,
+        status="pending",
+        model=body.model,
+        provider=body.provider,
         source=body.source,
-        latency_ms=None,
-        tokens_in=None,
-        tokens_out=None,
-        tokens_total=None,
-        cost_estimate_usd=None,
-        error_message=None,
         config=body.config,
     )
     db.add(run)
     db.commit()
     db.refresh(run)
-
     _create_initial_events(db, run, body)
-
     return RunResponse(ok=True, run_id=run.id, request_id=run.request_id)

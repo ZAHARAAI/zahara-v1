@@ -1,4 +1,4 @@
-"""Initial (squashed) migration: Job6-ready schema
+"""Initial (squashed) migration:
 
 Creates:
 - users
@@ -28,11 +28,13 @@ depends_on = None
 
 
 def upgrade() -> None:
+    op.execute('CREATE EXTENSION IF NOT EXISTS "pgcrypto"')
+
     # --- users ---------------------------------------------------
     op.create_table(
         "users",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
-        sa.Column("username", sa.String(), nullable=False),
+        sa.Column("username", sa.String(), nullable=True),
         sa.Column("email", sa.String(), nullable=False),
         sa.Column("hashed_password", sa.String(), nullable=False),
         sa.Column(
@@ -130,7 +132,7 @@ def upgrade() -> None:
         op.f("ix_mcp_connectors_name"), "mcp_connectors", ["name"], unique=False
     )
 
-    # --- agents --------------------------------------------------------------
+    # --- agents ---------------------------------------------------
     op.create_table(
         "agents",
         sa.Column("id", sa.String(), primary_key=True, nullable=False),
@@ -157,10 +159,10 @@ def upgrade() -> None:
         ),
         sa.UniqueConstraint("user_id", "slug", name="uq_agents_user_id_slug"),
     )
-    op.create_index("ix_agents_user_id", "agents", ["user_id"])
-    op.create_index("ix_agents_slug", "agents", ["slug"])
+    op.create_index("ix_agents_user_id", "agents", ["user_id"], unique=False)
+    op.create_index("ix_agents_slug", "agents", ["slug"], unique=False)
 
-    # --- agent_specs ---------------------------------------------------------
+    # --- agent_specs ---------------------------------------------
     op.create_table(
         "agent_specs",
         sa.Column("id", sa.String(), primary_key=True, nullable=False),
@@ -182,9 +184,11 @@ def upgrade() -> None:
             "agent_id", "version", name="uq_agent_specs_agent_id_version"
         ),
     )
-    op.create_index("ix_agent_specs_agent_id", "agent_specs", ["agent_id"])
+    op.create_index(
+        "ix_agent_specs_agent_id", "agent_specs", ["agent_id"], unique=False
+    )
 
-    # --- provider_keys -------------------------------------------------------
+    # --- provider_keys -------------------------------------------
     op.create_table(
         "provider_keys",
         sa.Column("id", sa.String(), primary_key=True, nullable=False),
@@ -206,41 +210,39 @@ def upgrade() -> None:
         sa.Column("last_tested_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_test_status", sa.String(), nullable=True),
     )
-    op.create_index("ix_provider_keys_user_id", "provider_keys", ["user_id"])
-    op.create_index("ix_provider_keys_provider", "provider_keys", ["provider"])
+    op.create_index(
+        "ix_provider_keys_user_id", "provider_keys", ["user_id"], unique=False
+    )
+    op.create_index(
+        "ix_provider_keys_provider", "provider_keys", ["provider"], unique=False
+    )
 
-    # --- runs (Job6-ready) ---------------------------------------------------
-    # Includes original fields + Job6 extensions (so no ALTER needed).
+    # --- runs (matches models/run.py exactly) ---------------------
     op.create_table(
         "runs",
         sa.Column("id", sa.String(), primary_key=True, nullable=False),
+        # identity & ownership
+        sa.Column("agent_id", sa.String(), nullable=True),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        # correlation & status
         sa.Column("request_id", sa.String(), nullable=True),
         sa.Column(
-            "status", sa.String(), nullable=True, server_default=sa.text("'running'")
+            "status", sa.String(), nullable=False, server_default=sa.text("'pending'")
         ),
+        # model + routing
         sa.Column("model", sa.String(), nullable=True),
-        sa.Column("source", sa.String(), nullable=True),
-        # original metrics (legacy)
-        sa.Column("tokens", sa.Integer(), nullable=True),
-        sa.Column("cost", sa.Float(), nullable=True),
-        sa.Column("latency_ms", sa.Integer(), nullable=True),
-        sa.Column("config", sa.JSON(), nullable=True),
-        sa.Column(
-            "started_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            nullable=True,
-        ),
-        sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
-        # Job6 additions
-        sa.Column("agent_id", sa.String(), nullable=True),
-        sa.Column("user_id", sa.Integer(), nullable=True),
         sa.Column("provider", sa.String(), nullable=True),
+        sa.Column("source", sa.String(), nullable=True),
+        # metrics
+        sa.Column("latency_ms", sa.Integer(), nullable=True),
         sa.Column("tokens_in", sa.Integer(), nullable=True),
         sa.Column("tokens_out", sa.Integer(), nullable=True),
         sa.Column("tokens_total", sa.Integer(), nullable=True),
         sa.Column("cost_estimate_usd", sa.Float(), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
+        # optional full config
+        sa.Column("config", sa.JSON(), nullable=True),
+        # timestamps
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -254,12 +256,16 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.create_index(op.f("ix_runs_id"), "runs", ["id"], unique=False)
-    op.create_index(op.f("ix_runs_request_id"), "runs", ["request_id"], unique=False)
-    op.create_index("ix_runs_agent_id", "runs", ["agent_id"])
-    op.create_index("ix_runs_user_id", "runs", ["user_id"])
+
+    # indexes matching model index=True flags
+    op.create_index("ix_runs_id", "runs", ["id"], unique=False)
+    op.create_index("ix_runs_agent_id", "runs", ["agent_id"], unique=False)
+    op.create_index("ix_runs_user_id", "runs", ["user_id"], unique=False)
+    op.create_index("ix_runs_request_id", "runs", ["request_id"], unique=False)
+    op.create_index("ix_runs_status", "runs", ["status"], unique=False)
     op.create_index("ix_runs_created_at", "runs", ["created_at"])
 
+    # foreign keys
     op.create_foreign_key(
         "fk_runs_agent_id_agents",
         source_table="runs",
@@ -274,24 +280,28 @@ def upgrade() -> None:
         referent_table="users",
         local_cols=["user_id"],
         remote_cols=["id"],
-        ondelete="SET NULL",
+        ondelete="CASCADE",
     )
 
-    # --- run_events (Job6-ready) --------------------------------------------
+    # --- run_events (matches models/run_event.py exactly) ---------
     op.create_table(
         "run_events",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
-        sa.Column("run_id", sa.String(), nullable=False),
-        # legacy timestamp field retained
+        sa.Column(
+            "uuid",
+            sa.String(),
+            nullable=False,
+            server_default=sa.text("gen_random_uuid()::text"),
+        ),
         sa.Column(
             "ts",
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
             nullable=True,
         ),
-        sa.Column("type", sa.String(), nullable=True),
+        sa.Column("run_id", sa.String(), nullable=False),
+        sa.Column("type", sa.String(), nullable=False),
         sa.Column("payload", sa.JSON(), nullable=True),
-        # Job6 field
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -301,10 +311,19 @@ def upgrade() -> None:
     )
     op.create_index(op.f("ix_run_events_id"), "run_events", ["id"], unique=False)
     op.create_index(
+        "ix_run_events_uuid",
+        "run_events",
+        ["uuid"],
+        unique=True,
+    )
+    op.create_index(
         op.f("ix_run_events_run_id"), "run_events", ["run_id"], unique=False
     )
     op.create_index(
-        "ix_run_events_run_id_created_at", "run_events", ["run_id", "created_at"]
+        "ix_run_events_run_id_created_at",
+        "run_events",
+        ["run_id", "created_at"],
+        unique=False,
     )
 
     op.create_foreign_key(
@@ -315,22 +334,50 @@ def upgrade() -> None:
         remote_cols=["id"],
     )
 
+    # --- daily usage ---------
+    op.create_table(
+        "daily_usage",
+        sa.Column("id", sa.Integer(), primary_key=True),
+        sa.Column("user_id", sa.Integer(), nullable=False, index=True),
+        sa.Column("day", sa.Date(), nullable=False, index=True),
+        sa.Column("runs_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("tokens_total", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("cost_usd", sa.Float(), nullable=False, server_default="0"),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.UniqueConstraint("user_id", "day", name="uq_daily_usage_user_day"),
+    )
+    op.create_index("ix_daily_usage_user_day", "daily_usage", ["user_id", "day"])
+
 
 def downgrade() -> None:
     # Drop in reverse dependency order
+
     op.drop_constraint("fk_run_events_run_id_runs", "run_events", type_="foreignkey")
     op.drop_index("ix_run_events_run_id_created_at", table_name="run_events")
     op.drop_index(op.f("ix_run_events_run_id"), table_name="run_events")
     op.drop_index(op.f("ix_run_events_id"), table_name="run_events")
+    op.drop_index("ix_run_events_uuid", table_name="run_events")
     op.drop_table("run_events")
 
     op.drop_constraint("fk_runs_user_id_users", "runs", type_="foreignkey")
     op.drop_constraint("fk_runs_agent_id_agents", "runs", type_="foreignkey")
-    op.drop_index("ix_runs_created_at", table_name="runs")
+    op.drop_index("ix_runs_status", table_name="runs")
+    op.drop_index("ix_runs_request_id", table_name="runs")
     op.drop_index("ix_runs_user_id", table_name="runs")
     op.drop_index("ix_runs_agent_id", table_name="runs")
-    op.drop_index(op.f("ix_runs_request_id"), table_name="runs")
-    op.drop_index(op.f("ix_runs_id"), table_name="runs")
+    op.drop_index("ix_runs_id", table_name="runs")
+    op.drop_index("ix_runs_created_at", table_name="runs")
     op.drop_table("runs")
 
     op.drop_index("ix_provider_keys_provider", table_name="provider_keys")
@@ -357,6 +404,9 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_api_keys_name"), table_name="api_keys")
     op.drop_index(op.f("ix_api_keys_id"), table_name="api_keys")
     op.drop_table("api_keys")
+
+    op.drop_index("ix_daily_usage_user_day", table_name="daily_usage")
+    op.drop_table("daily_usage")
 
     op.drop_index(op.f("ix_users_email"), table_name="users")
     op.drop_index(op.f("ix_users_username"), table_name="users")

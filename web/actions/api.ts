@@ -33,5 +33,6 @@ export const api = async (path: string, init: RequestInit = {}) => {
       }
     }
   }
+  console.log(last ?? "Unknown API error");
   throw new Error(last ?? "Unknown API error");
 };

@@ -1,125 +1,90 @@
-from datetime import timedelta
+from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, HTTPException, status
-from pydantic import BaseModel, ConfigDict, EmailStr
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
-from ..config import settings
 from ..database import get_db
-from ..middleware.auth import (
-    create_access_token,
-    get_current_user,
-    get_password_hash,
-    verify_password,
-)
+from ..middleware.auth import get_current_user
 from ..models.user import User
+from ..security.jwt_auth import create_access_token, hash_password, verify_password
 
-router = APIRouter(prefix="/auth", tags=["authentication"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-class UserCreate(BaseModel):
-    username: str
+class SignupRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=8, max_length=128)
 
 
-class UserResponse(BaseModel):
-    id: int
-    username: str
-    email: str
-    is_active: bool
-
-    model_config = ConfigDict(from_attributes=True)
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
 
 
-class Token(BaseModel):
+class AuthResponse(BaseModel):
+    ok: bool = True
     access_token: str
-    token_type: str
+    token_type: str = "bearer"
+    user: dict
 
 
-@router.post("/register", response_model=UserResponse)
-async def register_user(user: UserCreate, db: Session = Depends(get_db)):
-    """Register a new user"""
-    # Check if user already exists
-    db_user = (
-        db.query(User)
-        .filter((User.username == user.username) | (User.email == user.email))
-        .first()
-    )
+class MeResponse(BaseModel):
+    ok: bool = True
+    user: dict
 
-    if db_user:
+
+def _user_public(u: User) -> dict:
+    return {"id": u.id, "email": u.email}
+
+
+@router.post("/signup", response_model=AuthResponse)
+def signup(body: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
+    email = body.email.strip().lower()
+
+    exists = db.query(User).filter(User.email == email).first()
+    if exists:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username or email already registered",
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "ok": False,
+                "error": {
+                    "code": "EMAIL_EXISTS",
+                    "message": "Email already registered.",
+                },
+            },
         )
 
-    # Create new user
-    hashed_password = get_password_hash(user.password)
-    db_user = User(
-        username=user.username, email=user.email, hashed_password=hashed_password
-    )
-
-    db.add(db_user)
+    u = User(email=email, hashed_password=hash_password(body.password))
+    db.add(u)
     db.commit()
-    db.refresh(db_user)
+    db.refresh(u)
 
-    return db_user
+    token = create_access_token(subject=u.email, user_id=u.id)
+    return AuthResponse(ok=True, access_token=token, user=_user_public(u))
 
 
-@router.post("/login", response_model=Token)
-async def login_user(
-    username: str = Form(...),
-    password: str = Form(...),
-    scope: str = Form(""),
-    grant_type: str | None = Form(default=None),
-    client_id: str | None = Form(default=None),
-    client_secret: str | None = Form(default=None),
-    db: Session = Depends(get_db),
-):
-    """Login user and return access token"""
-    # Input validation
-    if not username or not password:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username and password are required",
-        )
+@router.post("/login", response_model=AuthResponse)
+def login(body: LoginRequest, db: Session = Depends(get_db)) -> AuthResponse:
+    email = body.email.strip().lower()
 
-    user = db.query(User).filter(User.username == username).first()
-
-    # Always check password even if user doesn't exist to prevent timing attacks
-    password_correct = False
-    if user:
-        password_correct = verify_password(password, user.hashed_password)
-    else:
-        # Perform a dummy password verification to maintain consistent timing
-        verify_password(password, "$2b$12$dummy.hash.to.prevent.timing.attacks")
-
-    if not user or not password_correct:
+    u = db.query(User).filter(User.email == email).first()
+    if not u or not verify_password(body.password, u.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail={
+                "ok": False,
+                "error": {
+                    "code": "INVALID_CREDENTIALS",
+                    "message": "Invalid email or password.",
+                },
+            },
         )
 
-    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-    access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-
-    return {"access_token": access_token, "token_type": "bearer"}
+    token = create_access_token(subject=u.email, user_id=u.id)
+    return AuthResponse(ok=True, access_token=token, user=_user_public(u))
 
 
-@router.get("/me", response_model=UserResponse)
-async def read_users_me(current_user: User = Depends(get_current_user)):
-    """Get current user information"""
-    return current_user
-
-
-@router.post("/refresh", response_model=Token)
-async def refresh_token(current_user: User = Depends(get_current_user)):
-    """Refresh access token"""
-    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-    access_token = create_access_token(
-        data={"sub": current_user.username}, expires_delta=access_token_expires
-    )
-
-    return {"access_token": access_token, "token_type": "bearer"}
+@router.get("/me", response_model=MeResponse)
+def me(current_user: User = Depends(get_current_user)) -> MeResponse:
+    return MeResponse(ok=True, user=_user_public(current_user))

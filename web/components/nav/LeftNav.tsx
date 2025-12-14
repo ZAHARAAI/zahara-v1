@@ -3,6 +3,7 @@
 import {
   Activity,
   Code2,
+  Key,
   LayoutDashboard,
   Settings,
   Workflow,
@@ -45,6 +46,7 @@ export default function LeftNav() {
       <NavItem href="/pro" label="Pro" Icon={Code2} />
       <NavItem href="/clinic" label="Clinic" Icon={Activity} />
       <NavItem href="/mcp" label="MCP" Icon={Settings} />
+      <NavItem href="/providers" label="Provider Keys" Icon={Key} />
 
       <div className="absolute bottom-4 left-3">
         <ThemeToggle />

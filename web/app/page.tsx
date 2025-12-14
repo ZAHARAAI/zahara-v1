@@ -153,10 +153,11 @@ export default function VibePage() {
                 ? `Chat with agent ${selectedAgentId}`
                 : "Select an agent to start chatting"}
             </div>
-            {/* <div className="text-[11px] text-[hsl(var(--muted-fg))]">
-              Powered by Job 6 run pipeline (/agents/{{ id }}/run + /runs/
-              {{ id }}/events)
-            </div> */}
+            <div className="text-[11px] text-[hsl(var(--muted-fg))]">
+              {`Powered by Job 6 run pipeline (/agents/{${
+                currentRunId || "id"
+              }}/run + /runs/{${currentRunId || "id"}}/events)`}
+            </div>
           </div>
         </div>
 
