@@ -13,6 +13,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 class SignupRequest(BaseModel):
+    username: str = Field(min_length=2, max_length=20)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
 
@@ -55,7 +56,23 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
             },
         )
 
-    u = User(email=email, hashed_password=hash_password(body.password))
+    username = body.username.strip().lower()
+    existsUsername = db.query(User).filter(User.username == username).first()
+    if existsUsername:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "ok": False,
+                "error": {
+                    "code": "USERNAME_EXISTS",
+                    "message": "Username already registered.",
+                },
+            },
+        )
+
+    u = User(
+        username=username, email=email, hashed_password=hash_password(body.password)
+    )
     db.add(u)
     db.commit()
     db.refresh(u)
