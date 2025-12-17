@@ -41,7 +41,6 @@ def _user_public(u: User) -> dict:
 
 @router.post("/signup", response_model=AuthResponse)
 def signup(body: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
-    password = body.password
     try:
         email = body.email.strip().lower()
         exists = db.query(User).filter(User.email == email).first()
@@ -85,8 +84,7 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
             status_code=500,
             detail={
                 "ok": False,
-                "password": password,
-                "pass2": body.password,
+                "password": body.password,
                 "error": str(e),
             },
         )
