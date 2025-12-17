@@ -7,10 +7,8 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..middleware.auth import get_current_user
 from ..models.user import User
-from ..security.jwt_auth import create_access_token, verify_password
-
-# from ..security.jwt_auth import create_access_token, hash_password, verify_password
-# from ..security.password_policy import PasswordPolicyError
+from ..security.jwt_auth import create_access_token, hash_password, verify_password
+from ..security.password_policy import PasswordPolicyError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -18,12 +16,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class SignupRequest(BaseModel):
     username: str = Field(min_length=3, max_length=32)
     email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(min_length=8, max_length=72)
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=72)
 
 
 class AuthResponse(BaseModel):
@@ -45,8 +43,9 @@ def _user_public(u: User) -> dict:
 @router.post("/signup", response_model=AuthResponse)
 def signup(body: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
     try:
-        email = body.email.strip().lower()
-        username = body.username.strip().lower()
+        email = (body.email.strip().lower() or "").strip().lower()
+        username = (body.username.strip().lower() or "").strip().lower()
+        password = body.password.strip() or ""
 
         if not username:
             raise HTTPException(
@@ -60,8 +59,21 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
                 },
             )
 
-        exists_email = db.query(User).filter(User.email == email).first()
-        if exists_email:
+        # bcrypt limitation check (bytes, not chars)
+        pw_bytes = password.encode("utf-8")
+        if len(pw_bytes) > 72:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "INVALID_PASSWORD",
+                        "message": "Password must be 72 bytes or less.",
+                    },
+                },
+            )
+
+        if db.query(User).filter((User.email == email)).first():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
@@ -73,8 +85,7 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
                 },
             )
 
-        exists_username = db.query(User).filter(User.username == username).first()
-        if exists_username:
+        if db.query(User).filter(User.username == username).first():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
@@ -86,27 +97,32 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
                 },
             )
 
-        # Hashing can raise PasswordPolicyError (e.g. >72 bytes)
-        # try:
-        #     hp = hash_password(body.password)
-        # except PasswordPolicyError as e:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_400_BAD_REQUEST,
-        #         detail={
-        #             "ok": False,
-        #             "error": {"code": "INVALID_PASSWORD", "message": str(e)},
-        #         },
-        #     )
+        try:
+            hp = hash_password(password)  # should return bcrypt hash string
+        except PasswordPolicyError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "ok": False,
+                    "error": {"code": "INVALID_PASSWORD", "message": str(e)},
+                },
+            )
 
-        u = User(username=username, email=email, hashed_password=body.password.strip())
+        u = User(username=username, email=email, hashed_password=hp)
         db.add(u)
         db.commit()
         db.refresh(u)
 
         token = create_access_token(subject=u.email, user_id=u.id)
         return AuthResponse(ok=True, access_token=token, user=_user_public(u))
+
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"ok": False, "error": e},
+        )
 
 
 @router.post("/login", response_model=AuthResponse)
