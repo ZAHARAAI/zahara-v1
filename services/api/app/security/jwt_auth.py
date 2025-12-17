@@ -4,30 +4,40 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from ..config import settings
-from .password_policy import PasswordPolicyError, validate_password_policy
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 JWT_ALG = "HS256"
 
 
+class PasswordPolicyError(ValueError):
+    pass
+
+
 def hash_password(password: str) -> str:
-    validate_password_policy(password)
-    # Use the raw string (NOT truncated) after validation
-    return pwd_context.hash(password)
+    if not isinstance(password, str):
+        raise PasswordPolicyError("Password must be a string")
+
+    password = password.strip()
+
+    password_bytes = password.encode("utf-8")
+
+    if len(password_bytes) > 72:
+        raise PasswordPolicyError(
+            "Password cannot be longer than 72 bytes (bcrypt limit)."
+        )
+
+    hashed = bcrypt.hashpw(password_bytes, bcrypt.gensalt())
+    return hashed.decode("utf-8")
 
 
-def verify_password(password: str, hashed: str) -> bool:
-    # Validate max bytes to avoid bcrypt raising
-    try:
-        validate_password_policy(password)
-    except PasswordPolicyError:
-        # If password is invalid length, treat as wrong credentials
-        return False
-    return pwd_context.verify(password, hashed)
+def verify_password(password: str, hashed_password: str) -> bool:
+    return bcrypt.checkpw(
+        password.encode("utf-8"),
+        hashed_password.encode("utf-8"),
+    )
 
 
 def _jwt_secret() -> str:

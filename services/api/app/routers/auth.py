@@ -116,8 +116,6 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
         token = create_access_token(subject=u.email, user_id=u.id)
         return AuthResponse(ok=True, access_token=token, user=_user_public(u))
 
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

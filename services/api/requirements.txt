@@ -11,7 +11,7 @@ qdrant-client>=1.9,<2.0
 
 # Auth / Config / HTTP
 python-jose[cryptography]>=3.3,<4.0
-passlib[bcrypt]>=1.7,<2.0
+bcrypt>=4.1.2
 python-multipart>=0.0.9,<0.1
 pydantic>=2,<3
 pydantic-settings>=2,<3
