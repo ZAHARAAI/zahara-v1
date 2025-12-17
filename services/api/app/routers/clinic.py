@@ -5,10 +5,11 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from ..auth import check_auth
 from ..database import get_db
+from ..middleware.auth import get_current_user
 from ..models.run import Run
 from ..models.run_event import RunEvent
+from ..models.user import User
 from .run import RunRequest, RunResponse, _launch_run
 
 router = APIRouter(prefix="/clinic", tags=["clinic"])
@@ -18,7 +19,7 @@ router = APIRouter(prefix="/clinic", tags=["clinic"])
 def list_sessions(
     limit: int = 50,
     offset: int = 0,
-    token: str = Depends(check_auth),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     try:
@@ -55,7 +56,7 @@ def list_sessions(
 @router.get("/session/{request_id}")
 def get_session(
     request_id: str,
-    token: str = Depends(check_auth),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     try:
@@ -118,7 +119,7 @@ def get_session(
 @router.post("/replay/{request_id}", response_model=RunResponse)
 def replay_session(
     request_id: str,
-    token: str = Depends(check_auth),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> RunResponse:
     try:

@@ -11,10 +11,11 @@ from starlette.middleware.gzip import GZipMiddleware
 
 # --- Local imports
 from . import compat  # ensure patch applied before router import  # noqa: F401
-from .auth import check_auth
 from .config import settings
+from .middleware.auth import get_current_user
 from .middleware.observability import ObservabilityMiddleware
 from .middleware.rate_limit import RateLimitMiddleware
+from .models.user import User
 from .routers import (
     agents,
     api_keys,
@@ -172,5 +173,7 @@ def health():
 
 
 @app.get("/whoami")
-def whoami(token: str = Depends(check_auth)):
+def whoami(
+    current_user: User = Depends(get_current_user),
+):
     return {"ok": True, "who": "frontend", "source": "zahara-ui"}

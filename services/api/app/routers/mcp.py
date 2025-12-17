@@ -3,16 +3,17 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from ..auth import check_auth
 from ..database import get_db
+from ..middleware.auth import get_current_user
 from ..models.mcp_connector import MCPConnector
+from ..models.user import User
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 
 
 @router.get("/connectors")
 def mcp_connectors(
-    token: str = Depends(check_auth),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
@@ -38,7 +39,7 @@ def mcp_connectors(
 def mcp_patch(
     connector_id: str,
     body: dict,
-    token: str = Depends(check_auth),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
@@ -65,7 +66,9 @@ def mcp_patch(
 
 @router.post("/test")
 def mcp_test(
-    body: dict, token: str = Depends(check_auth), db: Session = Depends(get_db)
+    body: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     try:
         connector_id = body.get("connectorId")

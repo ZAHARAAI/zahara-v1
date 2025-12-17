@@ -8,7 +8,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ..auth import check_auth
+from ..middleware.auth import get_current_user
+from ..models.user import User
 
 router = APIRouter(prefix="/files", tags=["filesystem"])
 
@@ -90,7 +91,9 @@ def _sha256(data: str) -> str:
 
 
 @router.get("", summary="List files in the Pro IDE workspace")
-def list_files(token: str = Depends(check_auth)) -> Dict[str, Any]:
+def list_files(
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
     """
     List all files and directories under FS_ROOT.
     """
@@ -143,7 +146,10 @@ def list_files(token: str = Depends(check_auth)) -> Dict[str, Any]:
     "/{path:path}",
     summary="Get a single file from the Pro IDE workspace",
 )
-def read_file(path: str, token: str = Depends(check_auth)) -> Dict[str, Any]:
+def read_file(
+    path: str,
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
     """
     Read a single file under FS_ROOT.
     """
@@ -192,7 +198,7 @@ class FileSaveRequest(BaseModel):
 def save_file(
     path: str,
     body: FileSaveRequest,
-    token: str = Depends(check_auth),
+    current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """
     Save a file under FS_ROOT.

@@ -8,9 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from ..auth import check_auth
 from ..database import get_db
+from ..middleware.auth import get_current_user
 from ..models.flow import Flow as FlowModel
+from ..models.user import User
 
 router = APIRouter(prefix="/flows", tags=["flows"])
 
@@ -143,7 +144,7 @@ def list_flows(
     owner: Optional[str] = Query(default=None, description='e.g. "me"'),
     page: int = Query(default=1, ge=1),
     pageSize: int = Query(default=20, ge=1, le=200),
-    token: str = Depends(check_auth),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
@@ -186,7 +187,7 @@ def list_flows(
 @router.post("/", response_model=FlowEnvelope, status_code=status.HTTP_201_CREATED)
 def create_flow(
     payload: FlowCreate,
-    token: str = Depends(check_auth),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
@@ -214,7 +215,7 @@ def create_flow(
 @router.get("/{flow_id}", response_model=FlowEnvelope)
 def get_flow(
     flow_id: str,
-    token: str = Depends(check_auth),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
@@ -240,7 +241,7 @@ def get_flow(
 def update_flow(
     flow_id: str,
     payload: FlowUpdate,
-    token: str = Depends(check_auth),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:

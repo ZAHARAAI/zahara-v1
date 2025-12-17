@@ -1,12 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use server";
 
-const BASE = process.env.NEXT_PUBLIC_API_BASE_URL as string;
-const API_KEY = process.env.ZAHARA_API_KEY as string;
+import { getAccessToken } from "@/lib/auth-cookies";
 
+const BASE = process.env.NEXT_PUBLIC_API_BASE_URL as string;
 const Retry = { max: 2, backoffMs: 400 };
 
 export const api = async (path: string, init: RequestInit = {}) => {
+  const token = await getAccessToken();
   let last: any;
   for (let attempt = 0; attempt <= Retry.max; attempt++) {
     try {
@@ -14,7 +15,7 @@ export const api = async (path: string, init: RequestInit = {}) => {
         headers: {
           ...(init.headers || {}),
           "Content-Type": "application/json",
-          "x-api-key": API_KEY,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         ...init,
         cache: "no-store",

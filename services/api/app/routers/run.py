@@ -18,7 +18,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..auth import check_auth  # legacy demo auth for /run
 from ..database import get_db
 from ..middleware.auth import get_current_user
 from ..models.run import Run as RunModel
@@ -377,7 +376,7 @@ def stream_run_events(
 @router.post("", response_model=RunResponse)
 def legacy_start_run(
     body: RunRequest,
-    token: str = Depends(check_auth),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> RunResponse:
     """
