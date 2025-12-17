@@ -42,66 +42,69 @@ def _user_public(u: User) -> dict:
 
 @router.post("/signup", response_model=AuthResponse)
 def signup(body: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
-    email = body.email.strip().lower()
-    username = body.username.strip().lower()
-
-    if not username:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "ok": False,
-                "error": {
-                    "code": "INVALID_USERNAME",
-                    "message": "Username is required.",
-                },
-            },
-        )
-
-    exists_email = db.query(User).filter(User.email == email).first()
-    if exists_email:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "ok": False,
-                "error": {
-                    "code": "EMAIL_EXISTS",
-                    "message": "Email already registered.",
-                },
-            },
-        )
-
-    exists_username = db.query(User).filter(User.username == username).first()
-    if exists_username:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "ok": False,
-                "error": {
-                    "code": "USERNAME_EXISTS",
-                    "message": "Username already registered.",
-                },
-            },
-        )
-
-    # Hashing can raise PasswordPolicyError (e.g. >72 bytes)
     try:
-        hp = hash_password(body.password)
-    except PasswordPolicyError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "ok": False,
-                "error": {"code": "INVALID_PASSWORD", "message": str(e)},
-            },
-        )
+        email = body.email.strip().lower()
+        username = body.username.strip().lower()
 
-    u = User(username=username, email=email, hashed_password=hp)
-    db.add(u)
-    db.commit()
-    db.refresh(u)
+        if not username:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "INVALID_USERNAME",
+                        "message": "Username is required.",
+                    },
+                },
+            )
 
-    token = create_access_token(subject=u.email, user_id=u.id)
-    return AuthResponse(ok=True, access_token=token, user=_user_public(u))
+        exists_email = db.query(User).filter(User.email == email).first()
+        if exists_email:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "EMAIL_EXISTS",
+                        "message": "Email already registered.",
+                    },
+                },
+            )
+
+        exists_username = db.query(User).filter(User.username == username).first()
+        if exists_username:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "USERNAME_EXISTS",
+                        "message": "Username already registered.",
+                    },
+                },
+            )
+
+        # Hashing can raise PasswordPolicyError (e.g. >72 bytes)
+        try:
+            hp = hash_password(body.password)
+        except PasswordPolicyError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "ok": False,
+                    "error": {"code": "INVALID_PASSWORD", "message": str(e)},
+                },
+            )
+
+        u = User(username=username, email=email, hashed_password=hp)
+        db.add(u)
+        db.commit()
+        db.refresh(u)
+
+        token = create_access_token(subject=u.email, user_id=u.id)
+        return AuthResponse(ok=True, access_token=token, user=_user_public(u))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
 
 
 @router.post("/login", response_model=AuthResponse)
