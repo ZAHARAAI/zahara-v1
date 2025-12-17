@@ -15,12 +15,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class SignupRequest(BaseModel):
     username: str = Field(min_length=2, max_length=20)
     email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(min_length=8, max_length=72)
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=72)
 
 
 class AuthResponse(BaseModel):
@@ -41,9 +41,9 @@ def _user_public(u: User) -> dict:
 
 @router.post("/signup", response_model=AuthResponse)
 def signup(body: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
+    password = body.password
     try:
         email = body.email.strip().lower()
-
         exists = db.query(User).filter(User.email == email).first()
         if exists:
             raise HTTPException(
@@ -71,9 +71,8 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
                 },
             )
 
-        u = User(
-            username=username, email=email, hashed_password=hash_password(body.password)
-        )
+        hp = hash_password(body.password)
+        u = User(username=username, email=email, hashed_password=hp)
         db.add(u)
         db.commit()
         db.refresh(u)
@@ -82,7 +81,15 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
         return AuthResponse(ok=True, access_token=token, user=_user_public(u))
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "ok": False,
+                "password": password,
+                "pass2": body.password,
+                "error": str(e),
+            },
+        )
 
 
 @router.post("/login", response_model=AuthResponse)
