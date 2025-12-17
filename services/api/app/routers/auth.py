@@ -7,8 +7,10 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..middleware.auth import get_current_user
 from ..models.user import User
-from ..security.jwt_auth import create_access_token, hash_password, verify_password
-from ..security.password_policy import PasswordPolicyError
+from ..security.jwt_auth import create_access_token, verify_password
+
+# from ..security.jwt_auth import create_access_token, hash_password, verify_password
+# from ..security.password_policy import PasswordPolicyError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -85,18 +87,18 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
             )
 
         # Hashing can raise PasswordPolicyError (e.g. >72 bytes)
-        try:
-            hp = hash_password(body.password)
-        except PasswordPolicyError as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "ok": False,
-                    "error": {"code": "INVALID_PASSWORD", "message": str(e)},
-                },
-            )
+        # try:
+        #     hp = hash_password(body.password)
+        # except PasswordPolicyError as e:
+        #     raise HTTPException(
+        #         status_code=status.HTTP_400_BAD_REQUEST,
+        #         detail={
+        #             "ok": False,
+        #             "error": {"code": "INVALID_PASSWORD", "message": str(e)},
+        #         },
+        #     )
 
-        u = User(username=username, email=email, hashed_password=hp)
+        u = User(username=username, email=email, hashed_password=body.password.strip())
         db.add(u)
         db.commit()
         db.refresh(u)
