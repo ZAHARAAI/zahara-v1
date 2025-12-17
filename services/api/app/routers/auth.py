@@ -41,65 +41,72 @@ def _user_public(u: User) -> dict:
 
 @router.post("/signup", response_model=AuthResponse)
 def signup(body: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
-    email = body.email.strip().lower()
+    try:
+        email = body.email.strip().lower()
 
-    exists = db.query(User).filter(User.email == email).first()
-    if exists:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "ok": False,
-                "error": {
-                    "code": "EMAIL_EXISTS",
-                    "message": "Email already registered.",
+        exists = db.query(User).filter(User.email == email).first()
+        if exists:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "EMAIL_EXISTS",
+                        "message": "Email already registered.",
+                    },
                 },
-            },
-        )
+            )
 
-    username = body.username.strip().lower()
-    existsUsername = db.query(User).filter(User.username == username).first()
-    if existsUsername:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "ok": False,
-                "error": {
-                    "code": "USERNAME_EXISTS",
-                    "message": "Username already registered.",
+        username = body.username.strip().lower()
+        existsUsername = db.query(User).filter(User.username == username).first()
+        if existsUsername:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "USERNAME_EXISTS",
+                        "message": "Username already registered.",
+                    },
                 },
-            },
+            )
+
+        u = User(
+            username=username, email=email, hashed_password=hash_password(body.password)
         )
+        db.add(u)
+        db.commit()
+        db.refresh(u)
 
-    u = User(
-        username=username, email=email, hashed_password=hash_password(body.password)
-    )
-    db.add(u)
-    db.commit()
-    db.refresh(u)
+        token = create_access_token(subject=u.email, user_id=u.id)
+        return AuthResponse(ok=True, access_token=token, user=_user_public(u))
 
-    token = create_access_token(subject=u.email, user_id=u.id)
-    return AuthResponse(ok=True, access_token=token, user=_user_public(u))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
 
 
 @router.post("/login", response_model=AuthResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)) -> AuthResponse:
-    email = body.email.strip().lower()
+    try:
+        email = body.email.strip().lower()
 
-    u = db.query(User).filter(User.email == email).first()
-    if not u or not verify_password(body.password, u.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "ok": False,
-                "error": {
-                    "code": "INVALID_CREDENTIALS",
-                    "message": "Invalid email or password.",
+        u = db.query(User).filter(User.email == email).first()
+        if not u or not verify_password(body.password, u.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "INVALID_CREDENTIALS",
+                        "message": "Invalid email or password.",
+                    },
                 },
-            },
-        )
+            )
 
-    token = create_access_token(subject=u.email, user_id=u.id)
-    return AuthResponse(ok=True, access_token=token, user=_user_public(u))
+        token = create_access_token(subject=u.email, user_id=u.id)
+        return AuthResponse(ok=True, access_token=token, user=_user_public(u))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
 
 
 @router.get("/me", response_model=MeResponse)
