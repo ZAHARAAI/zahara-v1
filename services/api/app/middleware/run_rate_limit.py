@@ -60,6 +60,7 @@ def enforce_run_start_rate_limit(
                     "ok": False,
                     "error": {
                         "code": "RATE_LIMITED",
+                        "error": "rate_limited",
                         "message": "Run rate limit exceeded.",
                         "limit": limit,
                         "window_seconds": window,

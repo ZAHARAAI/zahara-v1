@@ -1,8 +1,514 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/* Merged API client: Job6 + existing endpoints */
 
 import { api } from "@/actions/api";
 import { AnyNodeData } from "@/components/Flow/types";
 import { Edge, Node } from "reactflow";
+
+/* -------------------- Agents -------------------- */
+
+export interface Agent {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  version?: number | null;
+  spec?: Record<string, any> | null;
+}
+
+export interface AgentListItem {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  updatedAt: string;
+  version?: number | null;
+}
+
+export interface AgentListResponse {
+  ok: boolean;
+  items: AgentListItem[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export async function listAgents(
+  page = 1,
+  pageSize = 50
+): Promise<AgentListItem[]> {
+  const json = await api(`/agents?page=${page}&pageSize=${pageSize}`);
+  const data = json as AgentListResponse;
+  if (data.ok === false) {
+    const msg = (data as any).error?.message ?? "Failed to list agents";
+    throw new Error(msg);
+  }
+  return data.items ?? [];
+}
+
+export async function getAgent(agentId: string): Promise<Agent> {
+  const json = await api(`/agents/${encodeURIComponent(agentId)}`);
+  const data = json as { ok: boolean; agent: Agent; error?: any };
+  if (!data.ok) {
+    const msg = data.error?.message ?? "Failed to load agent";
+    throw new Error(msg);
+  }
+  return data.agent;
+}
+
+export interface CreateAgentBody {
+  name: string;
+  description?: string | null;
+  spec?: Record<string, any> | null;
+}
+
+export async function createAgent(body: CreateAgentBody): Promise<Agent> {
+  const json = await api("/agents", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  const data = json as { ok: boolean; agent: Agent; error?: any };
+  if (!data.ok) {
+    const msg = data.error?.message ?? "Failed to create agent";
+    throw new Error(msg);
+  }
+  return data.agent;
+}
+
+export interface UpdateAgentBody {
+  name?: string;
+  description?: string | null;
+}
+
+export async function updateAgent(
+  agentId: string,
+  body: UpdateAgentBody
+): Promise<void> {
+  const json = await api(`/agents/${encodeURIComponent(agentId)}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+  const data = json as { ok?: boolean; updated?: boolean; error?: any };
+  if (data.ok === false) {
+    const msg = data.error?.message ?? "Failed to update agent";
+    throw new Error(msg);
+  }
+}
+
+export interface CreateAgentSpecBody {
+  content: Record<string, any>;
+}
+
+export async function createAgentSpec(
+  agentId: string,
+  body: CreateAgentSpecBody
+): Promise<{ agentId: string; version: number }> {
+  const json = await api(`/agents/${encodeURIComponent(agentId)}/spec`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  const data = json as {
+    ok: boolean;
+    agentId: string;
+    version: number;
+    error?: any;
+  };
+  if (!data.ok) {
+    const msg = data.error?.message ?? "Failed to save agent spec";
+    throw new Error(msg);
+  }
+  return { agentId: data.agentId, version: data.version };
+}
+
+/**
+ * Upsert an Agent + AgentSpec for a Flow graph.
+ *
+ * We use a simple "unified" spec shape:
+ * {
+ *   mode: "flow",
+ *   graph: { nodes, edges },
+ *   meta:  { name, description, ... }
+ * }
+ *
+ * If agentId is provided, we just create a new spec version.
+ * Otherwise we create a new agent with the spec as the initial content.
+ */
+export interface FlowAgentUpsertParams {
+  agentId?: string | null;
+  name: string;
+  description?: string | null;
+  graph: {
+    nodes: any[];
+    edges: any[];
+  };
+  meta?: Record<string, any> | null;
+}
+
+export interface FlowAgentUpsertResult {
+  agentId: string;
+  version: number;
+  agent?: Agent;
+}
+
+export async function upsertAgentFromFlow(
+  params: FlowAgentUpsertParams
+): Promise<FlowAgentUpsertResult> {
+  const specContent: Record<string, any> = {
+    mode: "flow",
+    graph: {
+      nodes: params.graph.nodes,
+      edges: params.graph.edges,
+    },
+    meta: {
+      name: params.name,
+      description: params.description ?? null,
+      ...(params.meta ?? {}),
+    },
+  };
+
+  if (!params.agentId) {
+    const agent = await createAgent({
+      name: params.name,
+      description: params.description ?? null,
+      spec: specContent,
+    });
+    return {
+      agentId: agent.id,
+      version: agent.version ?? 1,
+      agent,
+    };
+  }
+
+  const { version } = await createAgentSpec(params.agentId, {
+    content: specContent,
+  });
+  return {
+    agentId: params.agentId,
+    version,
+    agent: undefined,
+  };
+}
+
+/* -------------------- Runs + SSE -------------------- */
+
+export type RunEventType =
+  | "system"
+  | "log"
+  | "token"
+  | "tool_call"
+  | "tool_result"
+  | "ping"
+  | "done"
+  | "error";
+
+export interface RunEvent {
+  /** Event kind emitted from the backend. */
+  type: RunEventType;
+  /** ISO timestamp when the event was received on the client. */
+  ts: string;
+  /** Optional display message. */
+  message?: string;
+  /** Raw payload as stored in run_events.payload. */
+  payload?: Record<string, any>;
+  /** Extra fields for backward compatibility. */
+  [key: string]: any;
+}
+
+export interface StartRunRequest {
+  /** User message or task for the agent. */
+  input: string;
+  /** Source surface: vibe | pro | flow | agui | api | clinic. */
+  source?: string;
+  /** Optional execution config stored on the run row. */
+  config?: Record<string, any>;
+}
+
+export interface StartRunResponse {
+  runId: string;
+  requestId: string;
+}
+
+export async function startAgentRun(
+  agentId: string,
+  body: StartRunRequest
+): Promise<StartRunResponse> {
+  const json = await api(`/agents/${encodeURIComponent(agentId)}/run`, {
+    method: "POST",
+    body: JSON.stringify({
+      input: body.input,
+      source: body.source ?? "vibe",
+      config: body.config ?? {},
+    }),
+  });
+  const data = json as {
+    ok: boolean;
+    run_id: string;
+    request_id: string;
+    error?: any;
+  };
+  if (!data.ok) {
+    const msg = data.error?.message ?? "Failed to start run";
+    throw new Error(msg);
+  }
+  return {
+    runId: data.run_id,
+    requestId: data.request_id,
+  };
+}
+
+/**
+ * Subscribe to run events over SSE.
+ *
+ * Returns a cleanup function that closes the EventSource.
+ */
+export function streamRun(
+  runId: string,
+  onEvent: (event: RunEvent) => void
+): () => void {
+  if (!runId) throw new Error("runId is required for SSE");
+
+  // This hits your Next.js proxy route (server adds Authorization header)
+  const es = new EventSource(`/api/sse/runs/${encodeURIComponent(runId)}`);
+
+  const emit = (raw: any) => {
+    // Backend shape:
+    // { type: string, payload: object, created_at: string, request_id: string }
+    const backendType = (raw?.type as string | undefined) ?? "log";
+    const payload = (raw?.payload ?? null) as any;
+
+    // Prefer payload.message, but fall back to other fields if present
+    const message =
+      (payload && (payload.message as string | undefined)) ||
+      (payload && (payload.text as string | undefined)) ||
+      (payload && (payload.error as string | undefined)) ||
+      undefined;
+
+    // Normalize ts and requestId
+    const ts =
+      (raw?.created_at as string | undefined) ?? new Date().toISOString();
+    const requestId =
+      (raw?.request_id as string | undefined) ??
+      (payload && (payload.request_id as string | undefined));
+
+    const evt: RunEvent = {
+      type: backendType as RunEventType, // assumes RunEventType includes backend types
+      ts,
+      message,
+      payload,
+      requestId,
+      runId,
+      raw, // keep the raw object for debugging
+    };
+
+    onEvent(evt);
+  };
+
+  // ✅ Since backend only uses "data:" frames, use onmessage
+  es.onmessage = (evt: MessageEvent) => {
+    if (!evt?.data) return;
+
+    try {
+      const parsed = JSON.parse(evt.data);
+      emit(parsed);
+    } catch {
+      // If upstream ever sends non-JSON, still surface it
+      emit({ type: "log", payload: { raw: evt.data } });
+    }
+  };
+
+  // Surface connection errors as an error event, but don’t hard-close immediately.
+  // EventSource will auto-reconnect by default.
+  es.onerror = () => {
+    onEvent({
+      type: "error" as RunEventType,
+      ts: new Date().toISOString(),
+      message: "sse_connection_error",
+      payload: { runId },
+    } as RunEvent);
+  };
+
+  return () => {
+    es.close();
+  };
+}
+
+/* -------------------- Runs listing + detail (Clinic) -------------------- */
+
+export interface RunListItem {
+  id: string;
+  agent_id?: string | null;
+  status: string;
+  model?: string | null;
+  provider?: string | null;
+  source?: string | null;
+  latency_ms?: number | null;
+  tokens_total?: number | null;
+  cost_estimate_usd?: number | null;
+  created_at: string;
+}
+
+export interface RunListResponse {
+  ok: boolean;
+  items: RunListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export async function listRuns(
+  limit = 50,
+  offset = 0
+): Promise<RunListResponse> {
+  const json = await api(`/runs?limit=${limit}&offset=${offset}`);
+  const data = json as RunListResponse & { error?: any };
+  if (data.ok === false) {
+    const msg = data.error?.message ?? "Failed to list runs";
+    throw new Error(msg);
+  }
+  return data;
+}
+
+export interface RunDetail {
+  id: string;
+  agent_id?: string | null;
+  user_id?: number | null;
+  request_id?: string | null;
+  status: string;
+  model?: string | null;
+  provider?: string | null;
+  source?: string | null;
+  latency_ms?: number | null;
+  tokens_in?: number | null;
+  tokens_out?: number | null;
+  tokens_total?: number | null;
+  cost_estimate_usd?: number | null;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
+  config?: Record<string, any> | null;
+}
+
+export interface RunEventRecord {
+  id: number;
+  type: RunEventType;
+  payload: Record<string, any>;
+  created_at: string;
+}
+
+export interface RunDetailResponse {
+  ok: boolean;
+  run: RunDetail;
+  events: RunEventRecord[];
+}
+
+export async function getRunDetail(runId: string): Promise<RunDetailResponse> {
+  const json = await api(`/runs/${encodeURIComponent(runId)}`);
+  const data = json as RunDetailResponse & { error?: any };
+  if (data.ok === false) {
+    const msg = data.error?.message ?? "Failed to load run";
+    throw new Error(msg);
+  }
+  return data;
+}
+
+/* -------------------- Provider keys -------------------- */
+
+export interface ProviderKey {
+  id: string;
+  provider: string;
+  label: string;
+  last_test_status?: string | null;
+  last_tested_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ProviderKeyListResponse {
+  ok: boolean;
+  items: ProviderKey[];
+}
+
+export async function listProviderKeys(): Promise<ProviderKey[]> {
+  const json = await api("/provider-keys");
+  const data = json as ProviderKeyListResponse & { error?: any };
+  if (data.ok === false) {
+    const msg = data.error?.message ?? "Failed to list provider keys";
+    throw new Error(msg);
+  }
+  return data.items ?? [];
+}
+
+export async function createProviderKey(params: {
+  provider: string;
+  label: string;
+  secret: string;
+}): Promise<ProviderKey> {
+  const json = await api("/provider-keys", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+  const data = json as ProviderKey & { ok?: boolean; error?: any };
+  // Router returns the item directly with 201.
+  if ((data as any).ok === false) {
+    const msg = (data as any).error?.message ?? "Failed to create provider key";
+    throw new Error(msg);
+  }
+  return data;
+}
+
+export async function deleteProviderKey(id: string): Promise<void> {
+  const json = await api(`/provider-keys/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  const data = json as { ok?: boolean; error?: any };
+  if (data.ok === false) {
+    const msg = data.error?.message ?? "Failed to delete provider key";
+    throw new Error(msg);
+  }
+}
+
+export async function testProviderKey(id: string): Promise<{
+  id: string;
+  status: string;
+  message?: string;
+  last_tested_at?: string;
+}> {
+  const json = await api(`/provider-keys/${encodeURIComponent(id)}/test`, {
+    method: "POST",
+  });
+  const data = json as {
+    ok: boolean;
+    id: string;
+    status: string;
+    message?: string;
+    last_tested_at?: string;
+    error?: any;
+  };
+  if (data.ok === false) {
+    const msg = data.error?.message ?? "Failed to test provider key";
+    throw new Error(msg);
+  }
+  return {
+    id: data.id,
+    status: data.status,
+    message: data.message,
+    last_tested_at: data.last_tested_at,
+  };
+}
+
+/* -------------------- Run event constants -------------------- */
+// Convenience list for UI filters, etc.
+export const RUN_EVENT_TYPES: RunEventType[] = [
+  "token",
+  "log",
+  "tool_call",
+  "tool_result",
+  "error",
+  "done",
+  "ping",
+];
 
 function ensureOk<T extends { ok?: boolean; error?: any }>(
   json: T,
@@ -166,57 +672,6 @@ export interface RunResponse {
   started_at: string;
 }
 
-export const RUN_EVENT_TYPES = [
-  "log",
-  "metric",
-  "status",
-  "heartbeat",
-  "done",
-  "error",
-] as const;
-
-export type RunEventType = (typeof RUN_EVENT_TYPES)[number];
-
-export interface RunEventPayload {
-  tokens?: number;
-  cost?: number;
-  latency_ms?: number;
-  latencyMs?: number;
-  level?: string;
-  message?: string;
-  status?: string;
-  [key: string]: any;
-}
-
-/** Shape of a single SSE event coming from /events/{run_id}. */
-export interface RunEvent {
-  /**
-   * Normalized event type, guaranteed to be one of RUN_EVENT_TYPES.
-   * If the backend ever emits a new type, it will be surfaced via a runtime
-   * warning and ignored until the union is updated, so we notice the change.
-   */
-  type: RunEventType;
-  ts?: string;
-  runId?: string;
-  status?: string;
-  requestId?: string;
-  error?: string;
-  /**
-   * Optional human-readable message, commonly present on "log" / "status" /
-   * "error" events.
-   */
-  message?: string;
-  /**
-   * Optional severity level for log-like events.
-   */
-  level?: "debug" | "info" | "warn" | "error" | (string & {});
-  /**
-   * Optional structured payload for metrics and other rich events.
-   */
-  payload?: RunEventPayload;
-  [key: string]: any;
-}
-
 export async function startRun(body: RunRequestBody): Promise<{
   runId: string;
   requestId: string;
@@ -233,87 +688,6 @@ export async function startRun(body: RunRequestBody): Promise<{
     requestId: data.request_id,
     status: data.status,
     startedAt: data.started_at,
-  };
-}
-
-export function streamRun(
-  runId: string,
-  onEvent: (event: RunEvent) => void
-): () => void {
-  if (!runId) throw new Error("runId is required for SSE");
-  const SSE_BASE = process.env.NEXT_PUBLIC_API_BASE_URL as string;
-
-  if (!SSE_BASE) {
-    console.warn(
-      "NEXT_PUBLIC_API_BASE_URL is not set; SSE URL may be incorrect."
-    );
-  }
-
-  const url = `${SSE_BASE.replace(/\/$/, "")}/events/${encodeURIComponent(
-    runId
-  )}`;
-
-  let es: EventSource | null = new EventSource(url, { withCredentials: false });
-  let closed = false;
-
-  const makeHandler = (eventType: RunEventType) => {
-    return (evt: MessageEvent<string>): void => {
-      if (!evt.data) return;
-
-      try {
-        const raw = JSON.parse(evt.data) as Record<string, any>;
-        const rawType = (raw.type ?? eventType) as string;
-
-        if (!RUN_EVENT_TYPES.includes(rawType as RunEventType)) {
-          console.warn(
-            "[streamRun] Received unknown SSE event type",
-            rawType,
-            raw
-          );
-          // Ignore unknown types so the UI doesn't break silently; this also
-          // makes backend shape changes visible during development.
-          return;
-        }
-
-        const normalizedType = rawType as RunEventType;
-
-        const enriched: RunEvent = {
-          type: normalizedType,
-          ...raw,
-        };
-
-        onEvent(enriched);
-      } catch (err) {
-        console.error("Failed to parse SSE event", err, evt.data);
-      }
-    };
-  };
-
-  const attachListeners = () => {
-    if (!es) return;
-    RUN_EVENT_TYPES.forEach((t) => {
-      es!.addEventListener(t, makeHandler(t));
-    });
-
-    es.onerror = (err) => {
-      console.warn("SSE error, will attempt reconnect", err);
-      es?.close();
-      if (closed) return;
-
-      // Auto-reconnect ≤ 3s per spec
-      setTimeout(() => {
-        if (closed) return;
-        es = new EventSource(url);
-        attachListeners();
-      }, 1000 + Math.random() * 1500);
-    };
-  };
-
-  attachListeners();
-
-  return () => {
-    closed = true;
-    es?.close();
   };
 }
 

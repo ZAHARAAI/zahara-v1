@@ -13,7 +13,7 @@ import {
   listRuns,
   type RunDetailResponse,
   type RunListItem,
-} from "@/services/job6";
+} from "@/services/api";
 
 /**
  * Job 6 Clinic timeline

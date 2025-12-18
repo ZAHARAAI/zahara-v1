@@ -5,12 +5,13 @@ import { Loader2, Play, Sparkles } from "lucide-react";
 
 import { useEventBus } from "@/hooks/useEventBus";
 import { useProStore } from "@/hooks/useProStore";
-import { startAgentRun, streamRun, type RunEvent } from "@/services/job6";
+import { useRunUIStore } from "@/hooks/useRunUIStore";
+import { startAgentRun, streamRun, type RunEvent } from "@/services/api";
 import { Button } from "@/components/ui/Button";
-import BuildModal from "./BuildModal";
 
 const Toolbar = () => {
   const { selectedPath, content, agentId } = useProStore();
+  const { show, hide } = useRunUIStore();
   const { setRunId, pushEvent, clearEvents } = useEventBus();
 
   const [running, setRunning] = useState(false);
@@ -48,6 +49,7 @@ const Toolbar = () => {
 
     clearEvents?.();
     setRunning(true);
+    show("BUILD", "Running via Job 6 router…");
 
     try {
       const { runId } = await startAgentRun(agentId, {
@@ -75,7 +77,9 @@ const Toolbar = () => {
           "Failed to start run via Job 6 pipeline. Check console / network tab.",
       });
     } finally {
+    hide();
       setRunning(false);
+    hide();
     }
   }
 
@@ -88,21 +92,12 @@ const Toolbar = () => {
       message: "Run cancelled from Pro toolbar.",
     });
     setRunning(false);
+    hide();
   }
 
   return (
     <>
-      <BuildModal
-        open={running}
-        title="Running via Job 6 router"
-        subtitle={
-          agentId
-            ? `Agent ${agentId} · streaming from /runs/{id}/events`
-            : "No agentId – falling back to no-op"
-        }
-        onCancel={handleCancel}
-      />
-      <div className="flex items-center justify-between rounded-2xl border border-[hsl(var(--border))] px-4 py-2 text-xs">
+<div className="flex items-center justify-between rounded-2xl border border-[hsl(var(--border))] px-4 py-2 text-xs">
         <div className="flex items-center gap-2">
           <span className="text-[11px] uppercase tracking-wide text-[hsl(var(--muted-fg))]">
             Pro IDE

@@ -54,6 +54,11 @@ def _new_run_id() -> str:
     return "run_" + uuid4().hex[:16]
 
 
+def _new_spec_id() -> str:
+    """Generate a stable external agent spec id."""
+    return "as_" + uuid4().hex[:16]
+
+
 # ---------------------------
 # Pydantic models (agents)
 # ---------------------------
@@ -133,7 +138,7 @@ def _to_agent_item(model: AgentModel) -> AgentItem:
     )
 
 
-@router.get("", response_model=AgentListResponse)
+@router.get("/", response_model=AgentListResponse)
 def list_agents(
     q: Optional[str] = Query(None, description="Optional search query"),
     current_user: User = Depends(get_current_user),
@@ -146,7 +151,7 @@ def list_agents(
     return AgentListResponse(ok=True, items=[_to_agent_item(a) for a in rows])
 
 
-@router.post("", response_model=AgentDetailResponse)
+@router.post("/", response_model=AgentDetailResponse)
 def create_agent(
     body: AgentCreate,
     current_user: User = Depends(get_current_user),
@@ -175,10 +180,10 @@ def create_agent(
     db.refresh(agent)
 
     spec_row = AgentSpecModel(
+        id=_new_spec_id(),
         agent_id=agent.id,
-        user_id=current_user.id,
         version=1,
-        spec=body.spec or {},
+        content=body.spec or {},
     )
     db.add(spec_row)
     db.commit()
@@ -187,7 +192,7 @@ def create_agent(
     return AgentDetailResponse(
         ok=True,
         agent=_to_agent_item(agent),
-        spec=spec_row.spec,
+        spec=spec_row.content,
         spec_version=spec_row.version,
     )
 
@@ -216,7 +221,6 @@ def get_agent(
         db.query(AgentSpecModel)
         .filter(
             AgentSpecModel.agent_id == agent.id,
-            AgentSpecModel.user_id == current_user.id,
         )
         .order_by(AgentSpecModel.version.desc())
         .first()
@@ -225,7 +229,7 @@ def get_agent(
     return AgentDetailResponse(
         ok=True,
         agent=_to_agent_item(agent),
-        spec=spec_row.spec if spec_row else None,
+        spec=spec_row.content if spec_row else None,
         spec_version=spec_row.version if spec_row else None,
     )
 
@@ -275,7 +279,6 @@ def update_agent(
         db.query(AgentSpecModel)
         .filter(
             AgentSpecModel.agent_id == agent.id,
-            AgentSpecModel.user_id == current_user.id,
         )
         .order_by(AgentSpecModel.version.desc())
         .first()
@@ -284,7 +287,7 @@ def update_agent(
     return AgentDetailResponse(
         ok=True,
         agent=_to_agent_item(agent),
-        spec=spec_row.spec if spec_row else None,
+        spec=spec_row.content if spec_row else None,
         spec_version=spec_row.version if spec_row else None,
     )
 
@@ -314,7 +317,6 @@ def create_agent_spec_version(
         db.query(AgentSpecModel)
         .filter(
             AgentSpecModel.agent_id == agent.id,
-            AgentSpecModel.user_id == current_user.id,
         )
         .order_by(AgentSpecModel.version.desc())
         .first()
@@ -325,7 +327,7 @@ def create_agent_spec_version(
         agent_id=agent.id,
         user_id=current_user.id,
         version=next_version,
-        spec=body.spec or {},
+        content=body.spec or {},
     )
     db.add(spec_row)
     db.commit()
@@ -334,7 +336,7 @@ def create_agent_spec_version(
     return AgentDetailResponse(
         ok=True,
         agent=_to_agent_item(agent),
-        spec=spec_row.spec,
+        spec=spec_row.content,
         spec_version=spec_row.version,
     )
 

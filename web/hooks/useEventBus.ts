@@ -1,6 +1,6 @@
 "use client";
 
-import type { RunEvent } from "@/services/job6";
+import type { RunEvent } from "@/services/api";
 import { create } from "zustand";
 
 interface EventBusState {

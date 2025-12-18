@@ -211,7 +211,7 @@ def _create_initial_events(db: Session, run: RunModel, body: RunRequest) -> None
 # ---------------------------------------------------------------------------
 
 
-@router.get("", response_model=RunListResponse)
+@router.get("/", response_model=RunListResponse)
 def list_runs(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -299,6 +299,9 @@ def get_run_detail(
 @router.get("/{run_id}/events")
 def stream_run_events(
     run_id: str,
+    framed: bool = Query(
+        False, description="If true, emit SSE 'event:' lines per spec"
+    ),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
@@ -344,7 +347,12 @@ def stream_run_events(
                     "created_at": _dt_to_iso_z(ev.created_at),
                     "request_id": rid,  # also top-level for convenience
                 }
-                yield f"data: {json.dumps(out)}\n\n".encode("utf-8")
+                if framed:
+                    yield f"event: {ev.type}\ndata: {json.dumps(out)}\n\n".encode(
+                        "utf-8"
+                    )
+                else:
+                    yield f"data: {json.dumps(out)}\n\n".encode("utf-8")
 
                 if ev.type in {"done", "error"}:
                     return
@@ -361,7 +369,12 @@ def stream_run_events(
                     "created_at": _dt_to_iso_z(datetime.now(timezone.utc)),
                     "request_id": rid,
                 }
-                yield f"data: {json.dumps(ping_out)}\n\n".encode("utf-8")
+                if framed:
+                    yield f"event: ping\ndata: {json.dumps(ping_out)}\n\n".encode(
+                        "utf-8"
+                    )
+                else:
+                    yield f"data: {json.dumps(ping_out)}\n\n".encode("utf-8")
 
             await asyncio.sleep(0.5)
 
@@ -391,7 +404,7 @@ def legacy_start_run(
     run = RunModel(
         id=run_id,
         agent_id=None,
-        user_id=1,  # legacy demo auth user
+        user_id=current_user.id,  # legacy endpoint: scope to authenticated user
         request_id=request_id,
         status="pending",
         model=body.model,

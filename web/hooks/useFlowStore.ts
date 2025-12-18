@@ -3,7 +3,7 @@
 
 import { AnyNodeData } from "@/components/Flow/types";
 import { FlowGraph } from "@/services/api";
-import { RunEvent } from "@/services/job6";
+import { RunEvent } from "@/services/api";
 import type { Edge, Node } from "reactflow";
 import { create } from "zustand";
 
@@ -13,6 +13,7 @@ type State = {
   selectedId?: string;
   flowId?: string;
   flowName: string;
+  runEvents: RunEvent[];
   meta?: {
     agentId?: string;
     agentVersion?: number;
@@ -35,13 +36,15 @@ export const useFlowStore = create<State>((set) => ({
   flowId: undefined,
   flowName: "Untitled Flow",
   meta: {},
+  runEvents: [],
   setGraph: (nodes, edges) => set({ nodes, edges }),
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
   select: (selectedId) => set({ selectedId }),
   setFlowMeta: (meta) => set({ meta }),
-  clearRunEvents: () => {},
-  pushRunEvent: (ev: RunEvent) => {},
+  clearRunEvents: () => set({ runEvents: [] }),
+  pushRunEvent: (ev: RunEvent) =>
+    set((s) => ({ runEvents: [...s.runEvents, ev].slice(-200) })),
 }));
 
 export const DEFAULT_GRAPH: FlowGraph = {

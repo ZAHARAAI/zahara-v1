@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import List, Optional
+from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -15,6 +16,10 @@ from ..models.user import User
 from ..security.provider_keys_crypto import decrypt_secret, encrypt_secret
 
 router = APIRouter(prefix="/keys", tags=["provider_keys"])
+
+
+def _new_key_id() -> str:
+    return "pk_" + uuid4().hex[:16]
 
 
 def _dt_to_iso_z(dt: datetime) -> str:
@@ -137,6 +142,7 @@ def create_provider_key(
     enc = encrypt_secret(raw_key)
 
     pk = ProviderKeyModel(
+        id=_new_key_id(),
         user_id=current_user.id,
         provider=provider,
         label=label,
@@ -156,6 +162,75 @@ def create_provider_key(
         label=pk.label,
         masked_key=_mask(raw_key),
     )
+
+
+class ProviderKeyRawTestRequest(BaseModel):
+    provider: str = Field(..., description="Provider id, e.g. openai, anthropic")
+    key: str = Field(..., description="Raw API key to test (not stored)")
+
+
+@router.post("/test")
+def test_raw_provider_key(
+    body: ProviderKeyRawTestRequest,
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """
+    Spec-compatible: POST /keys/test
+    Tests a raw key WITHOUT storing it.
+    """
+    provider = (body.provider or "").strip().lower()
+    raw_key = (body.key or "").strip()
+    if not provider or not raw_key:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "ok": False,
+                "error": {
+                    "code": "INVALID",
+                    "message": "provider and key are required",
+                },
+            },
+        )
+
+    try:
+        timeout = httpx.Timeout(10.0, connect=5.0)
+        client = httpx.Client(timeout=timeout)
+        if provider == "openai":
+            r = client.get(
+                "https://api.openai.com/v1/models",
+                headers={"Authorization": f"Bearer {raw_key}"},
+            )
+            ok = r.status_code == 200
+            msg = (
+                "OpenAI key is valid."
+                if ok
+                else f"OpenAI returned {r.status_code}: {r.text[:200]}"
+            )
+            return {
+                "ok": ok,
+                "provider": provider,
+                "status": "ok" if ok else "error",
+                "message": msg,
+            }
+
+        return {
+            "ok": False,
+            "provider": provider,
+            "status": "error",
+            "message": f"Provider '{provider}' test not implemented yet.",
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "provider": provider,
+            "status": "error",
+            "message": f"Test call failed: {e}",
+        }
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
 
 
 @router.delete("/{key_id}")

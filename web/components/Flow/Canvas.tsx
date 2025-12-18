@@ -45,7 +45,7 @@ export default function Canvas() {
   useEffect(() => {
     if (!flowId && nodes.length === 0) {
       setGraph(DEFAULT_GRAPH.nodes as any, DEFAULT_GRAPH.edges);
-      setFlowMeta(undefined, "New Flow");
+      setFlowMeta({});
     }
   }, [flowId, nodes.length, setGraph, setFlowMeta]);
 

@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useRunUIStore } from "@/hooks/useRunUIStore";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -12,7 +13,7 @@ import {
   streamRun,
   type AgentListItem,
   type RunEvent,
-} from "@/services/job6";
+} from "@/services/api";
 
 /**
  * Vibe: simple chat surface for interacting with agents.
@@ -22,6 +23,7 @@ import {
  */
 export default function VibePage() {
   const [agents, setAgents] = useState<AgentListItem[]>([]);
+  const { show, hide } = useRunUIStore();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
   const [input, setInput] = useState("");
@@ -43,6 +45,7 @@ export default function VibePage() {
         setSelectedAgentId(items[0].id);
       }
     } catch (err: any) {
+      hide();
       console.error("Failed to load agents", err);
       toast.error(err?.message ?? "Failed to load agents");
     }
@@ -77,23 +80,30 @@ export default function VibePage() {
 
     try {
       const { runId } = await startAgentRun(selectedAgentId, {
+
         input: text,
         source: "vibe",
         config: { surface: "vibe" },
       });
       setCurrentRunId(runId);
+      show("BUILD", "Running…");
 
       // Wrap SSE handler so we can auto-stop on done/error
       const stop = streamRun(runId, (evt) => {
         setEvents((prev) => [...prev, evt]);
         if (evt.type === "done" || evt.type === "error") {
+          hide();
+        }
+        if (evt.type === "done" || evt.type === "error") {
           stop();
         }
       });
     } catch (err: any) {
+      hide();
       console.error("Failed to start run", err);
       toast.error(err?.message ?? "Failed to start run");
     } finally {
+      hide();
       setSending(false);
     }
   }

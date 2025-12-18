@@ -151,17 +151,26 @@ def list_flows(
         """
         List flows with pagination.
 
-        NOTE: `owner` is currently not wired to any user identity because
-        `check_auth` only validates a shared demo token. The column
-        `owner_id` exists on the flows table and can be connected later
-        when you have per-user auth.
+        Flows are always scoped to the authenticated user.
+
+        If `owner=me` (default), results are filtered by current_user.id.
         """
         query = db.query(FlowModel)
 
-        # In the future, you can filter by owner_id here once you have
-        # a real user identity associated with the token.
-        # if owner == "me":
-        #     query = query.filter(FlowModel.owner_id == current_user.id)
+        # Scope to authenticated user
+        if owner is None or owner == "me":
+            query = query.filter(FlowModel.owner_id == current_user.id)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "INVALID_OWNER",
+                        "message": "Only owner=me is supported.",
+                    },
+                },
+            )
 
         total = query.count()
 
@@ -200,7 +209,7 @@ def create_flow(
             id=flow_id,
             name=payload.name,
             graph=payload.graph.dict(),  # store as JSONB
-            # owner_id can be wired later when you have a per-user auth system
+            owner_id=current_user.id,
         )
 
         db.add(db_flow)
@@ -222,7 +231,11 @@ def get_flow(
         """
         Fetch a single flow by id.
         """
-        db_flow = db.query(FlowModel).filter(FlowModel.id == flow_id).first()
+        db_flow = (
+            db.query(FlowModel)
+            .filter(FlowModel.id == flow_id, FlowModel.owner_id == current_user.id)
+            .first()
+        )
         if not db_flow:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -248,7 +261,11 @@ def update_flow(
         """
         Update flow name and/or graph.
         """
-        db_flow = db.query(FlowModel).filter(FlowModel.id == flow_id).first()
+        db_flow = (
+            db.query(FlowModel)
+            .filter(FlowModel.id == flow_id, FlowModel.owner_id == current_user.id)
+            .first()
+        )
         if not db_flow:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

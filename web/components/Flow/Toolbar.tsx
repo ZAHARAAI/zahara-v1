@@ -6,13 +6,14 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { useFlowStore } from "@/hooks/useFlowStore";
+import { useRunUIStore } from "@/hooks/useRunUIStore";
 import { Button } from "@/components/ui/Button";
 import {
   startAgentRun,
   streamRun,
   upsertAgentFromFlow,
   type RunEvent,
-} from "@/services/job6";
+} from "@/services/api";
 
 export default function Toolbar() {
   const router = useRouter();
@@ -26,6 +27,7 @@ export default function Toolbar() {
     clearRunEvents,
     pushRunEvent,
   } = useFlowStore();
+  const { show, hide } = useRunUIStore();
 
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
@@ -64,6 +66,7 @@ export default function Toolbar() {
       console.error("Failed to save agent from flow", err);
       toast.error(err?.message ?? "Failed to save agent from flow");
     } finally {
+      hide();
       setSaving(false);
     }
   }
@@ -77,6 +80,7 @@ export default function Toolbar() {
 
     setRunning(true);
     clearRunEvents?.();
+    show("BUILD", "Running flow…");
 
     // Optionally show a local event in Flow UI
     const addLocal = (ev: RunEvent) => {
@@ -100,6 +104,10 @@ export default function Toolbar() {
       const stop = streamRun(runId, (ev) => {
         addLocal(ev);
         if (ev.type === "done" || ev.type === "error") {
+          hide();
+          setRunning(false);
+        }
+        if (ev.type === "done" || ev.type === "error") {
           stop();
         }
       });
@@ -107,6 +115,7 @@ export default function Toolbar() {
       console.error("Flow quick run failed", err);
       toast.error(err?.message ?? "Failed to run agent from flow");
     } finally {
+      hide();
       setRunning(false);
     }
   }

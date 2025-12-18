@@ -147,7 +147,7 @@ def execute_run_via_router(run_id: str) -> None:
             )
             return
 
-        spec_content = spec.spec or {}
+        spec_content = (spec.content or {}) if hasattr(spec, "content") else {}
         provider, model = _pick_provider_and_model(spec_content)
 
         if not ROUTER_BASE_URL:
@@ -222,7 +222,10 @@ def execute_run_via_router(run_id: str) -> None:
         usage_final: Dict[str, Any] = {}
 
         timeout = httpx.Timeout(120.0, connect=10.0)
-        headers = {"Authorization": f"Bearer {api_key}"}
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "X-Request-Id": run.request_id,
+        }
 
         try:
             with httpx.Client(timeout=timeout) as client:

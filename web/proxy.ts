@@ -1,25 +1,41 @@
-import { NextRequest, NextResponse } from "next/server";
-import { avoidRoutes } from "./lib/utilities";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { getAccessToken } from "./lib/auth-cookies";
 
-export async function proxy(req: NextRequest) {
-  const path = req.nextUrl.pathname;
-  const isAvoiding = avoidRoutes.some((route) => path.startsWith(route));
+const PUBLIC_PATH_PREFIXES = [
+  "/login",
+  "/register",
+  "/api",
+  "/_next",
+  "/favicon.ico",
+];
 
-  const token = await getAccessToken();
-
-  if (token && isAvoiding) {
-    return NextResponse.redirect(new URL("/", req.nextUrl));
-  }
-
-  if (!token && !isAvoiding) {
-    return NextResponse.redirect(new URL("/login", req.nextUrl));
-  }
-
-  return NextResponse.next();
+function isPublicPath(pathname: string) {
+  return PUBLIC_PATH_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
-// Routes Middleware should not run on
+export async function proxy(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+
+  if (isPublicPath(pathname)) return NextResponse.next();
+
+  // Respect toggle: when disabled, allow only auth pages and homepage content.
+  if (process.env.JOB5_ENABLED !== "true") {
+    // Let the public homepage render, but prevent accessing other protected routes.
+    if (pathname === "/") return NextResponse.next();
+    const url = req.nextUrl.clone();
+    url.pathname = "/";
+    return NextResponse.redirect(url);
+  }
+
+  const token = await getAccessToken();
+  if (token) return NextResponse.next();
+
+  const url = req.nextUrl.clone();
+  url.pathname = "/login";
+  return NextResponse.redirect(url);
+}
+
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|.*\\.png$).*)"],
+  matcher: ["/((?!.*\\..*).*)"],
 };

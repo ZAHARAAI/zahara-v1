@@ -12,7 +12,7 @@ import {
   listProviderKeys,
   testProviderKey,
   type ProviderKey,
-} from "@/services/job6";
+} from "@/services/api";
 
 const PROVIDERS = [
   { value: "openai", label: "OpenAI" },
