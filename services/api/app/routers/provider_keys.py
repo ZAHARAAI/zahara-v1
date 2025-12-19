@@ -15,7 +15,7 @@ from ..models.provider_key import ProviderKey as ProviderKeyModel
 from ..models.user import User
 from ..security.provider_keys_crypto import decrypt_secret, encrypt_secret
 
-router = APIRouter(prefix="/keys", tags=["provider_keys"])
+router = APIRouter(prefix="/provider_keys", tags=["provider_keys"])
 
 
 def _new_key_id() -> str:
