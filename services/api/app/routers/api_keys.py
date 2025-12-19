@@ -44,7 +44,7 @@ class CreateAPIKeyResponse(BaseModel):
     warning: str = "Store this API key securely. It will not be shown again."
 
 
-@router.post("/", response_model=CreateAPIKeyResponse)
+@router.post("", response_model=CreateAPIKeyResponse)
 async def create_api_key(
     request: CreateAPIKeyRequest,
     current_user: User = Depends(get_current_user),
@@ -73,7 +73,7 @@ async def create_api_key(
         )
 
 
-@router.get("/", response_model=List[APIKeyResponse])
+@router.get("", response_model=List[APIKeyResponse])
 async def list_api_keys(
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):

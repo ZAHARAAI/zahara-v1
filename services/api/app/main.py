@@ -3,7 +3,7 @@ import os
 
 # --- Third-party libraries
 import uvicorn
-from fastapi import APIRouter, Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -138,23 +138,23 @@ app.include_router(vector.router)
 app.include_router(version.router)
 
 # Also expose all endpoints under /api/* for Job6 spec compatibility
-api_v1 = APIRouter(prefix="/api")
-api_v1.include_router(agents.router)
-api_v1.include_router(api_keys.router)
-api_v1.include_router(auth.router)
-api_v1.include_router(clinic.router)
-api_v1.include_router(files.router)
-api_v1.include_router(flows.router)
-api_v1.include_router(health.router)
-api_v1.include_router(llm_router.router)
-api_v1.include_router(llm_router.v1_router)
-api_v1.include_router(mcp.router)
-api_v1.include_router(provider_keys.router)
-api_v1.include_router(run.router)
-api_v1.include_router(usage.router)
-api_v1.include_router(vector.router)
-api_v1.include_router(version.router)
-app.include_router(api_v1)
+# api_v1 = APIRouter(prefix="/api")
+# api_v1.include_router(agents.router)
+# api_v1.include_router(api_keys.router)
+# api_v1.include_router(auth.router)
+# api_v1.include_router(clinic.router)
+# api_v1.include_router(files.router)
+# api_v1.include_router(flows.router)
+# api_v1.include_router(health.router)
+# api_v1.include_router(llm_router.router)
+# api_v1.include_router(llm_router.v1_router)
+# api_v1.include_router(mcp.router)
+# api_v1.include_router(provider_keys.router)
+# api_v1.include_router(run.router)
+# api_v1.include_router(usage.router)
+# api_v1.include_router(vector.router)
+# api_v1.include_router(version.router)
+# app.include_router(api_v1)
 
 # Include dev router only if dev pages are enabled
 if os.getenv("ENABLE_DEV_PAGES") == "1":

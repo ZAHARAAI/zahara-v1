@@ -42,7 +42,7 @@ def get_git_commit_timestamp():
     return datetime.now().isoformat()
 
 
-@router.get("/")
+@router.get("")
 async def get_version():
     """Get application version information including git SHA and timestamp"""
     git_hash = get_git_commit_hash()

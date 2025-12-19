@@ -138,7 +138,7 @@ def _to_agent_item(model: AgentModel) -> AgentItem:
     )
 
 
-@router.get("/", response_model=AgentListResponse)
+@router.get("", response_model=AgentListResponse)
 def list_agents(
     q: Optional[str] = Query(None, description="Optional search query"),
     current_user: User = Depends(get_current_user),
@@ -151,7 +151,7 @@ def list_agents(
     return AgentListResponse(ok=True, items=[_to_agent_item(a) for a in rows])
 
 
-@router.post("/", response_model=AgentDetailResponse)
+@router.post("", response_model=AgentDetailResponse)
 def create_agent(
     body: AgentCreate,
     current_user: User = Depends(get_current_user),

@@ -139,7 +139,7 @@ def _db_flow_to_list_item(db_flow: FlowModel) -> FlowListItem:
 # ---------------------------
 
 
-@router.get("/", response_model=ListResponse)
+@router.get("", response_model=ListResponse)
 def list_flows(
     owner: Optional[str] = Query(default=None, description='e.g. "me"'),
     page: int = Query(default=1, ge=1),
@@ -193,7 +193,7 @@ def list_flows(
         raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
 
 
-@router.post("/", response_model=FlowEnvelope, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=FlowEnvelope, status_code=status.HTTP_201_CREATED)
 def create_flow(
     payload: FlowCreate,
     current_user: User = Depends(get_current_user),

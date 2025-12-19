@@ -89,7 +89,7 @@ def _to_item(model: ProviderKeyModel) -> ProviderKeyItem:
     )
 
 
-@router.get("/", response_model=ProviderKeyListResponse)
+@router.get("", response_model=ProviderKeyListResponse)
 def list_provider_keys(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -103,7 +103,7 @@ def list_provider_keys(
     return ProviderKeyListResponse(ok=True, items=[_to_item(r) for r in rows])
 
 
-@router.post("/", response_model=ProviderKeyCreateResponse)
+@router.post("", response_model=ProviderKeyCreateResponse)
 def create_provider_key(
     body: ProviderKeyCreate,
     current_user: User = Depends(get_current_user),
