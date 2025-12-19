@@ -207,7 +207,7 @@ def _create_initial_events(db: Session, run: RunModel, body: RunRequest) -> None
 
 
 # ---------------------------------------------------------------------------
-# Job6: Clinic list endpoint
+# Clinic list endpoint
 # ---------------------------------------------------------------------------
 
 

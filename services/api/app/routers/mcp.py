@@ -26,7 +26,8 @@ def mcp_connectors(
                     "name": c.name,
                     "enabled": c.enabled,
                     "meta": c.meta,
-                    "status": c.last_test_status,
+                    "last_test_status": c.last_test_status,
+                    "last_test_at": c.last_test_at,
                 }
                 for c in rows
             ],
@@ -71,7 +72,7 @@ def mcp_test(
     db: Session = Depends(get_db),
 ):
     try:
-        connector_id = body.get("connectorId")
+        connector_id = body.get("connector_id")
         c = db.query(MCPConnector).get(connector_id)
         if not c:
             raise HTTPException(
@@ -86,8 +87,8 @@ def mcp_test(
 
         return {
             "ok": True,
-            "connectorId": connector_id,
-            "latencyMs": 183,
+            "connector_id": connector_id,
+            "latency_ms": 183,
             "logs": ["auth ok", "ping ok"],
         }
     except Exception as e:

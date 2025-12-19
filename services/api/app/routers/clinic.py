@@ -35,16 +35,16 @@ def list_sessions(
         for r in runs:
             items.append(
                 {
-                    "requestId": r.request_id,
-                    "runId": r.id,
+                    "request_id": r.request_id,
+                    "run_id": r.id,
                     "status": r.status,
                     "model": r.model,
                     "source": r.source,
                     "tokens": r.tokens,
                     "cost": r.cost,
-                    "latencyMs": r.latency_ms,
-                    "startedAt": r.started_at.isoformat() if r.started_at else None,
-                    "finishedAt": r.finished_at.isoformat() if r.finished_at else None,
+                    "latency_ms": r.latency_ms,
+                    "started_at": r.started_at.isoformat() if r.started_at else None,
+                    "finished_at": r.finished_at.isoformat() if r.finished_at else None,
                 }
             )
 
@@ -93,10 +93,13 @@ def get_session(
             )
 
         summary = {
+            "agent_id": run.agent_id,
             "status": run.status,
             "latency_ms": run.latency_ms,
-            "tokens": run.tokens,
-            "cost": run.cost,
+            "tokens_in": run.tokens_in,
+            "tokens_out": run.tokens_out,
+            "tokens_total": run.tokens_total,
+            "cost_estimate_usd": run.cost_estimate_usd,
             "model": run.model,
             "source": run.source,
             "started_at": run.started_at.isoformat() if run.started_at else None,

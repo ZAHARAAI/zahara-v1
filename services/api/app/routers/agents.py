@@ -359,7 +359,7 @@ def start_agent_run(
     db: Session = Depends(get_db),
 ) -> RunResponse:
     """
-    Job 6 run pipeline entrypoint.
+    run pipeline entrypoint.
 
     - Creates a run row (pending->running->success|error)
     - Creates initial run events
