@@ -129,7 +129,7 @@ def create_provider_key(
             },
         )
 
-    raw_key = body.key.strip()
+    raw_key = body.secret.strip()
     if not raw_key:
         raise HTTPException(
             status_code=400,
