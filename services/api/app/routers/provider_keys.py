@@ -157,9 +157,14 @@ def create_provider_key(
 
     return ProviderKeyCreateResponse(
         ok=True,
-        id=pk.id,
-        provider=pk.provider,
-        label=pk.label,
+        provider_key=ProviderKeyItem(
+            id=pk.id,
+            provider=pk.provider,
+            label=pk.label,
+            last_test_status=pk.last_test_status,
+            last_tested_at=pk.last_tested_at,
+            created_at=pk.created_at,
+        ),
         masked_key=_mask(raw_key),
     )
 
