@@ -43,8 +43,11 @@ export default function Toolbar() {
       const description =
         meta?.description ?? "Flow created from Zahara Flow Builder";
 
-      const { agentId: newAgentId, version } = await upsertAgentFromFlow({
-        agentId,
+      const {
+        agent: { id: newAgentId },
+        spec_version: version,
+      } = await upsertAgentFromFlow({
+        agent_id: agentId,
         name,
         description,
         graph: { nodes, edges },
@@ -88,7 +91,7 @@ export default function Toolbar() {
     };
 
     try {
-      const { runId } = await startAgentRun(currentAgentId, {
+      const { run_id } = await startAgentRun(currentAgentId, {
         input: "Test run from Flow Builder.",
         source: "flow",
         config: { flowId, flowName },
@@ -97,11 +100,11 @@ export default function Toolbar() {
       addLocal({
         type: "log",
         ts: new Date().toISOString(),
-        message: `Started run ${runId} for agent ${currentAgentId}`,
-        payload: { runId, agentId: currentAgentId },
+        message: `Started run ${run_id} for agent ${currentAgentId}`,
+        payload: { run_id, agentId: currentAgentId },
       });
 
-      const stop = streamRun(runId, (ev) => {
+      const stop = streamRun(run_id, (ev) => {
         addLocal(ev);
         if (ev.type === "done" || ev.type === "error") {
           hide();

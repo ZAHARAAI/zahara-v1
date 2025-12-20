@@ -27,9 +27,8 @@ export default function LoginPage() {
       });
 
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.error?.message || "Login failed");
-      }
+      if (!res.ok) throw new Error(data?.error?.message || "Login failed");
+      if (!data.ok && data.error) throw new Error(data.error);
 
       router.push("/flow");
     } catch (err: any) {

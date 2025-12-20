@@ -26,8 +26,8 @@ class Run(Base):
     )
     user_id = Column(
         Integer,
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
         index=True,
     )
 
@@ -49,6 +49,11 @@ class Run(Base):
     tokens_total = Column(Integer, nullable=True)
     cost_estimate_usd = Column(Float, nullable=True)
     error_message = Column(Text, nullable=True)
+
+    # Persist the user's primary input for auditing/replay.
+    # This is intentionally separate from `config` so the Clinic can render a
+    # quick preview without parsing nested config.
+    input = Column(Text, nullable=True)
 
     # Optional full config used to launch the run
     config = Column(JSON, nullable=True)

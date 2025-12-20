@@ -36,6 +36,7 @@ export async function proxy(req: NextRequest) {
   return NextResponse.redirect(url);
 }
 
+// Routes Proxy should not run on
 export const config = {
-  matcher: ["/((?!.*\\..*).*)"],
+  matcher: ["/((?!api|_next/static|_next/image|.*\\.png$).*)"],
 };

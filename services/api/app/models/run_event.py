@@ -33,12 +33,13 @@ class RunEvent(Base):
         index=True,
     )
 
-    ts = Column(DateTime(timezone=True), server_default=func.now())
-
     # token | log | tool_call | tool_result | system | error | done | ping
     type = Column(String, nullable=False)
 
-    payload = Column(JSON, nullable=False)
+    # Payload is nullable in the initial migration (001). Keep nullable=True for
+    # backwards compatibility with existing DBs, but the app will always write
+    # a dict payload.
+    payload = Column(JSON, nullable=True)
 
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

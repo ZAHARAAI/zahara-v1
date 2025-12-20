@@ -64,6 +64,10 @@ class ProviderKeyCreateResponse(BaseModel):
     id: str
     provider: str
     label: str
+    last_test_status: Optional[str] = None
+    last_tested_at: Optional[str] = None
+    created_at: str
+    updated_at: Optional[str] = None
     masked_key: str
 
 
@@ -157,14 +161,12 @@ def create_provider_key(
 
     return ProviderKeyCreateResponse(
         ok=True,
-        provider_key=ProviderKeyItem(
-            id=pk.id,
-            provider=pk.provider,
-            label=pk.label,
-            last_test_status=pk.last_test_status,
-            last_tested_at=pk.last_tested_at,
-            created_at=pk.created_at,
-        ),
+        id=pk.id,
+        provider=pk.provider,
+        label=pk.label,
+        last_test_status=pk.last_test_status,
+        last_tested_at=pk.last_tested_at,
+        created_at=pk.created_at,
         masked_key=_mask(raw_key),
     )
 

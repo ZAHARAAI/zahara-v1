@@ -19,11 +19,7 @@ const LogPanel = () => {
 
         const level =
           e.level ??
-          (e.type === "error"
-            ? "error"
-            : e.type === "heartbeat"
-            ? "debug"
-            : "info");
+          (e.type === "error" ? "error" : e.type === "ping" ? "debug" : "info");
 
         return {
           id: `${index}-${e.type}-${ts ?? "no-ts"}`,
@@ -68,7 +64,7 @@ const LogPanel = () => {
                       ? "border-red-500/40 bg-red-500/5 text-red-200"
                       : ""
                   } ${
-                    e.type === "heartbeat"
+                    e.type === "ping"
                       ? "border-dashed border-[hsl(var(--border))]/60 text-muted-foreground/80"
                       : ""
                   }

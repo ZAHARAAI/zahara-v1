@@ -13,11 +13,12 @@ import {
   testProviderKey,
   type ProviderKey,
 } from "@/services/api";
+import { Select } from "@/components/ui/Select";
 
-const PROVIDERS = [
-  { value: "openai", label: "OpenAI" },
-  { value: "anthropic", label: "Anthropic" },
-  { value: "groq", label: "Groq" },
+const PROVIDERS: [string, string][] = [
+  ["openai", "OpenAI"],
+  ["anthropic", "Anthropic"],
+  ["groq", "Groq"],
 ];
 
 export default function ProvidersPage() {
@@ -57,8 +58,9 @@ export default function ProvidersPage() {
       const created = await createProviderKey({
         provider,
         label: label || `${provider} key`,
-        secret,
+        key: secret,
       });
+
       setLabel("");
       setSecret("");
       setKeys((prev) => [...prev, created]);
@@ -126,20 +128,13 @@ export default function ProvidersPage() {
           <div className="text-[13px] font-medium">Add provider key</div>
 
           <div className="flex flex-col gap-1 text-[12px]">
-            <label className="text-[11px] text-[hsl(var(--muted-fg))]">
-              Provider
-            </label>
-            <select
-              className="rounded-md border border-[hsl(var(--border))] bg-transparent px-2 py-1 text-[12px]"
+            <Select
+              // className="rounded-md border border-[hsl(var(--border))] bg-transparent px-2 py-1 text-[12px]"
+              label="Provider"
               value={provider}
-              onChange={(e) => setProvider(e.target.value)}
-            >
-              {PROVIDERS.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setProvider(v)}
+              options={PROVIDERS}
+            />
           </div>
 
           <Input
@@ -191,8 +186,8 @@ export default function ProvidersPage() {
                     key={k.id}
                     className="border-t border-[hsl(var(--border))]"
                   >
-                    <td className="py-1 pr-2">{k.provider}</td>
-                    <td className="py-1 pr-2">{k.label}</td>
+                    <td className="py-1 pr-2">{k?.provider}</td>
+                    <td className="py-1 pr-2">{k?.label}</td>
                     <td className="py-1 pr-2">
                       {k.last_test_status ? (
                         <span

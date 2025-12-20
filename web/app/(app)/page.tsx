@@ -8,10 +8,10 @@ import { useRunUIStore } from "@/hooks/useRunUIStore";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import {
+  Agent,
   listAgents,
   startAgentRun,
   streamRun,
-  type AgentListItem,
   type RunEvent,
 } from "@/services/api";
 
@@ -22,7 +22,7 @@ import {
  * - Right: chat transcript powered by Job 6 run pipeline + SSE
  */
 export default function VibePage() {
-  const [agents, setAgents] = useState<AgentListItem[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const { show, hide } = useRunUIStore();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
@@ -39,7 +39,8 @@ export default function VibePage() {
 
   async function loadAgents() {
     try {
-      const items = await listAgents(1, 50);
+      // TODO: listAgents("sdf") didn't send query
+      const items = await listAgents();
       setAgents(items);
       if (!selectedAgentId && items.length > 0) {
         setSelectedAgentId(items[0].id);
@@ -79,17 +80,16 @@ export default function VibePage() {
     ]);
 
     try {
-      const { runId } = await startAgentRun(selectedAgentId, {
-
+      const { run_id } = await startAgentRun(selectedAgentId, {
         input: text,
         source: "vibe",
         config: { surface: "vibe" },
       });
-      setCurrentRunId(runId);
+      setCurrentRunId(run_id);
       show("BUILD", "Running…");
 
       // Wrap SSE handler so we can auto-stop on done/error
-      const stop = streamRun(runId, (evt) => {
+      const stop = streamRun(run_id, (evt) => {
         setEvents((prev) => [...prev, evt]);
         if (evt.type === "done" || evt.type === "error") {
           hide();
@@ -121,7 +121,7 @@ export default function VibePage() {
         <div className="flex-1 overflow-auto">
           {agents.length === 0 ? (
             <div className="p-3 text-[12px] text-[hsl(var(--muted-fg))]">
-              No agents yet. Create one from Flow or the API, then come back
+              No agents yet. Create one from Flow or the Pro API, then come back
               here.
             </div>
           ) : (

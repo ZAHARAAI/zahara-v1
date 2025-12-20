@@ -8,22 +8,22 @@ const Retry = { max: 2, backoffMs: 400 };
 
 export const api = async (path: string, init: RequestInit = {}) => {
   const token = await getAccessToken();
+  if (!token) throw new Error("NO ACCESS TOKEN FOUND");
+
   let last: any;
   for (let attempt = 0; attempt <= Retry.max; attempt++) {
     try {
-      const res = await fetch(`${BASE.replace(/\/$/, "")}${path}`, {
+      const res = await fetch(`${BASE}${path}`, {
+        method: init.method ?? "GET",
         headers: {
-          ...(init.headers || {}),
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          "x-jwt-token": token,
         },
-        ...init,
+        body: init.body,
         cache: "no-store",
       });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`${res.status} ${res.statusText} – ${text}`);
-      }
+      if (!res.ok) throw new Error(res.statusText);
+
       return await res.json();
     } catch (e) {
       last = (e as Error).message;

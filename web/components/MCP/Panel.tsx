@@ -44,7 +44,7 @@ export default function Panel() {
       )
     );
     try {
-      await patchConnector(id, enabled);
+      await patchConnector(id, { enabled });
       toast.success(`Connector ${enabled ? "enabled" : "disabled"}`);
     } catch (e: any) {
       // rollback on failure
@@ -65,9 +65,9 @@ export default function Panel() {
 
   const test = async (id: string) => {
     try {
-      const res = await testConnector(id);
+      const json = await testConnector({ connector_id: id });
       toast.success("Test OK", {
-        description: `latency: ${res.latencyMs}ms`,
+        description: `latency: ${json.latency_ms}ms`,
       });
     } catch (e: any) {
       toast.error("Test failed", { description: e.message });
@@ -92,7 +92,7 @@ export default function Panel() {
               <div className="font-medium">{c.name}</div>
               <div className="text-[10px] opacity-60">{c.id}</div>
               <div className="mt-0.5 text-[10px] opacity-60">
-                status: {c.status ?? "unknown"}
+                status: {c.last_test_status ?? "unknown"}
               </div>
             </div>
             <div className="flex items-center gap-2">

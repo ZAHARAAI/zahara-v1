@@ -6,6 +6,7 @@ export type NodeKind = "start" | "model" | "tool" | "output";
 export type BaseNodeData = {
   title: string;
   description?: string;
+  type?: string;
 };
 
 export type StartNodeData = BaseNodeData & {

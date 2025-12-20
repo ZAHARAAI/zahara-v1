@@ -52,7 +52,7 @@ const Toolbar = () => {
     show("BUILD", "Running via Job 6 router…");
 
     try {
-      const { runId } = await startAgentRun(agentId, {
+      const { run_id } = await startAgentRun(agentId, {
         input: content,
         source: "pro",
         config: {
@@ -61,11 +61,11 @@ const Toolbar = () => {
         },
       });
 
-      setRunId?.(runId);
-      setLastRunId(runId);
+      setRunId?.(run_id);
+      setLastRunId(run_id);
 
       stopRef.current?.();
-      stopRef.current = streamRun(runId, (event) => {
+      stopRef.current = streamRun(run_id, (event) => {
         emitLocal(event);
       });
     } catch (err) {
@@ -77,12 +77,13 @@ const Toolbar = () => {
           "Failed to start run via Job 6 pipeline. Check console / network tab.",
       });
     } finally {
-    hide();
+      hide();
       setRunning(false);
-    hide();
+      hide();
     }
   }
 
+  // TODO: handleCancel has not been used
   function handleCancel() {
     if (!running) return;
     stopRef.current?.();
@@ -97,7 +98,7 @@ const Toolbar = () => {
 
   return (
     <>
-<div className="flex items-center justify-between rounded-2xl border border-[hsl(var(--border))] px-4 py-2 text-xs">
+      <div className="flex items-center justify-between rounded-2xl border border-[hsl(var(--border))] px-4 py-2 text-xs">
         <div className="flex items-center gap-2">
           <span className="text-[11px] uppercase tracking-wide text-[hsl(var(--muted-fg))]">
             Pro IDE

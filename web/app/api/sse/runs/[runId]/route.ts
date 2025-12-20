@@ -9,10 +9,10 @@ function mustEnv(name: string): string {
   return v;
 }
 
-type Params = { params: { runId: string } };
+type Params = { params: Promise<{ runId: string }> };
 
 export async function GET(req: Request, { params }: Params) {
-  const { runId } = params;
+  const { runId } = await params;
   const token = await getAccessToken();
   if (!token) {
     return new Response("unauthorized", { status: 401 });
@@ -24,7 +24,7 @@ export async function GET(req: Request, { params }: Params) {
   // Optional: forward request-id for traceability (if your backend/router supports it)
   const incomingRid = req.headers.get("x-request-id");
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
+    "x-jwt-token": token,
     Accept: "text/event-stream",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",

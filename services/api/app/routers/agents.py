@@ -324,8 +324,8 @@ def create_agent_spec_version(
     next_version = 1 if not latest else int(latest.version) + 1
 
     spec_row = AgentSpecModel(
+        id=_new_spec_id(),
         agent_id=agent.id,
-        user_id=current_user.id,
         version=next_version,
         content=body.spec or {},
     )

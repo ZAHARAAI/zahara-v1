@@ -11,7 +11,8 @@ import { Select } from "@/components/ui/Select";
 import {
   getRunDetail,
   listRuns,
-  type RunDetailResponse,
+  RunDetail,
+  RunEventDTO,
   type RunListItem,
 } from "@/services/api";
 
@@ -36,7 +37,10 @@ const options: [string, string][] = [
 export default function Timeline() {
   const [runs, setRuns] = useState<RunListItem[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<RunDetailResponse | null>(null);
+  const [detail, setDetail] = useState<{
+    run: RunDetail;
+    events: RunEventDTO[];
+  } | null>(null);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | "">("");
@@ -74,8 +78,8 @@ export default function Timeline() {
   async function loadDetail(runId: string) {
     try {
       setLoadingDetail(true);
-      const res = await getRunDetail(runId);
-      setDetail(res);
+      const json = await getRunDetail(runId);
+      setDetail({ run: json.run, events: json.events });
     } catch (err: any) {
       console.error("Failed to load run detail", err);
       toast.error(err?.message ?? "Failed to load run detail");

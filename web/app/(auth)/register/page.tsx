@@ -32,9 +32,9 @@ export default function RegisterPage() {
       });
 
       const data = await res.json();
-      if (!res.ok) {
+      if (!res.ok)
         throw new Error(data?.error?.message || "Registration failed");
-      }
+      if (!data.ok && data.error) throw new Error(data.error);
 
       router.push("/flow");
     } catch (err: any) {

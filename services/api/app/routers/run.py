@@ -102,6 +102,7 @@ class RunDetail(BaseModel):
     tokens_total: Optional[int] = None
     cost_estimate_usd: Optional[float] = None
     error_message: Optional[str] = None
+    input: Optional[str] = None
     created_at: str
     updated_at: str
     config: Optional[Dict[str, Any]] = None
@@ -156,6 +157,7 @@ def _run_to_detail(run: RunModel) -> RunDetail:
         tokens_total=run.tokens_total,
         cost_estimate_usd=run.cost_estimate_usd,
         error_message=run.error_message,
+        input=run.input,
         created_at=_dt_to_iso_z(run.created_at),
         updated_at=_dt_to_iso_z(run.updated_at),
         config=run.config,

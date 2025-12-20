@@ -57,15 +57,8 @@ def enforce_run_start_rate_limit(
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail={
-                    "ok": False,
-                    "error": {
-                        "code": "RATE_LIMITED",
-                        "error": "rate_limited",
-                        "message": "Run rate limit exceeded.",
-                        "limit": limit,
-                        "window_seconds": window,
-                        "retry_after_seconds": ttl,
-                    },
+                    "error": "rate_limited",
+                    "message": "Too many runs, slow down.",
                 },
                 headers={"Retry-After": str(ttl)},
             )

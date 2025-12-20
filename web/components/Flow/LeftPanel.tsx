@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { Button } from "@/components/ui/Button";
@@ -5,7 +6,11 @@ import { useFlowStore } from "@/hooks/useFlowStore";
 import type { AnyNodeData } from "./types";
 import type { Node } from "reactflow";
 
-const BLOCKS: Array<{ type: AnyNodeData["type"]; label: string; hint: string }> = [
+const BLOCKS: Array<{
+  type: AnyNodeData["type"];
+  label: string;
+  hint: string;
+}> = [
   { type: "start", label: "Start", hint: "Entry point" },
   { type: "model", label: "Model", hint: "LLM call" },
   { type: "tool", label: "Tool", hint: "External action" },
@@ -22,7 +27,13 @@ function makeNode(type: AnyNodeData["type"], index: number): Node<AnyNodeData> {
   };
 }
 
-export default function LeftPanel({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+export default function LeftPanel({
+  collapsed,
+  onToggle,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
   const { nodes, setNodes, select } = useFlowStore();
 
   const addBlock = (type: AnyNodeData["type"]) => {
@@ -40,7 +51,12 @@ export default function LeftPanel({ collapsed, onToggle }: { collapsed: boolean;
     >
       <div className="flex items-center justify-between border-b border-[hsl(var(--border))] p-2">
         {!collapsed && <div className="text-sm font-medium">Blocks</div>}
-        <Button variant="ghost" size="sm" onClick={onToggle} aria-label="Toggle left panel">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onToggle}
+          aria-label="Toggle left panel"
+        >
           {collapsed ? ">" : "<"}
         </Button>
       </div>
