@@ -380,12 +380,6 @@ type ProviderKeyListResponse = {
   items: ProviderKey[];
 };
 
-export type ProviderKyeCreateResponse = {
-  ok: boolean;
-  provider_key: ProviderKey;
-  masked_key: string;
-};
-
 export async function listProviderKeys(): Promise<ProviderKey[]> {
   const json = await api("/provider_keys");
   const data: ProviderKeyListResponse = ensureOk(json, "listing provider keys");
@@ -397,12 +391,23 @@ export async function createProviderKey(body: {
   label: string;
   key: string;
 }): Promise<ProviderKey> {
-  const json: ProviderKyeCreateResponse = await api("/provider_keys", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  const json: ProviderKey & { ok: boolean; masked_key: string } = await api(
+    "/provider_keys",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    }
+  );
 
-  return json.provider_key;
+  return {
+    id: json.id,
+    provider: json.provider,
+    label: json.label,
+    last_test_status: json.last_test_status,
+    last_tested_at: json.last_tested_at,
+    created_at: json.created_at,
+    updated_at: json?.updated_at,
+  };
 }
 
 export async function deleteProviderKey(
