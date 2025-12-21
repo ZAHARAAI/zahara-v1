@@ -233,6 +233,7 @@ def upgrade() -> None:
         sa.Column("model", sa.String(), nullable=True),
         sa.Column("provider", sa.String(), nullable=True),
         sa.Column("source", sa.String(), nullable=True),
+        sa.Column("input", sa.Text(), nullable=True),
         # metrics
         sa.Column("latency_ms", sa.Integer(), nullable=True),
         sa.Column("tokens_in", sa.Integer(), nullable=True),

@@ -7,13 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    Query,
-    status,
-)
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -26,7 +20,6 @@ from ..models.user import User
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
-# Stable 3-minute heartbeat per spec
 HEARTBEAT_INTERVAL_SECONDS = 180
 
 
@@ -42,17 +35,7 @@ def _new_run_id() -> str:
     return "run_" + uuid4().hex[:16]
 
 
-# ---------------------------------------------------------------------------
-# Pydantic models
-# ---------------------------------------------------------------------------
-
-
 class RunRequest(BaseModel):
-    """
-    Run start payload used for legacy /runs and compatibility shims.
-    New Job6 flow is typically /agents/{id}/run, but keeping this for old clients.
-    """
-
     prompt: str = ""
     model: str = "gpt-4o-mini"
     provider: Optional[str] = None
@@ -64,6 +47,12 @@ class RunResponse(BaseModel):
     ok: bool = True
     run_id: str
     request_id: str
+
+
+class RunCancelResponse(BaseModel):
+    ok: bool = True
+    run_id: str
+    status: str
 
 
 class RunListItem(BaseModel):
@@ -121,11 +110,6 @@ class RunDetailResponse(BaseModel):
     events: List[RunEventDTO]
 
 
-# ---------------------------------------------------------------------------
-# Internal mappers / helpers
-# ---------------------------------------------------------------------------
-
-
 def _run_to_list_item(run: RunModel) -> RunListItem:
     return RunListItem(
         id=run.id,
@@ -176,41 +160,9 @@ def _event_to_dto(ev: RunEventModel) -> RunEventDTO:
 def _create_event(
     db: Session, run_id: str, type_: str, payload: Dict[str, Any]
 ) -> None:
-    ev = RunEventModel(
-        run_id=run_id,
-        type=type_,
-        payload=payload,
-    )
+    ev = RunEventModel(run_id=run_id, type=type_, payload=payload)
     db.add(ev)
     db.commit()
-
-
-def _create_initial_events(db: Session, run: RunModel, body: RunRequest) -> None:
-    _create_event(
-        db,
-        run.id,
-        "system",
-        {
-            "request_id": run.request_id,
-            "run_id": run.id,
-            "ts": _dt_to_iso_z(datetime.now(timezone.utc)),
-            "model": run.model,
-            "provider": run.provider,
-            "source": run.source,
-        },
-    )
-    if body.prompt:
-        _create_event(
-            db,
-            run.id,
-            "log",
-            {"message": "prompt_received", "prompt_preview": body.prompt[:200]},
-        )
-
-
-# ---------------------------------------------------------------------------
-# Clinic list endpoint
-# ---------------------------------------------------------------------------
 
 
 @router.get("", response_model=RunListResponse)
@@ -218,22 +170,11 @@ def list_runs(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     agent_id: Optional[str] = Query(None),
-    status_filter: Optional[str] = Query(
-        None,
-        alias="status",
-        description="Filter by status: pending|running|success|error",
-    ),
+    status_filter: Optional[str] = Query(None, alias="status"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> RunListResponse:
-    """
-    List runs for the authenticated user (Clinic).
-
-    Supports pagination via limit/offset and optional filters:
-    - agent_id: limit results to a single agent
-    - status: pending|running|success|error
-    """
-    allowed_status = {"pending", "running", "success", "error"}
+    allowed_status = {"pending", "running", "success", "error", "cancelled"}
     if status_filter is not None and status_filter not in allowed_status:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -252,21 +193,13 @@ def list_runs(
 
     total = q.count()
     runs = q.order_by(RunModel.created_at.desc()).offset(offset).limit(limit).all()
-
-    items = [_run_to_list_item(r) for r in runs]
-
     return RunListResponse(
         ok=True,
-        items=items,
+        items=[_run_to_list_item(r) for r in runs],
         total=total,
         limit=limit,
         offset=offset,
     )
-
-
-# ---------------------------------------------------------------------------
-# Run detail + events + SSE
-# ---------------------------------------------------------------------------
 
 
 @router.get("/{run_id}", response_model=RunDetailResponse)
@@ -292,27 +225,50 @@ def get_run_detail(
     )
 
     return RunDetailResponse(
-        ok=True,
-        run=_run_to_detail(run),
-        events=[_event_to_dto(e) for e in events],
+        ok=True, run=_run_to_detail(run), events=[_event_to_dto(e) for e in events]
     )
+
+
+@router.post("/{run_id}/cancel", response_model=RunCancelResponse)
+def cancel_run(
+    run_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> RunCancelResponse:
+    run = (
+        db.query(RunModel)
+        .filter(RunModel.id == run_id, RunModel.user_id == current_user.id)
+        .first()
+    )
+    if not run:
+        raise HTTPException(status_code=404, detail="run_not_found")
+
+    # If already terminal, return current status.
+    if run.status in {"success", "error", "cancelled"}:
+        return RunCancelResponse(ok=True, run_id=run.id, status=run.status)
+
+    run.status = "cancelled"
+    run.error_message = "Cancelled by user"
+    db.add(run)
+    db.commit()
+
+    _create_event(
+        db,
+        run.id,
+        "cancelled",
+        {"message": "Cancelled by user", "request_id": run.request_id},
+    )
+
+    return RunCancelResponse(ok=True, run_id=run.id, status=run.status)
 
 
 @router.get("/{run_id}/events")
 def stream_run_events(
     run_id: str,
-    framed: bool = Query(
-        False, description="If true, emit SSE 'event:' lines per spec"
-    ),
+    framed: bool = Query(False, description="If true, emit SSE 'event:' lines"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """
-    SSE stream of run events.
-    Emits a stable heartbeat ping every 180 seconds.
-    Injects request_id into every event payload (propagation).
-    """
-
     run = (
         db.query(RunModel)
         .filter(RunModel.id == run_id, RunModel.user_id == current_user.id)
@@ -324,7 +280,6 @@ def stream_run_events(
     async def event_generator() -> AsyncGenerator[bytes, None]:
         last_id = 0
         last_ping = time.time()
-        rid = run.request_id
 
         while True:
             new_events = (
@@ -337,119 +292,49 @@ def stream_run_events(
 
             for ev in new_events:
                 last_id = ev.id
-
-                payload = ev.payload or {}
-                # Propagate request_id into each event payload
-                if isinstance(payload, dict) and "request_id" not in payload:
-                    payload = {**payload, "request_id": rid}
-
-                out = {
+                data = {
                     "type": ev.type,
-                    "payload": payload,
+                    "ts": _dt_to_iso_z(ev.created_at),
                     "created_at": _dt_to_iso_z(ev.created_at),
-                    "request_id": rid,  # also top-level for convenience
+                    "request_id": run.request_id,
+                    "payload": ev.payload or {},
+                    "id": ev.id,
+                    "message": (ev.payload or {}).get("message"),
                 }
+
                 if framed:
-                    yield f"event: {ev.type}\ndata: {json.dumps(out)}\n\n".encode(
+                    yield f"event: {ev.type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode(
                         "utf-8"
                     )
                 else:
-                    yield f"data: {json.dumps(out)}\n\n".encode("utf-8")
+                    yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n".encode(
+                        "utf-8"
+                    )
 
-                if ev.type in {"done", "error"}:
+                # Terminal events (stop stream)
+                if ev.type in {"done", "error", "cancelled"}:
                     return
 
             now = time.time()
             if now - last_ping >= HEARTBEAT_INTERVAL_SECONDS:
                 last_ping = now
-                ping_out = {
+                ping = {
                     "type": "ping",
-                    "payload": {
-                        "ts": _dt_to_iso_z(datetime.now(timezone.utc)),
-                        "request_id": rid,
-                    },
+                    "ts": _dt_to_iso_z(datetime.now(timezone.utc)),
                     "created_at": _dt_to_iso_z(datetime.now(timezone.utc)),
-                    "request_id": rid,
+                    "request_id": run.request_id,
+                    "payload": {"request_id": run.request_id},
+                    "message": "ping",
                 }
                 if framed:
-                    yield f"event: ping\ndata: {json.dumps(ping_out)}\n\n".encode(
+                    yield f"event: ping\ndata: {json.dumps(ping, ensure_ascii=False)}\n\n".encode(
                         "utf-8"
                     )
                 else:
-                    yield f"data: {json.dumps(ping_out)}\n\n".encode("utf-8")
+                    yield f"data: {json.dumps(ping, ensure_ascii=False)}\n\n".encode(
+                        "utf-8"
+                    )
 
             await asyncio.sleep(0.5)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
-
-
-# ---------------------------------------------------------------------------
-# Legacy /runs endpoint retained for backward compatibility
-# ---------------------------------------------------------------------------
-
-
-@router.post("", response_model=RunResponse)
-def legacy_start_run(
-    body: RunRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> RunResponse:
-    """
-    Legacy /runs endpoint.
-
-    For Job 6, this just creates an ad-hoc run with no agent_id. This keeps
-    older experimental clients from breaking while we migrate them.
-    """
-    request_id = str(uuid4())
-    run_id = _new_run_id()
-
-    run = RunModel(
-        id=run_id,
-        agent_id=None,
-        user_id=current_user.id,  # legacy endpoint: scope to authenticated user
-        request_id=request_id,
-        status="pending",
-        model=body.model,
-        provider=body.provider,
-        source=body.source,
-        latency_ms=None,
-        tokens_in=None,
-        tokens_out=None,
-        tokens_total=None,
-        cost_estimate_usd=None,
-        error_message=None,
-        config=body.config,
-    )
-    db.add(run)
-    db.commit()
-    db.refresh(run)
-
-    _create_initial_events(db, run, body)
-
-    return RunResponse(ok=True, run_id=run.id, request_id=run.request_id)
-
-
-# For Clinic.replay compatibility; older code imports `_launch_run`
-def _launch_run(body: RunRequest, db: Session) -> RunResponse:
-    """
-    Compatibility shim used by `clinic.py` for repl
-    """
-    request_id = str(uuid4())
-    run_id = _new_run_id()
-
-    run = RunModel(
-        id=run_id,
-        agent_id=None,
-        user_id=1,  # legacy user
-        request_id=request_id,
-        status="pending",
-        model=body.model,
-        provider=body.provider,
-        source=body.source,
-        config=body.config,
-    )
-    db.add(run)
-    db.commit()
-    db.refresh(run)
-    _create_initial_events(db, run, body)
-    return RunResponse(ok=True, run_id=run.id, request_id=run.request_id)

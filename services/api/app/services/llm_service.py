@@ -1,140 +1,130 @@
-# add near the top with imports
-import httpx
-import openai
+from __future__ import annotations
+
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 from ..config import settings
+from ..llm.router_client import (
+    chat_completions,
+    stream_chat_completions,
+)
+from ..llm.router_client import (
+    health_check as router_health_check,
+)
 
 
 class LLMService:
-    def __init__(self):
-        self.local_llm_url = settings.local_llm_url  # None if OLLAMA_HOST is unset
-        self.openai_api_key = (
-            settings.openai_api_key.get_secret_value()
-            if settings.openai_api_key
-            else None
-        )
-        self.default_model = settings.default_model
+    """
+    Job6 Central Router Ownership (Enforced)
 
-        # Pick default provider:
-        # - If no local_llm_url -> default to OpenAI (when key exists)
-        # - Else if local_llm_url exists -> prefer Ollama
-        if self.local_llm_url:
-            self.default_provider = "ollama"
-        elif self.openai_api_key:
-            self.default_provider = "openai"
-        else:
-            self.default_provider = "unconfigured"
+    IMPORTANT:
+      - This API service must NOT call OpenAI/Anthropic/Ollama directly.
+      - All LLM requests go through zahara-v1-router (LLM_ROUTER_URL).
+      - Provider selection (openai/anthropic/etc.) happens inside the router.
 
-        # Configure OpenAI client lazily when used
-        if self.openai_api_key:
-            openai.api_key = self.openai_api_key
+    This class is kept as a stable interface for any legacy endpoints that still import LLMService.
+    """
+
+    def __init__(self) -> None:
+        # Keep these for backward compatibility, but DO NOT use them for direct provider calls.
+        self.default_model: str = settings.default_model
+
+        # Legacy fields retained so other modules don’t crash if they reference them.
+        # (Do not use in API code for direct provider access.)
+        self.local_llm_url = None
+        self.openai_api_key = None
+        self.openrouter_api_key = None
+
+        self.default_provider = "router"
 
     async def chat_completion(
         self,
-        messages: list[dict],
-        model: str | None = None,
-        provider: str | None = None,
-    ):
-        provider = provider or self.default_provider
-        model = model or self.default_model
-
-        if provider == "openai":
-            if not self.openai_api_key:
-                return {"error": "OPENAI_API_KEY not configured"}
-            # Minimal OpenAI-compatible call
-            try:
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    resp = await client.post(
-                        "https://api.openai.com/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {self.openai_api_key}",
-                            "Content-Type": "application/json",
-                        },
-                        json={"model": model, "messages": messages},
-                    )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    return {
-                        "provider": "openai",
-                        "model": model,
-                        "message": data["choices"][0]["message"]["content"],
-                        "usage": data.get("usage", {}),
-                    }
-                return {"error": f"OpenAI {resp.status_code}: {resp.text}"}
-            except Exception as e:
-                return {"error": f"OpenAI error: {e}"}
-
-        elif provider == "ollama":
-            if not self.local_llm_url:
-                return {"error": "OLLAMA_HOST (local_llm_url) not configured"}
-            try:
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    resp = await client.post(
-                        f"{self.local_llm_url}/v1/chat/completions",
-                        headers={"Content-Type": "application/json"},
-                        json={"model": model, "messages": messages},
-                    )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    return {
-                        "provider": "ollama",
-                        "model": model,
-                        "message": data["choices"][0]["message"]["content"],
-                        "usage": data.get("usage", {}),
-                    }
-                return {"error": f"Ollama {resp.status_code}: {resp.text}"}
-            except Exception as e:
-                return {"error": f"Ollama error: {e}"}
-
-        # Fallback when nothing configured
-        return {
-            "error": "No LLM provider configured (set OPENAI_API_KEY or OLLAMA_HOST)"
+        messages: List[Dict[str, Any]],
+        model: Optional[str] = None,
+        provider: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Non-streaming chat completion (router-only).
+        `provider` is forwarded to router as a hint; router decides final routing.
+        """
+        payload: Dict[str, Any] = {
+            "model": model or self.default_model,
+            "messages": messages,
+            # pass provider hint if present (router normalizes/accepts it)
+            "provider": (provider or None),
+            "temperature": 0.7,
+            "stream": False,
         }
 
-    async def health_check(self) -> dict:
-        """
-        Return {"status": ..., "provider": "..."}.
-        Healthy if either:
-          - OpenAI is configured and reachable, or
-          - Ollama is reachable at local_llm_url
-        """
-        # Prefer reporting OpenAI as healthy if configured
-        if self.openai_api_key:
+        try:
+            data = await chat_completions(payload)
+            # Normalize into your existing return style expected by /llm/chat
+            content = ""
             try:
-                async with httpx.AsyncClient(timeout=8.0) as client:
-                    # lightweight call; listing models is cheap and doesn't spend tokens
-                    r = await client.get(
-                        "https://api.openai.com/v1/models",
-                        headers={"Authorization": f"Bearer {self.openai_api_key}"},
-                    )
-                if r.status_code == 200:
-                    return {"status": "healthy", "provider": "openai"}
-                else:
-                    # fall through to check ollama if present
-                    openai_err = f"OpenAI status {r.status_code}"
-            except Exception as e:
-                openai_err = f"OpenAI error: {e}"
-        else:
-            openai_err = "OPENAI_API_KEY not set"
+                content = data["choices"][0]["message"]["content"]
+            except Exception:
+                content = ""
 
-        # Check Ollama if configured
-        if self.local_llm_url:
-            try:
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    rr = await client.get(f"{self.local_llm_url}/api/tags")
-                if rr.status_code == 200:
-                    return {"status": "healthy", "provider": "ollama"}
-                return {
-                    "status": "unhealthy",
-                    "provider": "ollama",
-                    "error": f"Ollama status {rr.status_code}",
-                }
-            except Exception as e:
-                return {
-                    "status": "unhealthy",
-                    "provider": "ollama",
-                    "error": f"Ollama error: {e}",
-                }
+            return {
+                "provider": "router",
+                "model": payload["model"],
+                "message": content,
+                "raw": data,
+                "usage": data.get("usage", {}),
+            }
+        except Exception as e:
+            return {"error": f"Router error: {e}"}
 
-        # Neither is healthy/configured
-        return {"status": "unavailable", "provider": "none", "error": openai_err}
+    async def chat_completion_stream(
+        self,
+        messages: List[Dict[str, Any]],
+        model: Optional[str] = None,
+        provider: Optional[str] = None,
+        temperature: float = 0.7,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """
+        Streaming chat completion (router-only).
+        Yields router chunk JSON objects as they arrive.
+        """
+        payload: Dict[str, Any] = {
+            "model": model or self.default_model,
+            "messages": messages,
+            "provider": (provider or None),
+            "temperature": temperature,
+            "stream": True,
+        }
+
+        async for chunk in stream_chat_completions(payload):
+            yield chunk
+
+    # ---- Legacy helpers (keep endpoints from breaking) ----
+
+    async def generate_text(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        provider: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Legacy endpoint compatibility: converts a prompt into chat messages.
+        """
+        messages = [{"role": "user", "content": prompt}]
+        return await self.chat_completion(
+            messages=messages, model=model, provider=provider
+        )
+
+    async def get_available_models(self, provider: str = "router") -> Dict[str, Any]:
+        """
+        Router does not currently expose a models endpoint.
+        Return a minimal, safe response.
+        """
+        return {
+            "provider": "router",
+            "models": [self.default_model],
+            "note": "Model catalog is managed by zahara-v1-router. Set DEFAULT_MODEL/DEFAULT_PROVIDER on router.",
+        }
+
+    async def health_check(self) -> Dict[str, Any]:
+        """
+        Router-only health check (no token spend).
+        """
+        return await router_health_check()
