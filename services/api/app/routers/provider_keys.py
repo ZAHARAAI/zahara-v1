@@ -61,13 +61,7 @@ class ProviderKeyCreate(BaseModel):
 
 class ProviderKeyCreateResponse(BaseModel):
     ok: bool = True
-    id: str
-    provider: str
-    label: str
-    last_test_status: Optional[str] = None
-    last_tested_at: Optional[str] = None
-    created_at: str
-    updated_at: Optional[str] = None
+    provider_key: ProviderKeyItem
     masked_key: str
 
 

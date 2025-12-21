@@ -1,9 +1,9 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* Merged API client: Job6 + existing endpoints */
 
 import { api } from "@/actions/api";
 import { AnyNodeData } from "@/components/Flow/types";
+import { useRunUIStore } from "@/hooks/useRunUIStore";
 import { Edge, Node } from "reactflow";
 
 /**
@@ -38,88 +38,62 @@ export type AgentSpec = {
 };
 
 /** What listAgents() returns (frontend-friendly) */
-export type AgentListResponse = {
-  ok: boolean;
-  items: Agent[];
-};
+export type AgentListItem = Agent;
 
-/* -------------------- API functions -------------------- */
-
-/**
- * Backend: GET /agents?q=...
- */
-export async function listAgents(q?: string): Promise<Agent[]> {
-  const json = await api(q ? `/agents?q=${q}` : "/agents");
-  const data: AgentListResponse = ensureOk(json, "listing agents");
-  return data.items || [];
+export async function listAgents(): Promise<AgentListItem[]> {
+  const json = await api(`/agents`);
+  const data = ensureOk(json, "listing agents");
+  return data.items ?? data;
 }
 
-// TODO: getAgent has not been used
-export async function getAgent(agentId: string): Promise<AgentSpec> {
-  const json = await api(`/agents/${encodeURIComponent(agentId)}`);
-  const data = ensureOk(json, `loading agent ${agentId}`);
-  return data;
-}
-
-export type CreateAgentBody = {
+export type CreateAgentRequest = {
   name: string;
-  description?: string | null;
-  spec: Record<string, any>;
+  slug?: string;
+  description?: string;
+  spec?: Record<string, any>;
 };
 
-// TODO: createAgent has not been used
-export async function createAgent(body: CreateAgentBody): Promise<AgentSpec> {
+export async function createAgent(
+  body: CreateAgentRequest
+): Promise<AgentSpec> {
   const json = await api(`/agents`, {
     method: "POST",
-    body: JSON.stringify({
-      name: body.name,
-      description: body.description ?? null,
-      spec: body.spec ?? {},
-    }),
+    body: JSON.stringify(body),
   });
-
   const data = ensureOk(json, "creating agent");
   return data;
 }
 
-export type UpdateAgentBody = {
-  name?: string | null;
-  description?: string | null;
-};
+// TODO: this method has not used anywhere
+export async function getAgent(agent_id: string): Promise<AgentSpec> {
+  const json = await api(`/agents/${encodeURIComponent(agent_id)}`);
+  const data = ensureOk(json, "getting agent");
+  return data;
+}
 
-// TODO: updateAgent has not been used
-export async function updateAgent(
-  agentId: string,
-  body: UpdateAgentBody
+export async function patchAgent(
+  agent_id: string,
+  body: Partial<Pick<Agent, "name" | "slug" | "description">>
 ): Promise<AgentSpec> {
-  const json = await api(`/agents/${encodeURIComponent(agentId)}`, {
+  const json = await api(`/agents/${encodeURIComponent(agent_id)}`, {
     method: "PATCH",
     body: JSON.stringify(body),
   });
-
-  const data = ensureOk(json, `updating agent ${agentId}`);
+  const data = ensureOk(json, "patching agent");
   return data;
 }
 
-export type CreateAgentSpecBody = {
-  spec: Record<string, any>;
-};
-
-// TODO: createAgentSpec has not been used
-export async function createAgentSpec(
-  agentId: string,
-  body: CreateAgentSpecBody
+export async function saveAgentSpec(
+  agent_id: string,
+  spec: Record<string, any>
 ): Promise<AgentSpec> {
-  const json = await api(`/agents/${encodeURIComponent(agentId)}/spec`, {
+  const json = await api(`/agents/${encodeURIComponent(agent_id)}/spec`, {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify({ spec }),
   });
-
-  const data = ensureOk(json, `creating spec for agent ${agentId}`);
+  const data = ensureOk(json, "saving spec");
   return data;
 }
-
-/* -------------------- Flow -> Agent upsert -------------------- */
 
 export type FlowAgentUpsertParams = {
   /** If provided, update spec for existing agent. Otherwise create new. */
@@ -127,7 +101,7 @@ export type FlowAgentUpsertParams = {
   /** Agent display name */
   name: string;
   /** Optional description */
-  description?: string | null;
+  description?: string;
 
   /** Flow graph from ReactFlow */
   graph: {
@@ -155,16 +129,16 @@ export async function upsertAgentFromFlow(
   let agentSpec: AgentSpec;
   if (params.agent_id) {
     // Keep agent metadata in sync (optional)
-    await updateAgent(params.agent_id, {
+    await patchAgent(params.agent_id, {
       name: params.name,
       description: params.description ?? null,
     });
 
-    agentSpec = await createAgentSpec(params.agent_id, { spec });
+    agentSpec = await saveAgentSpec(params.agent_id, { spec });
   } else {
     agentSpec = await createAgent({
       name: params.name,
-      description: params.description ?? null,
+      description: params.description,
       spec,
     });
   }
@@ -172,7 +146,9 @@ export async function upsertAgentFromFlow(
   return agentSpec;
 }
 
-/* -------------------- Runs -------------------- */
+/* ------------------------------------------------------------------ */
+/* Runs                                                               */
+/* ------------------------------------------------------------------ */
 
 export type RunEventType =
   | "system"
@@ -182,19 +158,15 @@ export type RunEventType =
   | "tool_result"
   | "ping"
   | "done"
-  | "error";
+  | "error"
+  | string;
 
 export type RunEvent = {
-  /** Event kind emitted from the backend. */
   type: RunEventType;
-  /** ISO timestamp when the event was received on the client. */
   ts: string;
-  /** Optional display message. */
   message?: string;
-  /** Raw payload as stored in run_events.payload. */
-  payload?: Record<string, any>;
-  /** Extra fields for backward compatibility. */
-  [key: string]: any;
+  payload?: any;
+  [k: string]: any;
 };
 
 export type StartRunRequest = {
@@ -236,25 +208,69 @@ export async function startAgentRun(
 export function streamRun(
   run_id: string,
   onEvent: (ev: RunEvent) => void,
-  opts?: { onError?: (err: any) => void; signal?: AbortSignal }
+  opts?: {
+    onError?: (err: any) => void;
+    signal?: AbortSignal;
+    /** Optional override per run */
+    autoCloseMs?: number;
+    /** Optional fade duration */
+    fadeMs?: number;
+  }
 ) {
   const url = `/api/sse/runs/${encodeURIComponent(run_id)}`;
   const es = new EventSource(url);
 
+  const pushToBuildModal = (ev: RunEvent) => {
+    const st = useRunUIStore.getState();
+    if (!st?.open) return;
+
+    // always keep last 5 logs
+    st.pushLog({
+      type: ev.type ?? "log",
+      ts: ev.ts ?? new Date().toISOString(),
+      message: ev.message,
+      payload: ev.payload,
+    });
+
+    if (ev.type === "done") {
+      st.setPhase("finalizing", "Finalizing run…");
+      st.setPhase("done", "Completed");
+
+      const closeMs =
+        typeof opts?.autoCloseMs === "number"
+          ? opts.autoCloseMs
+          : st.autoCloseMs ?? 1000;
+
+      st.safeHideAfter(closeMs, st.sessionId, opts?.fadeMs ?? 180);
+    } else if (ev.type === "error") {
+      const msg =
+        (typeof ev.message === "string" && ev.message) ||
+        (typeof ev.payload?.message === "string" && ev.payload.message) ||
+        "Run failed";
+      st.setError(msg);
+      // no auto-close on error
+    }
+  };
+
   const safeEmit = (ev: Partial<RunEvent>) => {
-    onEvent({
+    const merged: RunEvent = {
       type: (ev.type ?? "log") as RunEventType,
       ts: ev.ts ?? new Date().toISOString(),
       message: ev.message,
       payload: ev.payload,
       ...ev,
-    });
+    };
+
+    onEvent(merged);
+
+    try {
+      pushToBuildModal(merged);
+    } catch {}
   };
 
   es.onmessage = (msg) => {
     try {
       const data = JSON.parse(msg.data ?? "{}");
-      // Backend sends `data: { type, payload, ... }`
       safeEmit({
         type: data.type ?? "log",
         payload: data.payload ?? data,
@@ -262,15 +278,13 @@ export function streamRun(
         ts: data.ts,
         ...data,
       });
-    } catch (e) {
+    } catch {
       safeEmit({ type: "log", message: String(msg.data ?? "") });
     }
   };
 
   es.onerror = (e) => {
     opts?.onError?.(e);
-    // Do not always close here; EventSource auto-reconnects.
-    // But if caller used AbortSignal, we close when aborted below.
   };
 
   if (opts?.signal) {
@@ -313,14 +327,19 @@ export type RunListResponse = {
   offset: number;
 };
 
-export async function listRuns(
+export async function listRuns({
   limit = 50,
   offset = 0,
-  agent_id?: string,
-  status_filter?: "pending" | "running" | "success" | "error"
-): Promise<RunListResponse> {
+  agent_id,
+  status,
+}: {
+  limit: number;
+  offset: number;
+  agent_id?: string;
+  status?: "pending" | "running" | "success" | "error" | string;
+}): Promise<RunListResponse> {
   const json = await api(
-    `/runs?limit=${limit}&offset=${offset}&agent_id=${agent_id}&status_filter=${status_filter}`
+    `/runs?limit=${limit}&offset=${offset}&agent_id=${agent_id}&status_filter=${status}`
   );
   const data = ensureOk(json, "listing runs");
   return data;
@@ -341,6 +360,7 @@ export type RunDetail = {
   tokens_total?: number | null;
   cost_estimate_usd?: number | null;
   error_message?: string | null;
+  input: string;
   created_at: string;
   updated_at: string;
   config?: Record<string, any> | null;
@@ -359,6 +379,19 @@ export async function getRunDetail(
   const json = await api(`/runs/${encodeURIComponent(run_id)}`);
   const data = ensureOk(json, `loading run ${run_id}`);
   return data;
+}
+
+export type RunCancelResponse = {
+  ok: boolean;
+  run_id: string;
+  status: string;
+};
+
+export async function cancelRun(run_id: string): Promise<RunCancelResponse> {
+  const json = await api(`/runs/${encodeURIComponent(run_id)}/cancel`, {
+    method: "POST",
+  });
+  return ensureOk(json, "cancelling run");
 }
 
 /* ----------------------------------------------------- */
@@ -391,23 +424,13 @@ export async function createProviderKey(body: {
   label: string;
   key: string;
 }): Promise<ProviderKey> {
-  const json: ProviderKey & { ok: boolean; masked_key: string } = await api(
-    "/provider_keys",
-    {
+  const json: { ok: boolean; provider_key: ProviderKey; masked_key: string } =
+    await api("/provider_keys", {
       method: "POST",
       body: JSON.stringify(body),
-    }
-  );
+    });
 
-  return {
-    id: json.id,
-    provider: json.provider,
-    label: json.label,
-    last_test_status: json.last_test_status,
-    last_tested_at: json.last_tested_at,
-    created_at: json.created_at,
-    updated_at: json?.updated_at,
-  };
+  return json.provider_key;
 }
 
 export async function deleteProviderKey(
@@ -435,7 +458,6 @@ export async function testProviderKey(keyId: string): Promise<{
 }
 
 // TODO: testRawProviderKey method has not been used
-/** Spec-compatible raw test: POST /provider_keys/test { provider, key } */
 export async function testRawProviderKey(body: {
   provider: string;
   key: string;

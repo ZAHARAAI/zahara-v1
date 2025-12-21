@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useRunUIStore } from "@/hooks/useRunUIStore";
 
@@ -14,6 +14,50 @@ import {
   streamRun,
   type RunEvent,
 } from "@/services/api";
+
+type ChatItem = {
+  role: "user" | "assistant" | "tool" | "system";
+  ts: string;
+  text: string;
+  kind?: string; // token/tool_call/tool_result/log/error...
+};
+
+function clip(s: string, n: number) {
+  if (!s) return "";
+  return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+function safeJson(x: any): string {
+  try {
+    return JSON.stringify(x, null, 2);
+  } catch {
+    return String(x);
+  }
+}
+
+function summarizeToolCall(payload: any): string {
+  const tc =
+    payload?.tool_call ??
+    payload?.tool_calls?.[0] ??
+    payload?.function_call ??
+    payload;
+  const fn = tc?.function ?? tc ?? {};
+  const name = fn?.name ?? tc?.name ?? "tool";
+  const args = fn?.arguments ?? tc?.arguments ?? "";
+  const argsStr = typeof args === "string" ? args : safeJson(args);
+  const compact = clip(argsStr.replace(/\s+/g, " ").trim(), 220);
+  return compact ? `tool_call: ${name}(${compact})` : `tool_call: ${name}`;
+}
+
+function summarizeToolResult(payload: any): string {
+  const tr = payload?.tool_result ?? payload?.tool_results?.[0] ?? payload;
+  const name = tr?.name ?? tr?.tool_name ?? tr?.id ?? "tool";
+  const out =
+    tr?.content ?? tr?.output ?? tr?.result ?? tr?.text ?? tr?.value ?? "";
+  const outStr = typeof out === "string" ? out : safeJson(out);
+  const compact = clip(outStr.replace(/\s+/g, " ").trim(), 240);
+  return compact ? `tool_result: ${name} → ${compact}` : `tool_result: ${name}`;
+}
 
 /**
  * Vibe: simple chat surface for interacting with agents.
@@ -39,7 +83,6 @@ export default function VibePage() {
 
   async function loadAgents() {
     try {
-      // TODO: listAgents("sdf") didn't send query
       const items = await listAgents();
       setAgents(items);
       if (!selectedAgentId && items.length > 0) {
@@ -68,7 +111,7 @@ export default function VibePage() {
     setSending(true);
     setInput("");
 
-    // Add the user message to the transcript
+    // Add user message as an event (so we render it consistently)
     setEvents((prev) => [
       ...prev,
       {
@@ -88,25 +131,116 @@ export default function VibePage() {
       setCurrentRunId(run_id);
       show("BUILD", "Running…");
 
-      // Wrap SSE handler so we can auto-stop on done/error
-      const stop = streamRun(run_id, (evt) => {
-        setEvents((prev) => [...prev, evt]);
-        if (evt.type === "done" || evt.type === "error") {
-          hide();
-        }
-        if (evt.type === "done" || evt.type === "error") {
-          stop();
-        }
-      });
+      const stop = streamRun(
+        run_id,
+        (evt) => {
+          setEvents((prev) => [...prev, evt]);
+          if (evt.type === "done" || evt.type === "error") {
+            hide();
+            stop();
+          }
+        },
+        { autoCloseMs: 700 }
+      );
     } catch (err: any) {
       hide();
       console.error("Failed to start run", err);
       toast.error(err?.message ?? "Failed to start run");
     } finally {
-      hide();
       setSending(false);
+      hide();
     }
   }
+
+  // Convert raw events -> chat items (aggregates tokens)
+  const chatItems: ChatItem[] = useMemo(() => {
+    const out: ChatItem[] = [];
+
+    for (const e of events) {
+      if (e.type === "ping" || e.type === "done") continue;
+
+      // Explicit error bubble
+      if (e.type === "error") {
+        const msg = e.message ?? e.payload?.message ?? "error";
+        out.push({
+          role: "system",
+          ts: e.ts ?? new Date().toISOString(),
+          text: typeof msg === "string" ? msg : safeJson(msg),
+          kind: "error",
+        });
+        continue;
+      }
+
+      // Tool events
+      if (e.type === "tool_call") {
+        out.push({
+          role: "tool",
+          ts: e.ts ?? new Date().toISOString(),
+          text: summarizeToolCall(e.payload),
+          kind: "tool_call",
+        });
+        continue;
+      }
+      if (e.type === "tool_result") {
+        out.push({
+          role: "tool",
+          ts: e.ts ?? new Date().toISOString(),
+          text: summarizeToolResult(e.payload),
+          kind: "tool_result",
+        });
+        continue;
+      }
+
+      // Token events → append to last assistant bubble
+      if (e.type === "token") {
+        const t = (e.message ?? e.payload?.text ?? "") as string;
+        if (!t) continue;
+
+        const last = out[out.length - 1];
+        if (last && last.role === "assistant" && last.kind === "token") {
+          last.text += t;
+        } else {
+          out.push({
+            role: "assistant",
+            ts: e.ts ?? new Date().toISOString(),
+            text: t,
+            kind: "token",
+          });
+        }
+        continue;
+      }
+
+      // Log events: treat payload.role=user as user message
+      if (e.type === "log") {
+        const role = e.payload?.role === "user" ? "user" : "system";
+        const msg =
+          e.message ??
+          e.payload?.message ??
+          e.payload?.text ??
+          (typeof e.payload === "string" ? e.payload : "");
+        if (!msg) continue;
+        out.push({
+          role,
+          ts: e.ts ?? new Date().toISOString(),
+          text: typeof msg === "string" ? msg : safeJson(msg),
+          kind: "log",
+        });
+        continue;
+      }
+
+      // System fallback
+      if (e.type === "system") {
+        out.push({
+          role: "system",
+          ts: e.ts ?? new Date().toISOString(),
+          text: clip(safeJson(e.payload ?? e), 600),
+          kind: "system",
+        });
+      }
+    }
+
+    return out;
+  }, [events]);
 
   return (
     <div className="flex h-[calc(100vh-4rem)] rounded-2xl border border-[hsl(var(--border))] overflow-hidden">
@@ -164,33 +298,30 @@ export default function VibePage() {
                 : "Select an agent to start chatting"}
             </div>
             <div className="text-[11px] text-[hsl(var(--muted-fg))]">
-              {`Powered by Job 6 run pipeline (/agents/{${
-                currentRunId || "id"
-              }}/run + /runs/{${currentRunId || "id"}}/events)`}
+              {`Powered by Job 6 run pipeline (/agents/${
+                selectedAgentId || "id"
+              }/run + /runs/{${currentRunId || "id"}}/events)`}
             </div>
           </div>
         </div>
 
         <div className="flex-1 overflow-auto px-4 py-3 space-y-2 text-[13px]">
-          {events.length === 0 ? (
+          {chatItems.length === 0 ? (
             <div className="h-full flex items-center justify-center text-[12px] text-[hsl(var(--muted-fg))]">
               Start a conversation by sending a message below.
             </div>
           ) : (
-            events.map((e, idx) => {
-              const role =
-                e.payload?.role ??
-                (e.type === "token"
-                  ? "assistant"
-                  : e.type === "log"
-                  ? "user"
-                  : e.type);
-              const text =
-                e.message ??
-                e.payload?.text ??
-                (typeof e.payload === "string" ? e.payload : undefined);
-              if (!text) return null;
-              const isUser = role === "user";
+            chatItems.map((m, idx) => {
+              const isUser = m.role === "user";
+              const isTool = m.role === "tool";
+              const bubbleClass = isUser
+                ? "bg-[hsl(var(--accent))] text-[hsl(var(--accent-fg))]"
+                : isTool
+                ? "bg-[hsl(var(--muted))] border border-[hsl(var(--border))]"
+                : m.kind === "error"
+                ? "bg-red-500/10 border border-red-500/30 text-red-200"
+                : "bg-[hsl(var(--panel))]";
+
               return (
                 <div
                   key={idx}
@@ -201,13 +332,16 @@ export default function VibePage() {
                 >
                   <div
                     className={[
-                      "max-w-[70%] rounded-2xl px-3 py-2 text-[13px]",
-                      isUser
-                        ? "bg-[hsl(var(--accent))] text-[hsl(var(--accent-fg))]"
-                        : "bg-[hsl(var(--panel))]",
+                      "max-w-[75%] rounded-2xl px-3 py-2 text-[13px]",
+                      bubbleClass,
                     ].join(" ")}
                   >
-                    {text}
+                    {isTool && (
+                      <div className="mb-1 text-[10px] uppercase tracking-wide text-[hsl(var(--muted-fg))]">
+                        tool
+                      </div>
+                    )}
+                    {m.text}
                   </div>
                 </div>
               );
@@ -226,15 +360,12 @@ export default function VibePage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={
-              selectedAgentId
-                ? "Ask the agent anything…"
-                : "Select an agent to begin"
+              selectedAgentId ? "Type a message…" : "Select an agent first…"
             }
-            disabled={sending || !selectedAgentId}
-            className="flex-1"
+            disabled={!selectedAgentId || sending}
           />
-          <Button type="submit" disabled={sending || !selectedAgentId}>
-            {sending ? "Running…" : "Send"}
+          <Button type="submit" disabled={!selectedAgentId || sending}>
+            {sending ? "Sending…" : "Send"}
           </Button>
         </form>
       </div>

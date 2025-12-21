@@ -104,16 +104,20 @@ export default function Toolbar() {
         payload: { run_id, agentId: currentAgentId },
       });
 
-      const stop = streamRun(run_id, (ev) => {
-        addLocal(ev);
-        if (ev.type === "done" || ev.type === "error") {
-          hide();
-          setRunning(false);
-        }
-        if (ev.type === "done" || ev.type === "error") {
-          stop();
-        }
-      });
+      const stop = streamRun(
+        run_id,
+        (ev) => {
+          addLocal(ev);
+          if (ev.type === "done" || ev.type === "error") {
+            hide();
+            setRunning(false);
+          }
+          if (ev.type === "done" || ev.type === "error") {
+            stop();
+          }
+        },
+        { autoCloseMs: 1200 }
+      );
     } catch (err: any) {
       console.error("Flow quick run failed", err);
       toast.error(err?.message ?? "Failed to run agent from flow");
