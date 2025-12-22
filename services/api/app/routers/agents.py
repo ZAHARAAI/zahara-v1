@@ -412,3 +412,49 @@ def start_agent_run(
     background_tasks.add_task(execute_run_via_router, run.id)
 
     return RunResponse(ok=True, run_id=run.id, request_id=request_id)
+
+
+@router.delete("/{agent_id}")
+def delete_agent(
+    agent_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    agent = (
+        db.query(AgentModel)
+        .filter(AgentModel.id == agent_id, AgentModel.user_id == current_user.id)
+        .first()
+    )
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "ok": False,
+                "error": {"code": "NOT_FOUND", "message": "Agent not found"},
+            },
+        )
+
+    # delete run_events for runs of this agent
+    run_ids = [
+        r[0] for r in db.query(RunModel.id).filter(RunModel.agent_id == agent.id).all()
+    ]
+    if run_ids:
+        db.query(RunEventModel).filter(RunEventModel.run_id.in_(run_ids)).delete(
+            synchronize_session=False
+        )
+
+    # delete runs
+    db.query(RunModel).filter(RunModel.agent_id == agent.id).delete(
+        synchronize_session=False
+    )
+
+    # delete all agent specs (all versions)
+    db.query(AgentSpecModel).filter(AgentSpecModel.agent_id == agent.id).delete(
+        synchronize_session=False
+    )
+
+    # delete agent
+    db.delete(agent)
+    db.commit()
+
+    return {"ok": True, "deleted": True}
