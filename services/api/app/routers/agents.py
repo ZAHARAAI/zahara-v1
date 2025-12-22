@@ -66,6 +66,7 @@ def _new_spec_id() -> str:
 
 class AgentCreate(BaseModel):
     name: str
+    slug: Optional[str] = None
     description: Optional[str] = None
     spec: Dict[str, Any] = Field(default_factory=dict)
 
@@ -157,44 +158,49 @@ def create_agent(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AgentDetailResponse:
-    name = body.name.strip()
-    if not name:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "ok": False,
-                "error": {"code": "INVALID", "message": "name is required"},
-            },
+    try:
+        name = body.name.strip()
+        slug = body.slug.strip()
+        if not name:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "ok": False,
+                    "error": {"code": "INVALID", "message": "name is required"},
+                },
+            )
+
+        agent_id = _new_agent_id()
+        agent = AgentModel(
+            id=agent_id,
+            user_id=current_user.id,
+            name=name,
+            slug=_slugify(slug if slug else name),
+            description=body.description.strip() if body.description else None,
         )
+        db.add(agent)
+        db.commit()
+        db.refresh(agent)
 
-    agent_id = _new_agent_id()
-    agent = AgentModel(
-        id=agent_id,
-        user_id=current_user.id,
-        name=name,
-        slug=_slugify(name),
-        description=body.description.strip() if body.description else None,
-    )
-    db.add(agent)
-    db.commit()
-    db.refresh(agent)
+        spec_id = _new_spec_id()
+        spec_row = AgentSpecModel(
+            id=spec_id,
+            agent_id=agent.id,
+            version=1,
+            content=body.spec or {},
+        )
+        db.add(spec_row)
+        db.commit()
+        db.refresh(spec_row)
 
-    spec_row = AgentSpecModel(
-        id=_new_spec_id(),
-        agent_id=agent.id,
-        version=1,
-        content=body.spec or {},
-    )
-    db.add(spec_row)
-    db.commit()
-    db.refresh(spec_row)
-
-    return AgentDetailResponse(
-        ok=True,
-        agent=_to_agent_item(agent),
-        spec=spec_row.content,
-        spec_version=spec_row.version,
-    )
+        return AgentDetailResponse(
+            ok=True,
+            agent=_to_agent_item(agent),
+            spec=spec_row.content if spec_row else None,
+            spec_version=spec_row.version if spec_row else None,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
 
 
 @router.get("/{agent_id}", response_model=AgentDetailResponse)
@@ -336,8 +342,8 @@ def create_agent_spec_version(
     return AgentDetailResponse(
         ok=True,
         agent=_to_agent_item(agent),
-        spec=spec_row.content,
-        spec_version=spec_row.version,
+        spec=spec_row.content if spec_row else None,
+        spec_version=spec_row.version if spec_row else None,
     )
 
 
