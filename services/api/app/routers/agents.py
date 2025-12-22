@@ -159,8 +159,8 @@ def create_agent(
     db: Session = Depends(get_db),
 ) -> AgentDetailResponse:
     try:
-        name = body.name.strip()
-        slug = body.slug.strip()
+        name = (body.name.strip() if body.name else None,)
+        slug = (body.slug.strip() if body.slug else name,)
         if not name:
             raise HTTPException(
                 status_code=400,
@@ -175,7 +175,7 @@ def create_agent(
             id=agent_id,
             user_id=current_user.id,
             name=name,
-            slug=_slugify(slug if slug else name),
+            slug=_slugify(slug),
             description=body.description.strip() if body.description else None,
         )
         db.add(agent)
