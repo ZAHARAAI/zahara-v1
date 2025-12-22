@@ -57,16 +57,48 @@ type LogLine = {
   raw?: any;
 };
 
+type NodeKind = "start" | "model" | "tool" | "output";
+
+// helpers
+function toNumber(v: string, fallback: number) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function stringifyArgs(args: any) {
+  if (typeof args === "string") return args;
+  try {
+    return JSON.stringify(args ?? {}, null, 2);
+  } catch {
+    return "{}";
+  }
+}
+
+function parseJsonLoose(s: string) {
+  return JSON.parse(s || "{}");
+}
+
 export default function Inspector() {
   const { nodes, selectedId, setNodes, flowId, flowName, runEvents } =
     useFlowStore();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("config");
+  // JSON editor for tool args
+  const [argsError, setArgsError] = useState<string>("");
 
   const selected = useMemo(
     () => nodes.find((n) => n.id === selectedId),
     [nodes, selectedId]
   );
+
+  // infer kind from node.type first, fallback to data.type
+  const selectedKind: NodeKind | null = useMemo(() => {
+    if (!selected) return null;
+    const t = (selected.type ?? (selected.data as any)?.type) as any;
+    if (t === "start" || t === "model" || t === "tool" || t === "output")
+      return t;
+    return null;
+  }, [selected]);
 
   const updateNodeData = (patch: Partial<AnyNodeData>) => {
     if (!selected) return;
@@ -97,11 +129,8 @@ export default function Inspector() {
         const text = ev?.message ?? ev?.payload?.text ?? "";
         if (!text) continue;
         const last = out[out.length - 1];
-        if (last && last.type === "token") {
-          last.message += text;
-        } else {
-          out.push({ type: "token", ts, message: text, raw: ev });
-        }
+        if (last && last.type === "token") last.message += text;
+        else out.push({ type: "token", ts, message: text, raw: ev });
         continue;
       }
 
@@ -155,6 +184,8 @@ export default function Inspector() {
     return out;
   }, [runEvents]);
 
+  const data = (selected?.data as any) ?? {};
+
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-[hsl(var(--border))] p-3">
@@ -185,31 +216,243 @@ export default function Inspector() {
         ) : (
           <>
             {tab === "config" && (
-              <div className="space-y-3">
-                <div>
-                  <div className="text-xs opacity-70 mb-1">Node Type</div>
-                  <Select
-                    value={(selected.data as any)?.type ?? selected.type ?? ""}
-                    onChange={(v) => updateNodeData({ type: v as any })}
-                    options={[
-                      ["start", "Start"],
-                      ["model", "Model"],
-                      ["tool", "Tool"],
-                      ["output", "Output"],
-                    ]}
-                  />
-                </div>
-
+              <div className="space-y-4">
+                {/* Common */}
                 <div>
                   <div className="text-xs opacity-70 mb-1">Label</div>
                   <Input
-                    value={(selected.data as any)?.label ?? ""}
+                    value={data?.label ?? ""}
                     onChange={(e) =>
                       updateNodeData({ label: e.target.value } as any)
                     }
                     placeholder="Optional label"
                   />
                 </div>
+
+                {/* Node kind info (don’t let users change type unless you really want it) */}
+                <div>
+                  <div className="text-xs opacity-70 mb-1">Node</div>
+                  <div className="text-xs font-mono opacity-80">
+                    {selectedKind ?? "unknown"} • {selected.id}
+                  </div>
+                </div>
+
+                {/* START */}
+                {selectedKind === "start" && (
+                  <div className="space-y-3 rounded-xl border border-[hsl(var(--border))] p-3">
+                    <div className="text-sm font-medium">Start settings</div>
+
+                    <div>
+                      <div className="text-xs opacity-70 mb-1">Trigger</div>
+                      <Select
+                        value={data?.trigger ?? "manual"}
+                        onChange={(v) => updateNodeData({ trigger: v } as any)}
+                        options={[
+                          ["manual", "Manual"],
+                          ["http", "HTTP"],
+                          ["schedule", "Schedule"],
+                        ]}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* MODEL */}
+                {selectedKind === "model" && (
+                  <div className="space-y-3 rounded-xl border border-[hsl(var(--border))] p-3">
+                    <div className="text-sm font-medium">Model settings</div>
+
+                    <div>
+                      <div className="text-xs opacity-70 mb-1">Provider</div>
+                      <Select
+                        value={data?.provider ?? "openai"}
+                        onChange={(v) => updateNodeData({ provider: v } as any)}
+                        options={[
+                          ["openai", "OpenAI"],
+                          ["anthropic", "Anthropic"],
+                          ["google", "Google"],
+                          ["groq", "Groq"],
+                          ["together", "Together"],
+                          ["openrouter", "OpenRouter"],
+                        ]}
+                      />
+                    </div>
+
+                    <div>
+                      <div className="text-xs opacity-70 mb-1">Model</div>
+                      <Input
+                        value={data?.model ?? ""}
+                        onChange={(e) =>
+                          updateNodeData({ model: e.target.value } as any)
+                        }
+                        placeholder='e.g. "gpt-4.1-mini"'
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <div className="text-xs opacity-70 mb-1">
+                          Temperature
+                        </div>
+                        <Input
+                          value={String(data?.temperature ?? 0.7)}
+                          onChange={(e) =>
+                            updateNodeData({
+                              temperature: toNumber(e.target.value, 0.7),
+                            } as any)
+                          }
+                          placeholder="0.0 – 2.0"
+                        />
+                      </div>
+                      <div>
+                        <div className="text-xs opacity-70 mb-1">
+                          Max tokens
+                        </div>
+                        <Input
+                          value={String(data?.maxTokens ?? 800)}
+                          onChange={(e) =>
+                            updateNodeData({
+                              maxTokens: toNumber(e.target.value, 800),
+                            } as any)
+                          }
+                          placeholder="e.g. 800"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TOOL */}
+                {selectedKind === "tool" && (
+                  <div className="space-y-3 rounded-xl border border-[hsl(var(--border))] p-3">
+                    <div className="text-sm font-medium">Tool settings</div>
+
+                    <div>
+                      <div className="text-xs opacity-70 mb-1">Tool name</div>
+                      <Input
+                        value={data?.toolName ?? ""}
+                        onChange={(e) =>
+                          updateNodeData({ toolName: e.target.value } as any)
+                        }
+                        placeholder='e.g. "web_search"'
+                      />
+                    </div>
+
+                    <div>
+                      <div className="text-xs opacity-70 mb-1">Mode</div>
+                      <Select
+                        value={data?.mode ?? "standard"}
+                        onChange={(v) => updateNodeData({ mode: v } as any)}
+                        options={[
+                          ["standard", "Standard"],
+                          ["function", "Function-call"],
+                          ["mcp", "MCP"],
+                        ]}
+                      />
+                    </div>
+
+                    <div>
+                      <div className="text-xs opacity-70 mb-1">
+                        Entry / Route
+                      </div>
+                      <Input
+                        value={data?.entry ?? ""}
+                        onChange={(e) =>
+                          updateNodeData({ entry: e.target.value } as any)
+                        }
+                        placeholder='e.g. "/search" or "google.search"'
+                      />
+                    </div>
+
+                    <div>
+                      <div className="text-xs opacity-70 mb-1">Args (JSON)</div>
+
+                      <Textarea
+                        value={stringifyArgs(data?.args)}
+                        onChange={(e) => {
+                          const next = e.target.value;
+
+                          // Store as string while typing (so we don't fight formatting)
+                          updateNodeData({ args: next } as any);
+
+                          // Live validate (optional)
+                          try {
+                            parseJsonLoose(next);
+                            setArgsError("");
+                          } catch (err: any) {
+                            setArgsError(err?.message ?? "Invalid JSON");
+                          }
+                        }}
+                        rows={8}
+                        placeholder='{"q":"site:example.com","limit":5}'
+                      />
+
+                      <div className="mt-2 flex items-center gap-2">
+                        <Button
+                          onClick={() => {
+                            try {
+                              const parsed = parseJsonLoose(
+                                stringifyArgs(data?.args)
+                              );
+                              // Normalize stored value to an object on apply
+                              updateNodeData({ args: parsed } as any);
+                              setArgsError("");
+                            } catch (err: any) {
+                              setArgsError(err?.message ?? "Invalid JSON");
+                            }
+                          }}
+                        >
+                          Apply JSON
+                        </Button>
+
+                        {argsError ? (
+                          <div className="text-xs text-red-200">
+                            {argsError}
+                          </div>
+                        ) : (
+                          <div className="text-xs opacity-60">
+                            Stored in node.data.args
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* OUTPUT */}
+                {selectedKind === "output" && (
+                  <div className="space-y-3 rounded-xl border border-[hsl(var(--border))] p-3">
+                    <div className="text-sm font-medium">Output settings</div>
+
+                    <div>
+                      <div className="text-xs opacity-70 mb-1">Sink</div>
+                      <Select
+                        value={data?.sink ?? "console"}
+                        onChange={(v) => updateNodeData({ sink: v } as any)}
+                        options={[
+                          ["console", "Console"],
+                          ["webhook", "Webhook"],
+                          ["file", "File"],
+                        ]}
+                      />
+                    </div>
+
+                    {data?.sink === "webhook" ? (
+                      <div>
+                        <div className="text-xs opacity-70 mb-1">
+                          Webhook URL
+                        </div>
+                        <Input
+                          value={data?.target ?? ""}
+                          onChange={(e) =>
+                            updateNodeData({ target: e.target.value } as any)
+                          }
+                          placeholder="https://example.com/webhook"
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
             )}
 

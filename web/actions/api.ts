@@ -25,7 +25,9 @@ export const api = async (path: string, init: RequestInit = {}) => {
 
       if (!res.ok) throw new Error(res.statusText);
 
-      return await res.json();
+      const json = await res.json();
+      // console.log(json);
+      return json;
     } catch (e) {
       last = (e as Error).message;
       if (attempt < Retry.max) {

@@ -14,6 +14,7 @@ import {
   upsertAgentFromFlow,
   type RunEvent,
 } from "@/services/api";
+import { Input } from "../ui/Input";
 
 export default function Toolbar() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function Toolbar() {
     flowId,
     flowName,
     meta,
+    setFlowName,
     setFlowMeta,
     clearRunEvents,
     pushRunEvent,
@@ -140,9 +142,12 @@ export default function Toolbar() {
         <span className="text-[11px] uppercase tracking-wide text-[hsl(var(--muted-fg))]">
           Flow Builder
         </span>
-        <span className="text-[12px] font-mono">
-          {flowName || "Untitled Flow"}
-        </span>
+        <Input
+          value={flowName}
+          onChange={(e) => setFlowName(e.target.value)}
+          className="h-7 w-[260px] text-xs font-mono"
+          placeholder="Enter flow name…"
+        />
         {meta?.agentId && (
           <span className="text-[11px] text-[hsl(var(--muted-fg))]">
             Agent: <code className="font-mono">{meta.agentId}</code>

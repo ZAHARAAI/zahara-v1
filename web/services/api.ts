@@ -11,7 +11,7 @@ import { Edge, Node } from "reactflow";
  * while actions/api.ts throws on non-2xx. We normalize the 200+ok=false case here.
  */
 function ensureOk(json: any, msg: string) {
-  if (!json.ok && json.error) throw new Error(msg);
+  if (!json.ok) throw new Error(msg);
   return json;
 }
 
@@ -100,6 +100,7 @@ export type FlowAgentUpsertParams = {
   agent_id?: string | null;
   /** Agent display name */
   name: string;
+  slug?: string;
   /** Optional description */
   description?: string;
 
@@ -138,6 +139,7 @@ export async function upsertAgentFromFlow(
   } else {
     agentSpec = await createAgent({
       name: params.name,
+      slug: params.slug || params.name,
       description: params.description,
       spec,
     });

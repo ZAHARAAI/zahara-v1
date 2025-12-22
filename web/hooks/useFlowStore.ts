@@ -24,6 +24,7 @@ type State = {
   setNodes: (n: Node<AnyNodeData>[]) => void;
   setEdges: (e: Edge[]) => void;
   select: (id?: string) => void;
+  setFlowName: (name: string) => void;
   setFlowMeta: (meta: Record<string, any>) => void;
   clearRunEvents: () => void;
   pushRunEvent: (ev: RunEvent) => void;
@@ -34,13 +35,14 @@ export const useFlowStore = create<State>((set) => ({
   edges: [],
   selectedId: undefined,
   flowId: undefined,
-  flowName: "Untitled Flow",
+  flowName: "",
   meta: {},
   runEvents: [],
   setGraph: (nodes, edges) => set({ nodes, edges }),
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
   select: (selectedId) => set({ selectedId }),
+  setFlowName: (flowName) => set({ flowName }),
   setFlowMeta: (meta) => set({ meta }),
   clearRunEvents: () => set({ runEvents: [] }),
   pushRunEvent: (ev: RunEvent) =>
