@@ -14,8 +14,6 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel, Field
-from sqlalchemy import desc
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -184,36 +182,21 @@ def create_agent(
         )
 
         if agent:
-            # update agent fields
-            agent.name = name
-            agent.slug = _slugify(slug)
-            agent.description = body.description.strip() if body.description else None
-
             # find latest version
             last_spec = (
                 db.query(AgentSpecModel)
-                .filter(AgentSpecModel.agent_id == agent.id)
-                .order_by(desc(AgentSpecModel.version))
+                .filter(
+                    AgentSpecModel.agent_id == agent.id,
+                )
+                .order_by(AgentSpecModel.version.desc())
                 .first()
             )
-            next_version = (last_spec.version if last_spec else 0) + 1
-
-            spec_row = AgentSpecModel(
-                id=_new_spec_id(),
-                agent_id=agent.id,
-                version=next_version,
-                content=body.spec or {},
-            )
-            db.add(spec_row)
-            db.commit()
-            db.refresh(agent)
-            db.refresh(spec_row)
 
             return AgentDetailResponse(
                 ok=True,
                 agent=_to_agent_item(agent),
-                spec=spec_row.content,
-                spec_version=spec_row.version,
+                spec=last_spec.content if last_spec else None,
+                spec_version=last_spec.version if last_spec else None,
             )
 
         # Otherwise: create a brand new agent + spec v1
@@ -242,25 +225,9 @@ def create_agent(
         return AgentDetailResponse(
             ok=True,
             agent=_to_agent_item(agent),
-            spec=spec_row.content,
-            spec_version=spec_row.version,
+            spec=spec_row.content if spec_row else None,
+            spec_version=spec_row.version if spec_row else None,
         )
-
-    except IntegrityError:
-        db.rollback()
-        # If two requests race, unique(agent_id, version) can collide
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "ok": False,
-                "error": {
-                    "code": "CONFLICT",
-                    "message": "Spec version conflict, retry",
-                },
-            },
-        )
-    except HTTPException:
-        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail={"ok": False, "error": str(e)})
