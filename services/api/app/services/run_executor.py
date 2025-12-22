@@ -168,6 +168,23 @@ def execute_run_via_router(run_id: str) -> None:
 
         api_key = _get_provider_key(db, run.user_id, provider) if run.user_id else None
 
+        # ENFORCE per-user provider key
+        if not api_key:
+            run.status = "error"
+            run.error_message = (
+                f"No provider key configured for provider '{provider}'. "
+                "Please add a key in Provider page."
+            )
+            db.add(run)
+            db.commit()
+            _add_event(
+                db,
+                run.id,
+                "error",
+                {"message": run.error_message, "request_id": run.request_id},
+            )
+            return
+
         # mark running
         run.status = "running"
         run.model = model
