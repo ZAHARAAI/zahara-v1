@@ -175,7 +175,7 @@ def create_agent(
         agent = (
             db.query(AgentModel)
             .filter(
-                AgentModel.slug == slug,
+                AgentModel.slug == _slugify(slug),
                 AgentModel.user_id == current_user.id,
             )
             .first()
@@ -205,7 +205,7 @@ def create_agent(
             id=agent_id,
             user_id=current_user.id,
             name=name,
-            slug=_slugify(body.slug if body.slug else name),
+            slug=_slugify(slug),
             description=body.description.strip() if body.description else None,
         )
         db.add(agent)
