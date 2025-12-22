@@ -73,7 +73,7 @@ def _get_provider_key(db: Session, user_id: int, provider: str) -> Optional[str]
     if not row:
         return None
     try:
-        return decrypt_secret(row.secret_encrypted)
+        return decrypt_secret(row.encrypted_key)
     except Exception:
         return None
 
