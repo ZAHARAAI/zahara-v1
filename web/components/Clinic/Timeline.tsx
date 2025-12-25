@@ -199,11 +199,9 @@ export default function Timeline() {
       const res = await listRuns({
         limit: 50,
         offset: 0,
-        status: statusFilter,
+        status: statusFilter || "",
       });
-      let items = res.items ?? [];
-      if (statusFilter) items = items.filter((r) => r.status === statusFilter);
-
+      const items = res.items ?? [];
       setRuns(items);
 
       const nextSelected =
@@ -285,7 +283,7 @@ export default function Timeline() {
 
           <div className="p-3 border-b border-[hsl(var(--border))] flex items-center justify-between gap-2">
             <span className="text-[11px] text-[hsl(var(--muted-fg))]">
-              Status
+              Total: {runs.length}
             </span>
             <Select
               value={statusFilter}

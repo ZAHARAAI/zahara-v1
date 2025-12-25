@@ -3,13 +3,25 @@
 import Canvas from "@/components/Flow/Canvas";
 import Inspector from "@/components/Flow/Inspector";
 import Toolbar from "@/components/Flow/Toolbar";
-// import LeftPanel from "@/components/Flow/LeftPanel";
-import { Suspense, useState } from "react";
+import LeftPanel from "@/components/Flow/LeftPanel";
+import { Suspense, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { useSearchParams } from "next/navigation";
+import { useFlowStore } from "@/hooks/useFlowStore";
 
 export default function FlowPage() {
+  const searchParams = useSearchParams();
   const [showInspector, setShowInspector] = useState(true);
-  // const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+
+  const { meta, setFlowMeta } = useFlowStore();
+
+  useEffect(() => {
+    const agent_id = searchParams.get("agentId");
+    if (agent_id && agent_id !== meta?.agentId) {
+      setFlowMeta?.({ ...meta, agentId: agent_id });
+    }
+  }, [searchParams, meta, setFlowMeta]);
 
   return (
     <div className="h-[calc(100vh-3rem)]">
@@ -24,7 +36,10 @@ export default function FlowPage() {
       </div>
 
       <div className="mt-3 flex gap-3 h-[calc(100%-4rem)]">
-        {/* <LeftPanel collapsed={leftCollapsed} onToggle={() => setLeftCollapsed((v) => !v)} /> */}
+        <LeftPanel
+          collapsed={leftCollapsed}
+          onToggle={() => setLeftCollapsed((v) => !v)}
+        />
 
         <div className="flex-1 border border-[hsl(var(--border))] rounded-2xl overflow-hidden">
           <Canvas />

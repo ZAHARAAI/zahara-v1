@@ -130,10 +130,10 @@ export default function Toolbar() {
   }
 
   function handleOpenInPro() {
-    const query = new URLSearchParams();
-    if (flowId) query.set("flowId", flowId);
-    if (meta?.agentId) query.set("agentId", meta.agentId as string);
-    router.push(`/pro?${query.toString()}`);
+    router.push(
+      "/pro" +
+        (meta?.agentId ? `?agentId=${encodeURIComponent(meta.agentId)}` : "")
+    );
   }
 
   return (

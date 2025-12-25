@@ -135,7 +135,7 @@ export async function upsertAgentFromFlow(
       description: params.description ?? null,
     });
 
-    agentSpec = await saveAgentSpec(params.agent_id, { spec });
+    agentSpec = await saveAgentSpec(params.agent_id, spec);
   } else {
     agentSpec = await createAgent({
       name: params.name,
@@ -341,7 +341,9 @@ export async function listRuns({
   status?: "pending" | "running" | "success" | "error" | string;
 }): Promise<RunListResponse> {
   const json = await api(
-    `/runs?limit=${limit}&offset=${offset}&agent_id=${agent_id}&status_filter=${status}`
+    `/runs?limit=${limit}&offset=${offset}` +
+      (agent_id ? `&agent_id=${agent_id}` : "") +
+      (status ? `&status=${status}` : "")
   );
   const data = ensureOk(json, "listing runs");
   return data;

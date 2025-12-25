@@ -79,7 +79,7 @@ function parseJsonLoose(s: string) {
 }
 
 export default function Inspector() {
-  const { nodes, selectedId, setNodes, flowId, flowName, runEvents } =
+  const { nodes, selectedId, setNodes, meta, flowName, runEvents } =
     useFlowStore();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("config");
@@ -112,7 +112,8 @@ export default function Inspector() {
 
   const openInPro = () => {
     router.push(
-      "/pro" + (flowId ? `?flowId=${encodeURIComponent(flowId)}` : "")
+      "/pro" +
+        (meta?.agentId ? `?agentId=${encodeURIComponent(meta.agentId)}` : "")
     );
   };
 
