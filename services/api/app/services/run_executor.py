@@ -55,9 +55,16 @@ def _approx_tokens(text: str) -> int:
 
 
 def _pick_provider_and_model(spec: Dict[str, Any]) -> tuple[str, str]:
-    provider = (spec.get("provider") or spec.get("llm_provider") or "openai").lower()
-    model = spec.get("model") or spec.get("llm_model") or "gpt-4o-mini"
-    return provider, model
+    nodes = spec.get("graph", {}).get("nodes", [])
+
+    for node in nodes:
+        if node.get("type") == "model":
+            data = node.get("data", {})
+            provider = data.get("provider")
+            model = data.get("model")
+            return provider, model
+
+    return None, None
 
 
 def _get_provider_key(db: Session, user_id: int, provider: str) -> Optional[str]:
