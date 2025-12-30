@@ -98,6 +98,19 @@ def _parse_sse_data_line(line: str) -> Optional[str]:
     return line[5:].strip()
 
 
+def _coerce_line_to_str(raw_line: Any) -> str:
+    """
+    httpx Response.iter_lines() can yield str (common) or bytes (depends on transport/config).
+    This helper makes it safe.
+    """
+    if isinstance(raw_line, bytes):
+        return raw_line.decode("utf-8", errors="ignore")
+    if isinstance(raw_line, str):
+        return raw_line
+    # extremely defensive fallback
+    return str(raw_line)
+
+
 def execute_run_via_router(run_id: str) -> None:
     """
     Streaming run execution:
@@ -268,7 +281,7 @@ def execute_run_via_router(run_id: str) -> None:
                             )
                             return
 
-                    line = raw_line.decode("utf-8", errors="ignore")
+                    line = _coerce_line_to_str(raw_line)
                     data_str = _parse_sse_data_line(line)
                     if data_str is None:
                         continue
