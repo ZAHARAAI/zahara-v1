@@ -397,7 +397,7 @@ def execute_run_via_router(run_id: str) -> None:
         db.commit()
 
         upsert_daily_usage(
-            db,
+            db=db,
             user_id=run.user_id,
             tokens_total=run.tokens_total,
             cost_usd=run.cost_estimate_usd,
