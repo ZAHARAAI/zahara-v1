@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import httpx
@@ -196,7 +197,7 @@ def execute_run_via_router(run_id: str) -> None:
         run.status = "running"
         run.model = model
         run.provider = provider
-        run.updated_at = time.time()  # if your model uses datetime this will be overwritten by SQLAlchemy default anyway
+        run.updated_at = datetime.now(timezone.utc)
         db.add(run)
         db.commit()
 

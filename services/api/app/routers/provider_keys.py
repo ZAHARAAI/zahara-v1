@@ -18,6 +18,63 @@ from ..security.provider_keys_crypto import decrypt_secret, encrypt_secret
 router = APIRouter(prefix="/provider_keys", tags=["provider_keys"])
 
 
+def _test_provider_key_http(provider: str, raw_key: str) -> tuple[bool, str]:
+    """
+    Perform a cheap "is this key valid?" call for supported providers.
+    Returns (ok, message). Never logs/returns the raw key.
+    """
+    provider = (provider or "").strip().lower()
+    raw_key = (raw_key or "").strip()
+    timeout = httpx.Timeout(10.0, connect=5.0)
+    with httpx.Client(timeout=timeout) as client:
+        if provider == "openai":
+            r = client.get(
+                "https://api.openai.com/v1/models",
+                headers={"Authorization": f"Bearer {raw_key}"},
+            )
+            if r.status_code == 200:
+                return True, "OpenAI key is valid."
+            return False, f"OpenAI returned {r.status_code}: {r.text[:200]}"
+
+        if provider == "groq":
+            # Groq uses an OpenAI-compatible API surface.
+            r = client.get(
+                "https://api.groq.com/openai/v1/models",
+                headers={"Authorization": f"Bearer {raw_key}"},
+            )
+            if r.status_code == 200:
+                return True, "Groq key is valid."
+            return False, f"Groq returned {r.status_code}: {r.text[:200]}"
+
+        if provider == "anthropic":
+            # Prefer the cheapest/cleanest check: list models (if enabled on the account).
+            headers = {
+                "x-api-key": raw_key,
+                "anthropic-version": "2023-06-01",
+            }
+            r = client.get("https://api.anthropic.com/v1/models", headers=headers)
+            if r.status_code == 200:
+                return True, "Anthropic key is valid."
+            # Some accounts/regions may not support the models list endpoint; fallback to a tiny messages call.
+            if r.status_code in (404, 405):
+                payload = {
+                    "model": "claude-3-haiku-20240307",
+                    "max_tokens": 1,
+                    "messages": [{"role": "user", "content": "ping"}],
+                }
+                r2 = client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={**headers, "content-type": "application/json"},
+                    json=payload,
+                )
+                if r2.status_code in (200, 201):
+                    return True, "Anthropic key is valid."
+                return False, f"Anthropic returned {r2.status_code}: {r2.text[:200]}"
+            return False, f"Anthropic returned {r.status_code}: {r.text[:200]}"
+
+    return False, f"Provider '{provider}' test not implemented yet."
+
+
 def _new_key_id() -> str:
     return "pk_" + uuid4().hex[:16]
 
@@ -189,31 +246,12 @@ def test_raw_provider_key(
         )
 
     try:
-        timeout = httpx.Timeout(10.0, connect=5.0)
-        client = httpx.Client(timeout=timeout)
-        if provider == "openai":
-            r = client.get(
-                "https://api.openai.com/v1/models",
-                headers={"Authorization": f"Bearer {raw_key}"},
-            )
-            ok = r.status_code == 200
-            msg = (
-                "OpenAI key is valid."
-                if ok
-                else f"OpenAI returned {r.status_code}: {r.text[:200]}"
-            )
-            return {
-                "ok": ok,
-                "provider": provider,
-                "status": "ok" if ok else "error",
-                "message": msg,
-            }
-
+        ok, msg = _test_provider_key_http(provider, raw_key)
         return {
-            "ok": False,
+            "ok": ok,
             "provider": provider,
-            "status": "error",
-            "message": f"Provider '{provider}' test not implemented yet.",
+            "status": "ok" if ok else "error",
+            "message": msg,
         }
     except Exception as e:
         return {
@@ -222,11 +260,6 @@ def test_raw_provider_key(
             "status": "error",
             "message": f"Test call failed: {e}",
         }
-    finally:
-        try:
-            client.close()
-        except Exception:
-            pass
 
 
 @router.delete("/{key_id}")
@@ -301,27 +334,9 @@ def test_provider_key(
     message = None
 
     try:
-        # Minimal cheap test calls (no spending / minimal)
-        timeout = httpx.Timeout(10.0, connect=5.0)
-        async_client = httpx.Client(timeout=timeout)
-
-        if provider == "openai":
-            r = async_client.get(
-                "https://api.openai.com/v1/models",
-                headers={"Authorization": f"Bearer {raw_key}"},
-            )
-            if r.status_code == 200:
-                status_value = "ok"
-                message = "OpenAI key is valid."
-            else:
-                message = f"OpenAI returned {r.status_code}: {r.text[:200]}"
-
-        else:
-            message = f"Provider '{provider}' test not implemented yet."
-            status_value = "error"
-
-        async_client.close()
-
+        ok, msg = _test_provider_key_http(provider, raw_key)
+        status_value = "ok" if ok else "error"
+        message = msg
     except Exception as e:
         status_value = "error"
         message = f"Test call failed: {e}"

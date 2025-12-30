@@ -110,6 +110,12 @@ class RunDetailResponse(BaseModel):
     events: List[RunEventDTO]
 
 
+class RunDeleteResponse(BaseModel):
+    ok: bool = True
+    run_id: str
+    deleted_events: int = 0
+
+
 def _run_to_list_item(run: RunModel) -> RunListItem:
     return RunListItem(
         id=run.id,
@@ -260,6 +266,43 @@ def cancel_run(
     )
 
     return RunCancelResponse(ok=True, run_id=run.id, status=run.status)
+
+
+@router.delete("/{run_id}", response_model=RunDeleteResponse)
+def delete_run(
+    run_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> RunDeleteResponse:
+    # Ensure the run belongs to the current user (isolation)
+    run = (
+        db.query(RunModel)
+        .filter(RunModel.id == run_id, RunModel.user_id == current_user.id)
+        .first()
+    )
+    if not run:
+        raise HTTPException(status_code=404, detail="run_not_found")
+
+    try:
+        # Delete related run events first (avoid FK violations)
+        deleted_events = (
+            db.query(RunEventModel)
+            .filter(RunEventModel.run_id == run_id)
+            .delete(synchronize_session=False)
+        )
+
+        # Then delete the run itself
+        db.delete(run)
+
+        db.commit()
+        return RunDeleteResponse(ok=True, run_id=run_id, deleted_events=deleted_events)
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "delete_failed", "message": str(e)},
+        )
 
 
 @router.get("/{run_id}/events")
