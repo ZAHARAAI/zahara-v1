@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import ReactFlow, {
   addEdge,
   applyEdgeChanges,
@@ -16,7 +16,7 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 
-import { DEFAULT_GRAPH, useFlowStore } from "@/hooks/useFlowStore";
+import { useFlowStore } from "@/hooks/useFlowStore";
 import { ModelNode } from "./nodes/ModelNode";
 import { OutputNode } from "./nodes/OutputNode";
 import { StartNode } from "./nodes/StartNode";
@@ -31,23 +31,7 @@ const nodeTypes = {
 };
 
 export default function Canvas() {
-  const {
-    flowId,
-    nodes,
-    edges,
-    setNodes,
-    setEdges,
-    setGraph,
-    select,
-    setFlowMeta,
-  } = useFlowStore();
-
-  useEffect(() => {
-    if (!flowId && nodes.length === 0) {
-      setGraph(DEFAULT_GRAPH.nodes as any, DEFAULT_GRAPH.edges);
-      setFlowMeta({});
-    }
-  }, [flowId, nodes.length, setGraph, setFlowMeta]);
+  const { nodes, edges, setNodes, setEdges, select } = useFlowStore();
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {

@@ -429,6 +429,7 @@ export type ProviderKey = {
   id: string;
   provider: string;
   label: string;
+  masked_key: string;
   last_test_status?: string | null;
   last_tested_at?: string | null;
   created_at: string;

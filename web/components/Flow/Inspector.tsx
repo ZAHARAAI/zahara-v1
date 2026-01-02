@@ -9,6 +9,7 @@ import { useFlowStore } from "@/hooks/useFlowStore";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import type { AnyNodeData } from "./types";
+import { toast } from "sonner";
 
 const TABS = ["config", "prompt", "logs"] as const;
 type Tab = (typeof TABS)[number];
@@ -190,6 +191,7 @@ export default function Inspector() {
           message: ev?.message ?? "run completed",
           raw: ev,
         });
+        toast.success("run completed");
         continue;
       }
 

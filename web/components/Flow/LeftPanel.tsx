@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { useFlowStore } from "@/hooks/useFlowStore";
 import type { AnyNodeData } from "./types";
 import type { Node } from "reactflow";
+import { PanelLeftOpen, PanelRightOpen } from "lucide-react";
 
 const BLOCKS: Array<{
   type: AnyNodeData["type"];
@@ -57,7 +58,7 @@ export default function LeftPanel({
           onClick={onToggle}
           aria-label="Toggle left panel"
         >
-          {collapsed ? ">" : "<"}
+          {collapsed ? <PanelLeftOpen /> : <PanelRightOpen />}
         </Button>
       </div>
 

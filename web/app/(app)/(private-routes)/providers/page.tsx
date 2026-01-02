@@ -114,8 +114,8 @@ export default function ProvidersPage() {
         <div>
           <h1 className="text-[16px] font-semibold">Provider Keys</h1>
           <p className="text-[12px] text-[hsl(var(--muted-fg))]">
-            Keys configured here are used by the Job 6 run pipeline when calling
-            the central LLM router.
+            Keys configured here are used by the run pipeline when calling the
+            central LLM router.
           </p>
         </div>
       </div>
@@ -175,6 +175,7 @@ export default function ProvidersPage() {
                 <tr>
                   <th className="text-left py-1 pr-2">Provider</th>
                   <th className="text-left py-1 pr-2">Label</th>
+                  <th className="text-left py-1 pr-2">Masked key</th>
                   <th className="text-left py-1 pr-2">Status</th>
                   <th className="text-left py-1 pr-2">Last tested</th>
                   <th className="text-right py-1 pl-2">Actions</th>
@@ -188,6 +189,7 @@ export default function ProvidersPage() {
                   >
                     <td className="py-1 pr-2">{k?.provider}</td>
                     <td className="py-1 pr-2">{k?.label}</td>
+                    <td className="py-1 pr-2">{k?.masked_key || "—"}</td>
                     <td className="py-1 pr-2">
                       {k.last_test_status ? (
                         <span

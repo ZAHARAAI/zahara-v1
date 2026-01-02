@@ -171,6 +171,11 @@ export default function VibePage() {
           resetTranscript();
         }
       }
+
+      const savedId = localStorage.getItem("zahara.flow.lastAgentId");
+      if (savedId === id) {
+        localStorage.removeItem("zahara.flow.lastAgentId");
+      }
     } catch (err: any) {
       // console.error("Failed to delete agent ", err);
       toast.error(err?.message ?? "Failed to delete agent");
@@ -334,7 +339,7 @@ export default function VibePage() {
                 : "Select an agent to start chatting"}
             </div>
             <div className="text-[11px] text-[hsl(var(--muted-fg))]">
-              {`Powered by Job 6 run pipeline (/agents/${
+              {`Powered by run pipeline (/agents/${
                 selectedAgentId || "id"
               }/run + /runs/{${currentRunId || "id"}}/events)`}
             </div>

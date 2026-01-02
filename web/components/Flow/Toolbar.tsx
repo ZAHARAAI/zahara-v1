@@ -24,6 +24,7 @@ export default function Toolbar() {
     flowId,
     flowName,
     meta,
+    setGraph,
     setFlowName,
     setFlowMeta,
     clearRunEvents,
@@ -37,7 +38,14 @@ export default function Toolbar() {
   const agentId: string | undefined = meta?.agentId ?? undefined;
 
   async function handleSaveAsAgent() {
-    if (!nodes || !edges) return;
+    if (!nodes?.length || !edges?.length) {
+      toast.info("Please set blocks to save as agent.");
+      return;
+    }
+    if (!flowName) {
+      toast.info("Please enter a flow name.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -62,18 +70,25 @@ export default function Toolbar() {
         agentVersion: version,
       });
 
+      localStorage.setItem("zahara.flow.lastAgentId", newAgentId);
       toast.success(
         agentId
           ? `Updated agent spec (v${version}) for this flow`
           : `Created new agent for this flow: ${newAgentId}`
       );
     } catch (err: any) {
-      console.error("Failed to save agent from flow", err);
+      // console.error("Failed to save agent from flow", err);
       toast.error(err?.message ?? "Failed to save agent from flow");
     } finally {
       hide();
       setSaving(false);
     }
+  }
+
+  async function handleAddNew() {
+    setFlowName("");
+    setFlowMeta({});
+    setGraph([], []);
   }
 
   async function handleQuickRun() {
@@ -158,14 +173,14 @@ export default function Toolbar() {
       </div>
 
       <div className="flex items-center gap-2">
-        <Button
-          size="xs"
-          variant="outline"
-          onClick={handleSaveAsAgent}
-          disabled={saving}
-        >
+        {meta?.agentId && (
+          <Button size="xs" variant="outline" onClick={handleAddNew}>
+            {saving ? "Adding..." : "Add New"}
+          </Button>
+        )}
+        <Button size="xs" onClick={handleSaveAsAgent} disabled={saving}>
           {saving
-            ? "Saving…"
+            ? "Saving..."
             : meta?.agentId
             ? "Update Agent Spec"
             : "Save as Agent"}
