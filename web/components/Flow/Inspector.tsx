@@ -119,12 +119,29 @@ export default function Inspector() {
 
   const formattedLogs: LogLine[] = useMemo(() => {
     const out: LogLine[] = [];
-
+    // console.log(runEvents);
     for (const ev of runEvents as any[]) {
       const t = ev?.type ?? "log";
       const ts = ev?.ts ?? ev?.created_at ?? ev?.timestamp;
 
-      if (t === "ping" || t === "done") continue;
+      if (t === "ping") {
+        const last = out[out.length - 1];
+
+        if (last && last.type === "ping") {
+          // increment counter
+          last.raw.count = (last.raw.count ?? 1) + 1;
+          last.message = `heartbeat x${last.raw.count}`;
+        } else {
+          out.push({
+            type: "ping",
+            ts,
+            message: "heartbeat x1",
+            raw: { count: 1 },
+          });
+        }
+
+        continue;
+      }
 
       if (t === "token") {
         const text = ev?.message ?? ev?.payload?.text ?? "";
@@ -161,6 +178,16 @@ export default function Inspector() {
           type: "error",
           ts,
           message: typeof msg === "string" ? msg : safeJson(msg),
+          raw: ev,
+        });
+        continue;
+      }
+
+      if (t === "done") {
+        out.push({
+          type: "done",
+          ts,
+          message: ev?.message ?? "run completed",
           raw: ev,
         });
         continue;
@@ -484,10 +511,15 @@ export default function Inspector() {
                     {formattedLogs.map((line, i) => (
                       <div
                         key={i}
-                        className={[
-                          "text-xs py-2 border-b border-[hsl(var(--border))] last:border-b-0",
-                          line.type === "error" ? "text-red-200" : "",
-                        ].join(" ")}
+                        className={`text-xs py-2 border-b border-[hsl(var(--border))] last:border-b-0 ${
+                          line.type === "error" ? "text-red-200" : ""
+                        } ${
+                          line.type === "ping" ? "text-blue-200 opacity-70" : ""
+                        } ${
+                          line.type === "done"
+                            ? "text-green-500 opacity-70"
+                            : ""
+                        }`}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="opacity-70 font-mono text-[11px] uppercase">

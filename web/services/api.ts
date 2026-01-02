@@ -148,6 +148,16 @@ export async function upsertAgentFromFlow(
   return agentSpec;
 }
 
+export async function deleteAgent(
+  agent_id: string
+): Promise<{ ok: boolean; deleted: boolean }> {
+  const json = await api(`/agents/${encodeURIComponent(agent_id)}`, {
+    method: "DELETE",
+  });
+  const data = ensureOk(json, "deleting agent");
+  return data;
+}
+
 /* ------------------------------------------------------------------ */
 /* Runs                                                               */
 /* ------------------------------------------------------------------ */
@@ -396,6 +406,19 @@ export async function cancelRun(run_id: string): Promise<RunCancelResponse> {
     method: "POST",
   });
   return ensureOk(json, "cancelling run");
+}
+
+type DeleteRunResponse = {
+  ok: boolean;
+  run_id: string;
+  deleted_events: number;
+};
+
+export async function deleteRun(run_id: string): Promise<DeleteRunResponse> {
+  const json = await api(`/runs/${encodeURIComponent(run_id)}`, {
+    method: "DELETE",
+  });
+  return ensureOk(json, "deleting run");
 }
 
 /* ----------------------------------------------------- */

@@ -9,11 +9,13 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import {
   Agent,
+  deleteAgent,
   listAgents,
   startAgentRun,
   streamRun,
   type RunEvent,
 } from "@/services/api";
+import { Trash2Icon } from "lucide-react";
 
 type ChatItem = {
   role: "user" | "assistant" | "tool" | "system";
@@ -152,6 +154,29 @@ export default function VibePage() {
     }
   }
 
+  async function handleDeleteAgent(id: string, idx: number) {
+    try {
+      deleteAgent(id);
+      const rest_items = agents.filter((a) => a.id !== id);
+      setAgents(rest_items);
+
+      if (selectedAgentId === id) {
+        const isLastItem = rest_items.length == idx;
+        const nextSelected =
+          rest_items.length > 0
+            ? rest_items[isLastItem ? idx - 1 : idx].id
+            : null;
+        if (nextSelected) {
+          setSelectedAgentId(nextSelected);
+          resetTranscript();
+        }
+      }
+    } catch (err: any) {
+      // console.error("Failed to delete agent ", err);
+      toast.error(err?.message ?? "Failed to delete agent");
+    }
+  }
+
   // Convert raw events -> chat items (aggregates tokens)
   const chatItems: ChatItem[] = useMemo(() => {
     const out: ChatItem[] = [];
@@ -260,10 +285,13 @@ export default function VibePage() {
             </div>
           ) : (
             <ul className="divide-y divide-[hsl(var(--border))]">
-              {agents.map((agent) => {
+              {agents.map((agent, idx) => {
                 const active = agent.id === selectedAgentId;
                 return (
-                  <li key={agent.id}>
+                  <li
+                    key={agent.id}
+                    className="flex justify-between items-center gap-x-1"
+                  >
                     <button
                       type="button"
                       className={[
@@ -279,6 +307,14 @@ export default function VibePage() {
                       <div className="text-[11px] text-[hsl(var(--muted-fg))] truncate">
                         {agent.description ?? agent.slug}
                       </div>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        handleDeleteAgent(agent.id, idx);
+                      }}
+                    >
+                      <Trash2Icon className="h-4 w-4 text-red-300 hover:text-red-400 " />
                     </button>
                   </li>
                 );

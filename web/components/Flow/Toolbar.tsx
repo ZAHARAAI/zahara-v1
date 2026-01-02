@@ -121,10 +121,11 @@ export default function Toolbar() {
         { autoCloseMs: 1200 }
       );
     } catch (err: any) {
+      hide();
       console.error("Flow quick run failed", err);
       toast.error(err?.message ?? "Failed to run agent from flow");
     } finally {
-      hide();
+      // hide();
       setRunning(false);
     }
   }

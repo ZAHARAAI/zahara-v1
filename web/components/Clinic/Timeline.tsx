@@ -4,11 +4,24 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Ban, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import {
+  Ban,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Trash2Icon,
+  Clock,
+  Wrench,
+  Sparkles,
+  MessageSquare,
+  Info,
+  Activity,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import {
+  deleteRun,
   getRunDetail,
   listRuns,
   startAgentRun,
@@ -63,6 +76,8 @@ function detailHeaderBorderClass(status: string) {
       return "border-red-500/40";
     case "cancelled":
       return "border-amber-500/40";
+    case "pending":
+      return "border-muted-foreground/30";
     case "running":
       return "border-sky-500/40";
     default:
@@ -80,32 +95,79 @@ function StatusChipIcon({ status }: { status: string }) {
       return <Ban className="h-3 w-3" />;
     case "running":
       return <Loader2 className="h-3 w-3 animate-spin" />;
+    case "pending":
+      return <Clock className="h-3 w-3 text-muted-foreground" />;
     default:
       return null;
   }
 }
 
 function EventTypeIcon({ type }: { type: string }) {
-  if (type === "done")
-    return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300" />;
-  if (type === "error") return <XCircle className="h-3.5 w-3.5 text-red-300" />;
-  if (type === "cancelled")
-    return <Ban className="h-3.5 w-3.5 text-amber-300" />;
-  return null;
+  switch (type) {
+    case "done":
+      return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300" />;
+
+    case "error":
+      return <XCircle className="h-3.5 w-3.5 text-red-300" />;
+
+    case "cancelled":
+      return <Ban className="h-3.5 w-3.5 text-amber-300" />;
+
+    case "tool_call":
+      return <Wrench className="h-3.5 w-3.5 text-sky-300" />;
+
+    case "tool_result":
+      return <Sparkles className="h-3.5 w-3.5 text-indigo-300" />;
+
+    case "log":
+      return <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />;
+
+    case "system":
+      return <Info className="h-3.5 w-3.5 text-cyan-300" />;
+
+    case "token":
+      return <Activity className="h-3.5 w-3.5 text-purple-300" />;
+
+    case "ping":
+      // Usually invisible / non-intrusive
+      return null;
+
+    default:
+      return null;
+  }
 }
 
 function eventPillClass(type: string) {
   switch (type) {
     case "done":
       return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
+
     case "error":
       return "border-red-500/30 bg-red-500/10 text-red-200";
+
     case "cancelled":
       return "border-amber-500/30 bg-amber-500/10 text-amber-200";
+
     case "tool_call":
       return "border-sky-500/30 bg-sky-500/10 text-sky-200";
+
     case "tool_result":
       return "border-indigo-500/30 bg-indigo-500/10 text-indigo-200";
+
+    case "system":
+      return "border-cyan-500/30 bg-cyan-500/10 text-cyan-200";
+
+    case "log":
+      return "border-muted/30 bg-muted/10 text-muted-foreground";
+
+    case "token":
+      // usually streamed inline, but safe if rendered
+      return "border-purple-500/30 bg-purple-500/10 text-purple-200";
+
+    case "ping":
+      // heartbeat – should not visually distract
+      return "border-transparent bg-transparent text-transparent";
+
     default:
       return "border-[hsl(var(--border))] bg-[hsl(var(--panel))] text-[hsl(var(--fg))]";
   }
@@ -264,6 +326,26 @@ export default function Timeline() {
     }
   }
 
+  async function handleDeleteRun(id: string, idx: number) {
+    try {
+      deleteRun(id);
+      const rest_items = runs.filter((r) => r.id !== id);
+      setRuns(rest_items);
+
+      if (selectedRunId === id) {
+        const isLastItem = rest_items.length == idx;
+        const nextSelected =
+          rest_items.length > 0
+            ? rest_items[isLastItem ? idx - 1 : idx].id
+            : null;
+        if (nextSelected) setSelectedRunId(nextSelected);
+      }
+    } catch (err: any) {
+      // console.error("Failed to delete run ", err);
+      toast.error(err?.message ?? "Failed to delete run");
+    }
+  }
+
   return (
     <div className="h-full">
       <div className="flex h-full gap-4">
@@ -303,10 +385,13 @@ export default function Timeline() {
               </div>
             ) : (
               <ul className="divide-y divide-[hsl(var(--border))]">
-                {runs.map((run) => {
+                {runs.map((run, idx) => {
                   const active = run.id === selectedRunId;
                   return (
-                    <li key={run.id}>
+                    <li
+                      key={run.id}
+                      className="flex justify-between gap-x-1 items-center"
+                    >
                       <button
                         type="button"
                         onClick={() => setSelectedRunId(run.id)}
@@ -339,6 +424,14 @@ export default function Timeline() {
                           </span>
                         </div>
                       </button>
+
+                      <button
+                        onClick={() => {
+                          handleDeleteRun(run.id, idx);
+                        }}
+                      >
+                        <Trash2Icon className="h-5 w-5 text-red-300 hover:text-red-400 " />
+                      </button>
                     </li>
                   );
                 })}
@@ -365,16 +458,15 @@ export default function Timeline() {
             <div className="space-y-4">
               {/* ✅ Run detail header border colored by status */}
               <section
-                className={[
-                  "rounded-xl border bg-[hsl(var(--panel))] p-3",
-                  detailHeaderBorderClass(detail.run.status),
-                ].join(" ")}
+                className={`rounded-xl border bg-[hsl(var(--panel))] p-3 ${detailHeaderBorderClass(
+                  detail.run.status
+                )}`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="text-[12px] font-semibold">Run</h2>
 
                   <div className="flex items-center gap-2">
-                    {/* ✅ Retry button for error/cancelled */}
+                    {/* Retry button for error/cancelled */}
                     {canRetry && (
                       <Button
                         size="xs"
@@ -386,7 +478,7 @@ export default function Timeline() {
                       </Button>
                     )}
 
-                    {/* ✅ Status chip with icon in detail card */}
+                    {/* Status chip with icon in detail card */}
                     <span
                       className={[
                         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide border",
@@ -439,17 +531,16 @@ export default function Timeline() {
                     No events recorded for this run.
                   </div>
                 ) : (
-                  <ul className="space-y-1.5 text-[11px] max-h-[60vh] overflow-auto pr-1">
+                  <ul className="space-y-1.5 text-[11px] max-h-[50vh] overflow-auto pr-1">
                     {detail.events.map((e) => {
                       const isLastTerminal = lastTerminalEventId === e.id;
                       return (
                         <li
                           key={e.id}
                           ref={isLastTerminal ? terminalEventElRef : null}
-                          className={[
-                            "rounded-md px-3 py-2 border",
-                            eventPillClass(e.type),
-                          ].join(" ")}
+                          className={`rounded-md px-3 py-2 border ${eventPillClass(
+                            e.type
+                          )}`}
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2">

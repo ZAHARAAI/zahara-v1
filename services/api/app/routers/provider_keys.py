@@ -13,7 +13,7 @@ from ..database import get_db
 from ..middleware.auth import get_current_user
 from ..models.provider_key import ProviderKey as ProviderKeyModel
 from ..models.user import User
-from ..security.provider_keys_crypto import decrypt_secret, encrypt_secret
+from ..security.provider_keys_crypto import decrypt_secret, encrypt_secret, mask_secret
 
 router = APIRouter(prefix="/provider_keys", tags=["provider_keys"])
 
@@ -99,6 +99,7 @@ class ProviderKeyItem(BaseModel):
     id: str
     provider: str
     label: str
+    masked_key: str
     last_test_status: Optional[str] = None
     last_tested_at: Optional[str] = None
     created_at: str
@@ -131,10 +132,12 @@ class ProviderKeyTestResponse(BaseModel):
 
 
 def _to_item(model: ProviderKeyModel) -> ProviderKeyItem:
+    raw = decrypt_secret(model.encrypted_key)  # internal only
     return ProviderKeyItem(
         id=model.id,
         provider=model.provider,
         label=model.label,
+        masked_key=mask_secret(raw),  # "****abcd"
         last_test_status=model.last_test_status,
         last_tested_at=_dt_to_iso_z(model.last_tested_at)
         if model.last_tested_at

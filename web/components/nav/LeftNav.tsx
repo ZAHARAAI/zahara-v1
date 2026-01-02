@@ -37,7 +37,7 @@ function NavItem({
 
 export default function LeftNav() {
   return (
-    <aside className="relative w-64 border-r border-[hsl(var(--border))] p-3 space-y-2 bg-[hsl(var(--panel))]">
+    <aside className="relative w-56 border-r border-[hsl(var(--border))] p-3 space-y-2 bg-[hsl(var(--panel))]">
       <div className="px-2 pb-2 text-xs uppercase tracking-wide opacity-70">
         ZAHARA AI
       </div>
