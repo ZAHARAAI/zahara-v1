@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
 
     # Rate limiting
-    rate_limit_requests: int = 100
+    rate_limit_requests: int = 60
     rate_limit_window: int = 60
 
     # Flowise

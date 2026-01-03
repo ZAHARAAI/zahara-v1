@@ -38,7 +38,8 @@ export default function Toolbar() {
   const agentId: string | undefined = meta?.agentId ?? undefined;
 
   async function handleSaveAsAgent() {
-    if (!nodes?.length || !edges?.length) {
+    // if (!nodes?.length || !edges?.length) {
+    if (!nodes || !edges) {
       toast.info("Please set blocks to save as agent.");
       return;
     }
