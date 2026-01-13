@@ -3,7 +3,7 @@
 
 import { useProStore } from "@/hooks/useProStore";
 import { inferEntryFromNodes } from "@/lib/utilities";
-import { getFlow } from "@/services/api";
+// import { getFlow } from "@/services/api";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -35,19 +35,19 @@ const BackToFlowBuilder = () => {
       try {
         setLoading(true);
 
-        const flow = await getFlow(flowId);
-        const entry = inferEntryFromFlow(flow);
+        // const flow = await getFlow(flowId);
+        // const entry = inferEntryFromFlow(flow);
 
-        if (!entry) {
-          toast.error("No entry file found for this flow", {
-            description: `Set "graph.meta.entry" or a node with "data.entryFile" in the flow.`,
-          });
-          return;
-        }
+        // if (!entry) {
+        //   toast.error("No entry file found for this flow", {
+        //     description: `Set "graph.meta.entry" or a node with "data.entryFile" in the flow.`,
+        //   });
+        //   return;
+        // }
 
         if (cancelled) return;
 
-        await openFile(entry);
+        // await openFile(entry);
       } catch (e: any) {
         if (cancelled) return;
         console.error("Failed to load flow entry", e);
