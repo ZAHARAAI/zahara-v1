@@ -42,9 +42,9 @@ const ProEditor = () => {
   return (
     <div className="relative flex h-full flex-col">
       {/* header */}
-      <div className="flex items-center justify-between border-b border-[hsl(var(--border))] bg-background/70 px-3 py-1 text-xs">
+      <div className="flex items-center justify-between border-b border-border bg-bg/70 px-3 py-1 text-xs">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[11px] text-muted-foreground">
+          <span className="font-mono text-[11px] text-muted_fg">
             {selectedPath ?? "No file selected"}
           </span>
           {dirty && (
@@ -57,9 +57,9 @@ const ProEditor = () => {
           type="button"
           onClick={() => saveCurrentFile()}
           disabled={!selectedPath || saving || !dirty}
-          className={`inline-flex items-center gap-1 rounded-full border border-[hsl(var(--border))] px-3 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-accent-foreground ${
+          className={`inline-flex items-center gap-1 rounded-full border border-border px-3 py-0.5 text-[11px] text-muted_fg hover:bg-accent hover:text-accent_fg ${
             !selectedPath || (!dirty && !saving)
-              ? "cursor-not-allowed opacity-60 hover:bg-transparent hover:text-muted-foreground"
+              ? "cursor-not-allowed opacity-60 hover:bg-transparent hover:text-muted_fg"
               : ""
           }
           `}
@@ -79,7 +79,7 @@ const ProEditor = () => {
       </div>
 
       {loadingFile && (
-        <div className="pointer-events-none absolute inset-x-0 top-7 z-10 flex items-center justify-center text-xs text-muted-foreground">
+        <div className="pointer-events-none absolute inset-x-0 top-7 z-10 flex items-center justify-center text-xs text-muted_fg">
           Loading file…
         </div>
       )}
@@ -87,7 +87,7 @@ const ProEditor = () => {
       {/* editor */}
       <div className="flex-1">
         {showPlaceholder ? (
-          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+          <div className="flex h-full items-center justify-center text-xs text-muted_fg">
             Select a file from the workspace to start editing.
           </div>
         ) : (

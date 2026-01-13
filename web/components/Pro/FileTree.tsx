@@ -19,26 +19,26 @@ const FileTree = () => {
   }, [loadFiles]);
 
   return (
-    <div className="flex h-full flex-col bg-background/40 text-xs">
-      <div className="flex items-center justify-between border-b border-[hsl(var(--border))] px-3 py-2">
-        <span className="font-medium text-muted-foreground">Workspace</span>
+    <div className="flex h-full flex-col bg-bg/40 text-xs">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+        <span className="font-medium text-muted_fg">Workspace</span>
         <button
           type="button"
           onClick={() => loadFiles()}
-          className="rounded-full px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          className="rounded-full px-2 py-0.5 text-[11px] text-muted_fg hover:bg-accent hover:text-accent_fg"
         >
           Refresh
         </button>
       </div>
 
       {loadingFiles && files.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center text-muted-foreground">
+        <div className="flex flex-1 items-center justify-center text-muted_fg">
           Loading workspace…
         </div>
       ) : (
         <div className="flex-1 overflow-auto px-2 py-1">
           {files.length !== 0 && (
-            <div className="px-1 py-1 text-muted-foreground/70">
+            <div className="px-1 py-1 text-muted_fg/70">
               No files found under workspace root.
             </div>
           )}
@@ -51,7 +51,7 @@ const FileTree = () => {
                 return (
                   <div
                     key={item.path}
-                    className="flex items-center gap-1 rounded px-1 py-0.5 text-muted-foreground"
+                    className="flex items-center gap-1 rounded px-1 py-0.5 text-muted_fg"
                   >
                     <Folder className="h-3 w-3" />
                     <span className="truncate">{item.path}</span>
@@ -64,9 +64,9 @@ const FileTree = () => {
                   key={item.path}
                   type="button"
                   onClick={() => openFile(item.path)}
-                  className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-muted-foreground hover:bg-accent hover:text-accent-foreground ${
+                  className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-muted_fg hover:bg-accent hover:text-accent_fg ${
                     isSelected
-                      ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground"
+                      ? "bg-accent text-accent_fg hover:bg-accent hover:text-accent_fg"
                       : ""
                   }
                   `}

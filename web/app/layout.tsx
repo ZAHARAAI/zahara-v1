@@ -8,11 +8,15 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "Job 6 Dashboard",
+  title: "Zahara AI",
   description: "Vibe, Flow Builder, Pro IDE, Clinic",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en" data-theme="dark" className={geistSans.className}>
       <head>
@@ -32,7 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className="min-h-screen bg-[hsl(var(--bg))] text-[hsl(var(--fg))] min-w-[1200px]">
+      <body className="min-h-screen bg-bg text-fg min-w-[1200px]">
         <Providers>{children}</Providers>
       </body>
     </html>

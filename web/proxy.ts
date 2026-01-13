@@ -17,6 +17,12 @@ function isPublicPath(pathname: string) {
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  if (pathname === "/") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/flow";
+    return NextResponse.redirect(url);
+  }
+
   if (isPublicPath(pathname)) return NextResponse.next();
 
   // Respect toggle: when disabled, allow only auth pages and homepage content.

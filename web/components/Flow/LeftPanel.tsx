@@ -46,11 +46,11 @@ export default function LeftPanel({
   return (
     <div
       className={[
-        "border border-[hsl(var(--border))] rounded-2xl overflow-hidden bg-[hsl(var(--panel))] transition-[width] duration-150",
-        collapsed ? "w-12" : "w-64",
+        "border border-border rounded-2xl overflow-hidden bg-panel transition-[width] duration-150",
+        collapsed ? "w-12" : "w-48",
       ].join(" ")}
     >
-      <div className="flex items-center justify-between border-b border-[hsl(var(--border))] p-2">
+      <div className="flex items-center justify-between border-b border-border p-2">
         {!collapsed && <div className="text-sm font-medium">Blocks</div>}
         <Button
           variant="ghost"
@@ -68,7 +68,7 @@ export default function LeftPanel({
             <button
               key={b.type}
               onClick={() => addBlock(b.type)}
-              className="w-full text-left rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-2 hover:opacity-90"
+              className="w-full text-left rounded-xl border border-border bg-card px-3 py-2 hover:opacity-90"
             >
               <div className="text-sm font-medium">{b.label}</div>
               <div className="text-xs opacity-70">{b.hint}</div>

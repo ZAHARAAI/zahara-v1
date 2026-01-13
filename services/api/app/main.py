@@ -20,10 +20,8 @@ from .routers import (
     agents,
     api_keys,
     auth,
-    clinic,
     dev,
     files,
-    flows,
     health,
     llm_router,
     mcp,
@@ -123,10 +121,8 @@ async def internal_error_handler(request: Request, exc):
 app.include_router(agents.router)
 app.include_router(api_keys.router)
 app.include_router(auth.router)
-app.include_router(clinic.router)
 # app.include_router(dev.router)
 app.include_router(files.router)
-app.include_router(flows.router)
 app.include_router(health.router)
 app.include_router(llm_router.router)
 app.include_router(llm_router.v1_router)
@@ -142,9 +138,7 @@ app.include_router(version.router)
 # api_v1.include_router(agents.router)
 # api_v1.include_router(api_keys.router)
 # api_v1.include_router(auth.router)
-# api_v1.include_router(clinic.router)
 # api_v1.include_router(files.router)
-# api_v1.include_router(flows.router)
 # api_v1.include_router(health.router)
 # api_v1.include_router(llm_router.router)
 # api_v1.include_router(llm_router.v1_router)

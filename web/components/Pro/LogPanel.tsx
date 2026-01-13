@@ -136,25 +136,25 @@ const LogPanel = () => {
   }, [events]);
 
   return (
-    <div className="h-full border border-[hsl(var(--border))] rounded-2xl overflow-hidden">
-      <div className="h-full bg-background/40 text-xs">
-        <div className="flex items-center justify-between border-b border-[hsl(var(--border))] px-3 py-2">
-          <div className="flex items-center gap-2 text-muted-foreground">
+    <div className="h-full border border-border rounded-2xl overflow-hidden">
+      <div className="h-full bg-bg/40 text-xs">
+        <div className="flex items-center justify-between border-b border-border px-3 py-2">
+          <div className="flex items-center gap-2 text-muted_fg">
             <span className="font-medium">Run logs</span>
             {runId && (
-              <span className="font-mono text-[11px] text-muted-foreground/80">
+              <span className="font-mono text-[11px] text-muted_fg/80">
                 {runId}
               </span>
             )}
           </div>
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-[11px] text-muted_fg">
             {events.length} events
           </span>
         </div>
 
         <div className="h-full overflow-auto px-3 py-2">
           {formatted.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-muted-foreground">
+            <div className="flex h-full items-center justify-center text-muted_fg">
               No events yet. Run the agent to see live logs.
             </div>
           ) : (
@@ -163,21 +163,21 @@ const LogPanel = () => {
                 <li
                   key={e.id}
                   className={[
-                    "rounded border border-[hsl(var(--border))] bg-background/80 px-3 py-1.5",
+                    "rounded border border-border bg-bg/80 px-3 py-1.5",
                     e.level === "error"
                       ? "border-red-500/40 bg-red-500/5 text-red-200"
                       : "",
                     e.type === "ping"
-                      ? "border-dashed border-[hsl(var(--border))]/60 text-muted-foreground/80"
+                      ? "border-dashed border-border/60 text-muted_fg/80"
                       : "",
                   ].join(" ")}
                 >
                   <div className="mb-1 flex items-center justify-between">
-                    <span className="font-mono text-[11px] uppercase text-muted-foreground">
+                    <span className="font-mono text-[11px] uppercase text-">
                       {e.type}
                     </span>
                     {e.timestamp && (
-                      <span className="text-[10px] text-muted-foreground/80">
+                      <span className="text-[10px] text-muted_fg/80">
                         {e.timestamp}
                       </span>
                     )}

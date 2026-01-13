@@ -77,7 +77,7 @@ const BackToFlowBuilder = () => {
       </div>
       <Link
         href={`/flow?flowId=${encodeURIComponent(flowId)}`}
-        className="inline-flex items-center justify-center rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-1.5 text-[11px] font-medium text-[hsl(var(--fg))] hover:bg-[hsl(var(--muted-2))] transition-colors"
+        className="inline-flex items-center justify-center rounded-xl border border-border bg-muted px-3 py-1.5 text-[11px] font-medium text-fg hover:bg-muted_2 transition-colors"
       >
         ← Back to Flow Builder
       </Link>

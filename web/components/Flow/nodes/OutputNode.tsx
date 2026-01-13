@@ -21,8 +21,8 @@ export function OutputNode({ data }: NodeProps<any>) {
   const sinkHint = SINK_HINT[sinkKey];
 
   return (
-    <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--panel))] shadow-sm min-w-[180px]">
-      <div className="px-3 py-2 text-xs uppercase tracking-wide border-b border-[hsl(var(--border))] text-gray-200 ">
+    <div className="rounded-xl border border-border bg-panel shadow-sm min-w-[180px]">
+      <div className="px-3 py-2 text-xs uppercase tracking-wide border-b border-border text-gray-200 ">
         {data?.title || "Output"}
       </div>
       <div className="p-3 text-xs space-y-1">

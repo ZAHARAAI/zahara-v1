@@ -39,12 +39,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+    <div className="min-h-screen flex items-center justify-center bg-bg px-4">
       <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 shadow-sm">
-        <h1 className="mb-2 text-2xl font-semibold text-foreground">
-          Welcome back
-        </h1>
-        <p className="mb-6 text-sm text-muted-foreground">
+        <h1 className="mb-2 text-2xl font-semibold text-fg">Welcome back</h1>
+        <p className="mb-6 text-sm text-muted_fg">
           Sign in to your Zahara account
         </p>
 
@@ -56,7 +54,7 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium text-foreground">
+            <label className="mb-1 block text-sm font-medium text-fg">
               Email
             </label>
             <input
@@ -64,13 +62,13 @@ export default function LoginPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary"
+              className="w-full rounded-xl border border-input bg-bg px-4 py-3 text-sm text-fg outline-none focus:ring-2 focus:ring-primary"
               placeholder="you@example.com"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-foreground">
+            <label className="mb-1 block text-sm font-medium text-fg">
               Password
             </label>
             <input
@@ -78,7 +76,7 @@ export default function LoginPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary"
+              className="w-full rounded-xl border border-input bg-bg px-4 py-3 text-sm text-fg outline-none focus:ring-2 focus:ring-primary"
               placeholder="••••••••"
             />
           </div>
@@ -87,13 +85,13 @@ export default function LoginPage() {
             type="submit"
             variant="outline"
             disabled={loading}
-            className="mt-2 w-full rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-60"
+            className="mt-2 w-full rounded-xl bg-primary px-4 py-3 text-sm font-medium text-fg transition hover:opacity-90 disabled:opacity-60"
           >
             {loading ? "Signing in…" : "Sign in"}
           </Button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-muted-foreground">
+        <p className="mt-6 text-center text-sm text-muted_fg">
           Don’t have an account?{" "}
           <Link
             href="/register"

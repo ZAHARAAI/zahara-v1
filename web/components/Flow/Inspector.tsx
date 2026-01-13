@@ -218,12 +218,12 @@ export default function Inspector() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-[hsl(var(--border))] p-3">
+      <div className="border-b border-border p-3">
         <div className="text-sm font-medium">Inspector</div>
         <div className="text-xs opacity-70">{flowName}</div>
       </div>
 
-      <div className="flex items-center gap-2 border-b border-[hsl(var(--border))] p-2">
+      <div className="flex items-center gap-2 border-b border-border p-2">
         {TABS.map((t) => (
           <button
             key={t}
@@ -231,7 +231,7 @@ export default function Inspector() {
             className={[
               "px-3 py-1.5 rounded-xl text-sm border",
               tab === t
-                ? "border-[hsl(var(--border))] bg-[hsl(var(--card))]"
+                ? "border-border bg-card"
                 : "border-transparent opacity-70 hover:opacity-100",
             ].join(" ")}
           >
@@ -269,7 +269,7 @@ export default function Inspector() {
 
                 {/* START */}
                 {selectedKind === "start" && (
-                  <div className="space-y-3 rounded-xl border border-[hsl(var(--border))] p-3">
+                  <div className="space-y-3 rounded-xl border border-border p-3">
                     <div className="text-sm font-medium">Start settings</div>
 
                     <div>
@@ -289,7 +289,7 @@ export default function Inspector() {
 
                 {/* MODEL */}
                 {selectedKind === "model" && (
-                  <div className="space-y-3 rounded-xl border border-[hsl(var(--border))] p-3">
+                  <div className="space-y-3 rounded-xl border border-border p-3">
                     <div className="text-sm font-medium">Model settings</div>
 
                     <div>
@@ -354,7 +354,7 @@ export default function Inspector() {
 
                 {/* TOOL */}
                 {selectedKind === "tool" && (
-                  <div className="space-y-3 rounded-xl border border-[hsl(var(--border))] p-3">
+                  <div className="space-y-3 rounded-xl border border-border p-3">
                     <div className="text-sm font-medium">Tool settings</div>
 
                     <div>
@@ -451,7 +451,7 @@ export default function Inspector() {
 
                 {/* OUTPUT */}
                 {selectedKind === "output" && (
-                  <div className="space-y-3 rounded-xl border border-[hsl(var(--border))] p-3">
+                  <div className="space-y-3 rounded-xl border border-border p-3">
                     <div className="text-sm font-medium">Output settings</div>
 
                     <div>
@@ -509,11 +509,11 @@ export default function Inspector() {
                     Run logs will appear here during execution.
                   </div>
                 ) : (
-                  <div className="max-h-[360px] overflow-auto rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2">
+                  <div className="max-h-[360px] overflow-auto rounded-xl border border-border bg-card p-2">
                     {formattedLogs.map((line, i) => (
                       <div
                         key={i}
-                        className={`text-xs py-2 border-b border-[hsl(var(--border))] last:border-b-0 ${
+                        className={`text-xs py-2 border-b border-border last:border-b-0 ${
                           line.type === "error" ? "text-red-200" : ""
                         } ${
                           line.type === "ping" ? "text-blue-200 opacity-70" : ""
@@ -546,7 +546,7 @@ export default function Inspector() {
         )}
       </div>
 
-      <div className="border-t border-[hsl(var(--border))] p-3">
+      <div className="border-t border-border p-3">
         <Button onClick={openInPro}>Open in Pro</Button>
       </div>
     </div>

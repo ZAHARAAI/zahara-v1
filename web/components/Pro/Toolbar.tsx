@@ -162,16 +162,16 @@ const Toolbar = () => {
   }
 
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-[hsl(var(--border))] px-4 py-2 text-xs">
+    <div className="flex items-center justify-between rounded-2xl border border-border px-4 py-2 text-xs">
       <div className="flex items-center gap-2">
-        <span className="text-[11px] uppercase tracking-wide text-[hsl(var(--muted-fg))]">
+        <span className="text-[11px] uppercase tracking-wide text-muted_fg">
           Pro IDE
         </span>
         <span className="text-[12px] font-mono">
           {selectedPath ?? "No file selected"}
         </span>
         {agentId && (
-          <span className="text-[11px] text-[hsl(var(--muted-fg))]">
+          <span className="text-[11px] text-muted_fg">
             Agent: <code className="font-mono">{agentId}</code>
           </span>
         )}
@@ -179,7 +179,7 @@ const Toolbar = () => {
 
       <div className="flex items-center gap-2">
         {lastRunId && (
-          <span className="text-[11px] text-[hsl(var(--muted-fg))]">
+          <span className="text-[11px] text-muted_fg">
             Last run: <code className="font-mono">{lastRunId}</code>
           </span>
         )}

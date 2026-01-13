@@ -113,7 +113,7 @@ export default function ProvidersPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[16px] font-semibold">Provider Keys</h1>
-          <p className="text-[12px] text-[hsl(var(--muted-fg))]">
+          <p className="text-[12px] text-muted_fg">
             Keys configured here are used by the run pipeline when calling the
             central LLM router.
           </p>
@@ -123,13 +123,13 @@ export default function ProvidersPage() {
       <div className="flex gap-4">
         <form
           onSubmit={handleCreate}
-          className="w-80 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--panel))] p-4 flex flex-col gap-3"
+          className="w-80 rounded-2xl border border-border bg-panel p-4 flex flex-col gap-3"
         >
           <div className="text-[13px] font-medium">Add provider key</div>
 
           <div className="flex flex-col gap-1 text-[12px]">
             <Select
-              // className="rounded-md border border-[hsl(var(--border))] bg-transparent px-2 py-1 text-[12px]"
+              // className="rounded-md border border-border bg-transparent px-2 py-1 text-[12px]"
               label="Provider"
               value={provider}
               onChange={(v) => setProvider(v)}
@@ -157,7 +157,7 @@ export default function ProvidersPage() {
           </Button>
         </form>
 
-        <div className="flex-1 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--panel))] p-4">
+        <div className="flex-1 rounded-2xl border border-border bg-panel p-4">
           <div className="flex items-center justify-between mb-2">
             <div className="text-[13px] font-medium">Existing keys</div>
             <Button size="xs" variant="outline" onClick={() => void loadKeys()}>
@@ -166,12 +166,12 @@ export default function ProvidersPage() {
           </div>
 
           {keys.length === 0 ? (
-            <div className="text-[12px] text-[hsl(var(--muted-fg))]">
+            <div className="text-[12px] text-muted_fg">
               No provider keys configured yet.
             </div>
           ) : (
             <table className="w-full text-[11px]">
-              <thead className="text-[hsl(var(--muted-fg))]">
+              <thead className="text-muted_fg">
                 <tr>
                   <th className="text-left py-1 pr-2">Provider</th>
                   <th className="text-left py-1 pr-2">Label</th>
@@ -183,10 +183,7 @@ export default function ProvidersPage() {
               </thead>
               <tbody>
                 {keys.map((k) => (
-                  <tr
-                    key={k.id}
-                    className="border-t border-[hsl(var(--border))]"
-                  >
+                  <tr key={k.id} className="border-t border-border">
                     <td className="py-1 pr-2">{k?.provider}</td>
                     <td className="py-1 pr-2">{k?.label}</td>
                     <td className="py-1 pr-2">{k?.masked_key || "—"}</td>
@@ -203,9 +200,7 @@ export default function ProvidersPage() {
                           {k.last_test_status}
                         </span>
                       ) : (
-                        <span className="text-[hsl(var(--muted-fg))]">
-                          never
-                        </span>
+                        <span className="text-muted_fg">never</span>
                       )}
                     </td>
                     <td className="py-1 pr-2">

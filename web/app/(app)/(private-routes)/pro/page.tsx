@@ -24,13 +24,13 @@ export default function ProPage() {
     <div className="flex h-[calc(100vh-3rem)] flex-col gap-3">
       <Toolbar />
       <div className="flex flex-1 gap-3 overflow-hidden">
-        <div className="w-64 border border-[hsl(var(--border))] rounded-2xl overflow-hidden">
+        <div className="w-64 border border-border rounded-2xl overflow-hidden">
           <FileTree />
         </div>
-        <div className="flex-1 border border-[hsl(var(--border))] rounded-2xl overflow-hidden">
+        <div className="flex-1 border border-border rounded-2xl overflow-hidden">
           <Editor />
         </div>
-        <div className="w-80 border border-[hsl(var(--border))] rounded-2xl overflow-hidden">
+        <div className="w-80 border border-border rounded-2xl overflow-hidden">
           <LogPanel />
         </div>
       </div>

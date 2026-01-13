@@ -1,8 +1,30 @@
 @import "tailwindcss";
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
 @import "../theme/tokens.css";
 
+@theme {
+  --color-bg: hsl(var(--bg));
+  --color-panel: hsl(var(--panel));
+  --color-card: hsl(var(--card));
+
+  --color-fg: hsl(var(--fg));
+  --color-fg_secondary: hsl(var(--fg-secondary));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted_2: hsl(var(--muted-2));
+  --color-muted_fg: hsl(var(--muted-fg));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent_soft: hsl(var(--accent-soft));
+  --color-accent_fg: hsl(var(--accent-fg));
+
+  --color-border: hsl(var(--border));
+  --color-ring: hsl(var(--ring));
+}
+
 :root {
-  color-scheme: dark;
+  color-scheme: light dark;
 }
 
 html,
@@ -12,8 +34,8 @@ body,
 }
 
 body {
-  background-color: hsl(var(--bg));
-  color: hsl(var(--fg));
+  background-color: var(--color-bg);
+  color: var(--color-fg);
 }
 
 * {
@@ -47,6 +69,6 @@ a {
   }
 
   button {
-    @apply cursor-pointer
+    @apply cursor-pointer;
   }
 }

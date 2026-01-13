@@ -20,7 +20,8 @@ export default function FlowPage() {
   const hydratedRef = useRef<string | null>(null);
   const [loading, startTransition] = useTransition();
 
-  const { meta, setFlowMeta, setFlowName, setGraph } = useFlowStore();
+  const { meta, setFlowMeta, setFlowName, setGraph, setRunInput } =
+    useFlowStore();
 
   useEffect(() => {
     const loadAgent = async (id: string) => {
@@ -54,10 +55,17 @@ export default function FlowPage() {
         }
       }
     });
-  }, [searchParams, meta, setFlowMeta, setFlowName, setGraph, agent_id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, agent_id]);
+
+  useEffect(() => {
+    const lastUserInput = localStorage.getItem("zahara.flow.lastRunInput");
+    if (lastUserInput?.trim()) setRunInput(lastUserInput);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
-    <div className="relative h-[calc(100vh-3rem)]">
+    <div className="relative h-[calc(100vh-4rem)]">
       <Suspense fallback={<div className="p-4 text-sm">Loading flow…</div>}>
         <Toolbar />
       </Suspense>
@@ -74,12 +82,12 @@ export default function FlowPage() {
           onToggle={() => setLeftCollapsed((v) => !v)}
         />
 
-        <div className="flex-1 border border-[hsl(var(--border))] rounded-2xl overflow-hidden">
+        <div className="flex-1 border border-border rounded-2xl overflow-hidden">
           <Canvas />
         </div>
 
         {showInspector && (
-          <div className="w-[420px] border border-[hsl(var(--border))] rounded-2xl overflow-hidden">
+          <div className="w-[320px] border border-border rounded-2xl overflow-hidden">
             <Inspector />
           </div>
         )}

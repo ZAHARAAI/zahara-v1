@@ -11,8 +11,8 @@ export function NodeChrome({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--panel))] shadow-sm min-w-[180px]">
-      <div className="px-3 py-2 text-xs uppercase tracking-wide border-b border-[hsl(var(--border))]">
+    <div className="rounded-xl border border-border bg-panel shadow-sm min-w-[180px]">
+      <div className="px-3 py-2 text-xs uppercase tracking-wide border-b border-border">
         {title}
       </div>
       <div className="p-3 text-xs space-y-1">{children}</div>

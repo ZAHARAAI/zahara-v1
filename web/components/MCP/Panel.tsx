@@ -75,8 +75,8 @@ export default function Panel() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-[hsl(var(--panel))]">
-      <div className="border-b border-[hsl(var(--border))] px-3 py-2 text-xs font-medium">
+    <div className="flex h-full flex-col bg-panel">
+      <div className="border-b border-border px-3 py-2 text-xs font-medium">
         MCP Connectors
       </div>
       {loading && (
@@ -86,7 +86,7 @@ export default function Panel() {
         {items.map((c) => (
           <div
             key={c.id}
-            className="mb-2 flex items-center justify-between rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--bg))] px-3 py-2"
+            className="mb-2 flex items-center justify-between rounded-xl border border-border bg-bg px-3 py-2"
           >
             <div>
               <div className="font-medium">{c.name}</div>

@@ -20,11 +20,11 @@ export function Select({
         value={value}
         name={label}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
+        className="w-full rounded-xl border border-border bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         disabled={disabled}
       >
         {options.map(([v, l]) => (
-          <option className="bg-[hsl(var(--panel))]" key={v} value={v}>
+          <option className="bg-panel" key={v} value={v}>
             {l}
           </option>
         ))}

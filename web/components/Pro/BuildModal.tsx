@@ -105,7 +105,7 @@ export default function BuildModal({
       <div
         className={[
           "w-full max-w-sm rounded-2xl border p-4 shadow-lg",
-          "bg-[hsl(var(--panel))] border-[hsl(var(--border))]",
+          "bg-panel border-border",
           "transition-all duration-150",
           isClosing ? "opacity-0 scale-[0.98]" : "opacity-100 scale-100",
           isError ? "border-red-500/40 bg-red-500/5" : "",
@@ -123,7 +123,7 @@ export default function BuildModal({
           />
           <div className="flex flex-col">
             <span className="text-[14px] font-medium">{finalTitle}</span>
-            <span className="text-[11px] text-[hsl(var(--muted-fg))]">
+            <span className="text-[11px] text-muted_fg">
               {isFinalizing ? "Finalizing run…" : finalSubtitle}
             </span>
           </div>
@@ -140,18 +140,18 @@ export default function BuildModal({
         )}
 
         {/* Mini logs */}
-        <div className="mt-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2">
+        <div className="mt-3 rounded-xl border border-border bg-card p-2">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-[11px] font-medium text-[hsl(var(--muted-fg))]">
+            <span className="text-[11px] font-medium text-muted_fg">
               Live events
             </span>
-            <span className="text-[10px] text-[hsl(var(--muted-fg))]">
+            <span className="text-[10px] text-muted_fg">
               {logs?.length ?? 0}/5
             </span>
           </div>
 
           {!logs || logs.length === 0 ? (
-            <div className="text-[11px] text-[hsl(var(--muted-fg))]">
+            <div className="text-[11px] text-muted_fg">
               Waiting for stream…
             </div>
           ) : (
@@ -159,13 +159,13 @@ export default function BuildModal({
               {logs.map((l, idx) => (
                 <li
                   key={idx}
-                  className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--bg))] px-2 py-1"
+                  className="rounded-lg border border-border bg-bg px-2 py-1"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-[10px] uppercase text-[hsl(var(--muted-fg))]">
+                    <span className="font-mono text-[10px] uppercase text-muted_fg">
                       {l.type}
                     </span>
-                    <span className="text-[10px] text-[hsl(var(--muted-fg))]">
+                    <span className="text-[10px] text-muted_fg">
                       {l.ts ? new Date(l.ts).toLocaleTimeString() : ""}
                     </span>
                   </div>

@@ -53,17 +53,17 @@ const options: [string, string][] = [
 function statusChipClass(status: string) {
   switch (status) {
     case "success":
-      return "border-emerald-500/30 bg-emerald-500/15 text-emerald-300";
+      return "border-emerald-500/30 bg-emerald-500/15 text-emerald-500 dark:text-emerald-300";
     case "error":
-      return "border-red-500/30 bg-red-500/15 text-red-200";
+      return "border-red-500/30 bg-red-500/15 text-red-500 dark:text-red-200";
     case "running":
-      return "border-sky-500/30 bg-sky-500/15 text-sky-200";
+      return "border-sky-500/30 bg-sky-500/15 text-sky-500 dark:text-sky-200";
     case "pending":
-      return "border-[hsl(var(--border))] bg-[hsl(var(--muted))] text-[hsl(var(--muted-fg))]";
+      return "border-border bg-muted text-muted_fg";
     case "cancelled":
-      return "border-amber-500/30 bg-amber-500/15 text-amber-200";
+      return "border-amber-500/30 bg-amber-500/15 text-amber-500 dark:text-amber-200";
     default:
-      return "border-[hsl(var(--border))] bg-[hsl(var(--muted))] text-[hsl(var(--muted-fg))]";
+      return "border-border bg-muted text-muted_fg";
   }
 }
 
@@ -77,11 +77,11 @@ function detailHeaderBorderClass(status: string) {
     case "cancelled":
       return "border-amber-500/40";
     case "pending":
-      return "border-muted-foreground/30";
+      return "border-muted_fg/30";
     case "running":
       return "border-sky-500/40";
     default:
-      return "border-[hsl(var(--border))]";
+      return "border-border";
   }
 }
 
@@ -96,7 +96,7 @@ function StatusChipIcon({ status }: { status: string }) {
     case "running":
       return <Loader2 className="h-3 w-3 animate-spin" />;
     case "pending":
-      return <Clock className="h-3 w-3 text-muted-foreground" />;
+      return <Clock className="h-3 w-3 text-muted_fg" />;
     default:
       return null;
   }
@@ -108,7 +108,7 @@ function EventTypeIcon({ type }: { type: string }) {
       return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300" />;
 
     case "error":
-      return <XCircle className="h-3.5 w-3.5 text-red-300" />;
+      return <XCircle className="h-3.5 w-3.5 dark:text-red-300" />;
 
     case "cancelled":
       return <Ban className="h-3.5 w-3.5 text-amber-300" />;
@@ -120,7 +120,7 @@ function EventTypeIcon({ type }: { type: string }) {
       return <Sparkles className="h-3.5 w-3.5 text-indigo-300" />;
 
     case "log":
-      return <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />;
+      return <MessageSquare className="h-3.5 w-3.5 text-muted_fg" />;
 
     case "system":
       return <Info className="h-3.5 w-3.5 text-cyan-300" />;
@@ -140,36 +140,36 @@ function EventTypeIcon({ type }: { type: string }) {
 function eventPillClass(type: string) {
   switch (type) {
     case "done":
-      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-500 dark:text-emerald-200";
 
     case "error":
-      return "border-red-500/30 bg-red-500/10 text-red-200";
+      return "border-red-500/30 bg-red-500/10 text-red-500 dark:text-red-200";
 
     case "cancelled":
-      return "border-amber-500/30 bg-amber-500/10 text-amber-200";
+      return "border-amber-500/30 bg-amber-500/10 text-amber-500 dark:text-amber-200";
 
     case "tool_call":
-      return "border-sky-500/30 bg-sky-500/10 text-sky-200";
+      return "border-sky-500/30 bg-sky-500/10 text-sky-500 dark:text-sky-200";
 
     case "tool_result":
-      return "border-indigo-500/30 bg-indigo-500/10 text-indigo-200";
+      return "border-indigo-500/30 bg-indigo-500/10 text-indigo-500 dark:text-indigo-200";
 
     case "system":
-      return "border-cyan-500/30 bg-cyan-500/10 text-cyan-200";
+      return "border-cyan-500/30 bg-cyan-500/10 text-cyan-500 dark:text-cyan-200";
 
     case "log":
-      return "border-muted/30 bg-muted/10 text-muted-foreground";
+      return "border-muted/30 bg-muted/10 text-muted_fg";
 
     case "token":
       // usually streamed inline, but safe if rendered
-      return "border-purple-500/30 bg-purple-500/10 text-purple-200";
+      return "border-purple-500/30 bg-purple-500/10 text-purple-500 dark:text-purple-200";
 
     case "ping":
       // heartbeat – should not visually distract
       return "border-transparent bg-transparent text-transparent";
 
     default:
-      return "border-[hsl(var(--border))] bg-[hsl(var(--panel))] text-[hsl(var(--fg))]";
+      return "border-border bg-panel text-fg";
   }
 }
 
@@ -350,8 +350,8 @@ export default function Timeline() {
     <div className="h-full">
       <div className="flex h-full gap-4">
         {/* Left: run list */}
-        <div className="w-[360px] shrink-0 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] overflow-hidden">
-          <div className="border-b border-[hsl(var(--border))] px-3 py-2 flex items-center justify-between">
+        <div className="w-[360px] shrink-0 rounded-2xl border border-border bg-card overflow-hidden">
+          <div className="border-b border-border px-3 py-2 flex items-center justify-between">
             <div className="text-sm font-semibold">Clinic</div>
             <Button
               size="xs"
@@ -363,8 +363,8 @@ export default function Timeline() {
             </Button>
           </div>
 
-          <div className="p-3 border-b border-[hsl(var(--border))] flex items-center justify-between gap-2">
-            <span className="text-[11px] text-[hsl(var(--muted-fg))]">
+          <div className="p-3 border-b border-border flex items-center justify-between gap-2">
+            <span className="text-[11px] text-muted_fg">
               Total: {runs.length}
             </span>
             <Select
@@ -376,15 +376,13 @@ export default function Timeline() {
 
           <div className="max-h-[calc(100vh-12rem)] overflow-auto">
             {loadingRuns ? (
-              <div className="p-3 text-[11px] text-[hsl(var(--muted-fg))]">
-                Loading runs…
-              </div>
+              <div className="p-3 text-[11px] text-muted_fg">Loading runs…</div>
             ) : runs.length === 0 ? (
-              <div className="p-3 text-[11px] text-[hsl(var(--muted-fg))]">
+              <div className="p-3 text-[11px] text-muted_fg">
                 No runs found. Run an agent to see history appear here.
               </div>
             ) : (
-              <ul className="divide-y divide-[hsl(var(--border))]">
+              <ul className="divide-y divide-border">
                 {runs.map((run, idx) => {
                   const active = run.id === selectedRunId;
                   return (
@@ -395,29 +393,27 @@ export default function Timeline() {
                       <button
                         type="button"
                         onClick={() => setSelectedRunId(run.id)}
-                        className={[
-                          "w-full text-left px-3 py-2 text-[12px] flex flex-col gap-1 hover:bg-[hsl(var(--muted))]",
-                          active ? "bg-[hsl(var(--muted))]" : "",
-                        ].join(" ")}
+                        className={`w-full text-left px-3 py-2 text-[12px] flex flex-col gap-1 hover:bg-muted ${
+                          active ? "bg-muted" : ""
+                        }`}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-medium truncate">{run.id}</span>
 
-                          {/* ✅ Status chip with tiny icon */}
+                          {/* Status chip with tiny icon */}
                           <span
-                            className={[
-                              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide border",
-                              statusChipClass(run.status),
-                            ].join(" ")}
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide border ${statusChipClass(
+                              run.status
+                            )}`}
                           >
                             <StatusChipIcon status={run.status} />
                             <span>{run.status}</span>
                           </span>
                         </div>
 
-                        <div className="flex items-center justify-between gap-2 text-[11px] text-[hsl(var(--muted-fg))]">
+                        <div className="flex items-center justify-between gap-2 text-[11px] text-muted_fg">
                           <span className="truncate">
-                            {run.model ?? "model: n/a"}
+                            {run.model ?? "model: --"}
                           </span>
                           <span>
                             {new Date(run.created_at).toLocaleTimeString()}
@@ -430,7 +426,7 @@ export default function Timeline() {
                           handleDeleteRun(run.id, idx);
                         }}
                       >
-                        <Trash2Icon className="h-5 w-5 text-red-300 hover:text-red-400 " />
+                        <Trash2Icon className="h-5 w-5 text-red-500 dark:text-red-400 hover:text-red-300 " />
                       </button>
                     </li>
                   );
@@ -441,24 +437,20 @@ export default function Timeline() {
         </div>
 
         {/* Right: detail */}
-        <div className="flex-1 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4">
+        <div className="flex-1 rounded-2xl border border-border bg-card p-4">
           {!selectedRunId ? (
-            <div className="text-[12px] text-[hsl(var(--muted-fg))]">
+            <div className="text-[12px] text-muted_fg">
               Select a run to view details.
             </div>
           ) : loadingDetail ? (
-            <div className="text-[12px] text-[hsl(var(--muted-fg))]">
-              Loading run detail…
-            </div>
+            <div className="text-[12px] text-muted_fg">Loading run detail…</div>
           ) : !detail ? (
-            <div className="text-[12px] text-[hsl(var(--muted-fg))]">
-              No detail found.
-            </div>
+            <div className="text-[12px] text-muted_fg">No detail found.</div>
           ) : (
             <div className="space-y-4">
-              {/* ✅ Run detail header border colored by status */}
+              {/* Run detail header border colored by status */}
               <section
-                className={`rounded-xl border bg-[hsl(var(--panel))] p-3 ${detailHeaderBorderClass(
+                className={`rounded-xl border bg-panel p-3 ${detailHeaderBorderClass(
                   detail.run.status
                 )}`}
               >
@@ -470,11 +462,22 @@ export default function Timeline() {
                     {canRetry && (
                       <Button
                         size="xs"
-                        variant="outline"
                         disabled={retrying}
                         onClick={() => void handleRetry()}
                       >
                         {retrying ? "Retrying…" : "Retry"}
+                      </Button>
+                    )}
+
+                    {/* Replay if run status success */}
+                    {detail.run.status.toLowerCase() === "success" && (
+                      <Button
+                        size="xs"
+                        // disabled={replaying}
+                        // onClick={() => void handleReplay()}
+                      >
+                        {/* {replaying ? "Running..." : "Replay"} */}
+                        Replay
                       </Button>
                     )}
 
@@ -491,29 +494,23 @@ export default function Timeline() {
                   </div>
                 </div>
 
-                <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-[hsl(var(--muted-fg))]">
+                <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted_fg">
                   <div>ID</div>
-                  <div className="font-mono text-[hsl(var(--fg))]">
-                    {detail.run.id}
-                  </div>
+                  <div className="font-mono text-fg">{detail.run.id}</div>
 
                   <div>Provider</div>
-                  <div className="text-[hsl(var(--fg))]">
-                    {detail.run.provider ?? "—"}
-                  </div>
+                  <div className="text-fg">{detail.run.provider ?? "—"}</div>
 
                   <div>Model</div>
-                  <div className="text-[hsl(var(--fg))]">
-                    {detail.run.model ?? "—"}
-                  </div>
+                  <div className="text-fg">{detail.run.model ?? "—"}</div>
 
                   <div>Tokens</div>
-                  <div className="text-[hsl(var(--fg))]">
+                  <div className="text-fg">
                     {detail.run.tokens_total ?? "—"}
                   </div>
 
                   <div>Cost</div>
-                  <div className="text-[hsl(var(--fg))]">
+                  <div className="text-fg">
                     {typeof detail.run.cost_estimate_usd === "number"
                       ? `$${detail.run.cost_estimate_usd.toFixed(6)}`
                       : "—"}
@@ -521,13 +518,13 @@ export default function Timeline() {
                 </div>
               </section>
 
-              <section className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--panel))] p-3">
+              <section className="rounded-xl border border-border bg-panel p-3">
                 <div className="flex items-center justify-between">
                   <h2 className="text-[12px] font-semibold mb-2">Events</h2>
                 </div>
 
                 {detail.events.length === 0 ? (
-                  <div className="text-[11px] text-[hsl(var(--muted-fg))]">
+                  <div className="text-[11px] text-muted_fg">
                     No events recorded for this run.
                   </div>
                 ) : (
@@ -544,19 +541,19 @@ export default function Timeline() {
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2">
-                              {/* ✅ Terminal icon */}
+                              {/* Terminal icon */}
                               <EventTypeIcon type={e.type} />
                               <span className="font-mono text-[10px] uppercase">
                                 {e.type}
                               </span>
                               {isLastTerminal && (
-                                <span className="ml-1 text-[10px] text-[hsl(var(--muted-fg))]">
+                                <span className="ml-1 text-[10px] text-muted_fg">
                                   (latest terminal)
                                 </span>
                               )}
                             </div>
 
-                            <span className="text-[10px] text-[hsl(var(--muted-fg))]">
+                            <span className="text-[10px] text-muted_fg">
                               {new Date(e.created_at).toLocaleTimeString()}
                             </span>
                           </div>

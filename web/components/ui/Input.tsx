@@ -11,7 +11,7 @@ export function Input({
     <label className="block text-xs">
       {label && <div className="mb-1 ms-1 opacity-70">{label}</div>}
       <input
-        className={`w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--bg))] px-3 py-1.5 text-xs outline-none focus:border-[hsl(var(--accent))] ${className}`}
+        className={`w-full rounded-xl border border-border bg-bg px-3 py-1.5 text-xs outline-none focus:border-accent ${className}`}
         {...props}
       />
     </label>

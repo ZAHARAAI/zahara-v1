@@ -39,8 +39,8 @@ export default function Error({ error, reset }: Props) {
   };
 
   return (
-    <div className="min-h-[60vh] grid place-items-center bg-[hsl(var(--bg))] px-4">
-      <div className="w-full max-w-2xl rounded-2xl border border-[hsl(var(--border))] bg-white/60 p-6 shadow-xl backdrop-blur-md dark:bg-black/40">
+    <div className="min-h-[60vh] grid place-items-center bg-bg px-4">
+      <div className="w-full max-w-2xl rounded-2xl border border-border bg-white/60 p-6 shadow-xl backdrop-blur-md dark:bg-black/40">
         {/* Header */}
         <div className="flex items-start gap-3">
           <div className="rounded-xl bg-red-500/10 p-3 text-red-500">
@@ -59,7 +59,7 @@ export default function Error({ error, reset }: Props) {
 
         {/* Quick message */}
         {error?.message && (
-          <div className="mt-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-3">
+          <div className="mt-4 rounded-xl border border-border bg-muted p-3">
             <p className="text-sm font-medium">Message</p>
             <p className="mt-1 truncate text-sm opacity-80">{error.message}</p>
           </div>
@@ -69,7 +69,7 @@ export default function Error({ error, reset }: Props) {
         <div className="mt-5 flex flex-wrap items-center gap-2">
           <button
             onClick={() => reset()}
-            className="inline-flex items-center gap-2 rounded-xl bg-[hsl(var(--accent))] px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+            className="inline-flex items-center gap-2 rounded-xl bg-accent px-3 py-2 text-sm font-medium text-white hover:opacity-90"
           >
             <RefreshCw className="h-4 w-4" />
             Try again
@@ -77,7 +77,7 @@ export default function Error({ error, reset }: Props) {
 
           <Link
             href="/"
-            className="inline-flex items-center gap-2 rounded-xl bg-[hsl(var(--muted))] px-3 py-2 text-sm font-medium hover:opacity-90"
+            className="inline-flex items-center gap-2 rounded-xl bg-muted px-3 py-2 text-sm font-medium hover:opacity-90"
           >
             <Home className="h-4 w-4" />
             Go home
@@ -85,7 +85,7 @@ export default function Error({ error, reset }: Props) {
 
           <button
             onClick={copy}
-            className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium hover:bg-[hsl(var(--muted))]"
+            className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium hover:bg-muted"
             title="Copy error details"
           >
             <Clipboard className="h-4 w-4" />
@@ -94,11 +94,11 @@ export default function Error({ error, reset }: Props) {
         </div>
 
         {/* Diagnostics (collapsible) */}
-        <details className="mt-6 rounded-xl border border-[hsl(var(--border))]">
-          <summary className="cursor-pointer select-none rounded-xl px-3 py-2 text-sm font-medium hover:bg-[hsl(var(--muted))]">
+        <details className="mt-6 rounded-xl border border-border">
+          <summary className="cursor-pointer select-none rounded-xl px-3 py-2 text-sm font-medium hover:bg-muted">
             Technical details
           </summary>
-          <div className="border-t border-[hsl(var(--border))] p-3">
+          <div className="border-t border-border p-3">
             {error?.digest && (
               <div className="mb-3 text-xs opacity-70">
                 <span className="font-semibold">Digest:</span> {error.digest}

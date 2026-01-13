@@ -1,35 +1,74 @@
 :root {
-   --bg: 0 0% 100%;
-   --fg: 222 47% 11%;
-   --muted: 210 40% 96%;
-   --muted-fg: 215 16% 47%;
-   --accent: 142 76% 36%;
-   --accent-fg: 0 0% 100%;
-   --panel: 0 0% 100%;
-   --border: 214 32% 91%;
-   --ring: 210 98% 50%;
+  /* surfaces */
+  --bg: 0 0% 100%;
+  --panel: 0 0% 99%;
+  --card: 0 0% 100%;
+
+  /* text */
+  --fg: 222 47% 11%;
+  --fg-secondary: 215 16% 40%;
+
+  /* neutrals */
+  --muted: 210 40% 96%;
+  --muted-2: 214 32% 93%;
+  --muted-fg: 215 16% 35%;
+
+  /* brand */
+  --accent: 142 76% 36%;
+  --accent-soft: 142 76% 92%;
+  --accent-fg: 0 0% 100%;
+
+  /* lines + focus */
+  --border: 214 25% 85%;
+  --ring: 142 76% 45%;
 }
 
 [data-theme="dark"] {
-   --bg: 222 14% 10%;
-   --fg: 0 0% 98%;
-   --muted: 222 14% 16%;
-   --muted-fg: 220 10% 70%;
-   --accent: 142 76% 45%;
-   --accent-fg: 0 0% 100%;
-   --panel: 222 14% 12%;
-   --border: 222 14% 18%;
-   --ring: 210 98% 50%;
+  /* surfaces */
+  --bg: 222 14% 10%;
+  --panel: 222 14% 12%;
+  --card: 222 14% 14%;
+
+  /* text */
+  --fg: 0 0% 98%;
+  --fg-secondary: 220 10% 72%;
+
+  /* neutrals */
+  --muted: 222 14% 16%;
+  --muted-2: 222 14% 20%;
+  --muted-fg: 220 10% 74%;
+
+  /* brand */
+  --accent: 142 76% 45%;
+  --accent-soft: 142 28% 20%;
+  --accent-fg: 0 0% 100%;
+
+  /* lines + focus */
+  --border: 222 12% 26%;
+  --ring: 142 76% 45%;
 }
 
 [data-theme="light"] {
-   --bg: 0 0% 100%;
-   --fg: 222 47% 11%;
-   --muted: 210 40% 96%;
-   --muted-fg: 215 16% 47%;
-   --accent: 142 76% 36%;
-   --accent-fg: 0 0% 100%;
-   --panel: 0 0% 100%;
-   --border: 214 32% 91%;
-   --ring: 210 98% 50%;
+  /* surfaces */
+  --bg: 0 0% 100%;
+  --panel: 0 0% 99%;
+  --card: 0 0% 100%;
+
+  /* text */
+  --fg: 222 47% 11%;
+  --fg-secondary: 215 16% 40%;
+
+  /* neutrals */
+  --muted: 210 40% 96%;
+  --muted-2: 214 32% 93%;
+  --muted-fg: 215 16% 35%;
+
+  /* brand */
+  --accent: 142 76% 36%;
+  --accent-soft: 142 76% 92%;
+  --accent-fg: 0 0% 100%;
+
+  /* lines + focus */
+  --border: 214 25% 85%;
+  --ring: 142 76% 45%;
 }
