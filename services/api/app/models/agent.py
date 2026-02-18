@@ -3,6 +3,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -25,6 +26,8 @@ class Agent(Base):
     name = Column(String, nullable=False)
     slug = Column(String, nullable=False)
     description = Column(Text, nullable=True)
+    status = Column(String(16), nullable=False, server_default="active")
+    budget_daily_usd = Column(Numeric(10, 2), nullable=True)
 
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
