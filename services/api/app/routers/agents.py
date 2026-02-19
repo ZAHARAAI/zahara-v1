@@ -10,6 +10,7 @@ from fastapi import (
     BackgroundTasks,
     Depends,
     HTTPException,
+    Path,
     Query,
     status,
 )
@@ -406,7 +407,7 @@ def create_agent(
 
 @router.get("/{agent_id}", response_model=AgentDetailResponse)
 def get_agent(
-    agent_id: str,
+    agent_id: str = Path(..., pattern=r"^ag_[A-Z0-9]+$"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AgentDetailResponse:
@@ -735,7 +736,7 @@ def start_agent_run(
 
 @router.patch("/{agent_id}/kill", response_model=AgentKillResponse)
 def kill_agent(
-    agent_id: str,
+    agent_id: str = Path(..., pattern=r"^ag_[A-Z0-9]+$"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AgentKillResponse:
@@ -837,7 +838,7 @@ def kill_agent(
 
 @router.delete("/{agent_id}")
 def delete_agent(
-    agent_id: str,
+    agent_id: str = Path(..., pattern=r"^ag_[A-Z0-9]+$"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -1177,7 +1178,7 @@ def stats_summary(
 
 @router.get("/{agent_id}/stats", response_model=AgentStatsDetailResponse)
 def stats_single_agent(
-    agent_id: str,
+    agent_id: str = Path(..., pattern=r"^ag_[A-Z0-9]+$"),
     period: str = Query("7d", description="7d | 30d | all"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
