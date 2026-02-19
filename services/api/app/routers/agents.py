@@ -14,6 +14,7 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -24,6 +25,7 @@ from ..models.agent_spec import AgentSpec as AgentSpecModel
 from ..models.run import Run as RunModel
 from ..models.run_event import RunEvent as RunEventModel
 from ..models.user import User
+from ..services.audit import log_audit_event
 from ..services.run_executor import execute_run_via_router
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -33,6 +35,12 @@ def _dt_to_iso_z(dt: datetime) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _utc_day_start(dt: datetime) -> datetime:
+    # dt must be timezone-aware
+    d = dt.astimezone(timezone.utc).date()
+    return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
 
 
 def _slugify(name: str) -> str:
@@ -59,6 +67,30 @@ def _new_spec_id() -> str:
     return "as_" + uuid4().hex[:16]
 
 
+def _get_agent_spend_today_usd(db: Session, *, user_id: int, agent_id: str) -> float:
+    """
+    Best-effort daily spend aggregation:
+    sum runs.cost_estimate_usd for today (UTC) for this user+agent.
+    """
+    now = datetime.now(timezone.utc)
+    start = _utc_day_start(now)
+
+    total = (
+        db.query(func.coalesce(func.sum(RunModel.cost_estimate_usd), 0.0))
+        .filter(
+            RunModel.user_id == user_id,
+            RunModel.agent_id == agent_id,
+            RunModel.created_at >= start,
+        )
+        .scalar()
+    )
+
+    try:
+        return float(total or 0.0)
+    except Exception:
+        return 0.0
+
+
 # ---------------------------
 # Pydantic models (agents)
 # ---------------------------
@@ -74,6 +106,9 @@ class AgentCreate(BaseModel):
 class AgentUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    # Job7: allow lifecycle + budget updates from UI (optional but practical)
+    status: Optional[str] = None  # active | paused | retired
+    budget_daily_usd: Optional[float] = None  # null/None means no cap
 
 
 class AgentSpecCreate(BaseModel):
@@ -86,6 +121,9 @@ class AgentItem(BaseModel):
     name: str
     slug: str
     description: Optional[str] = None
+    # Job7: surface lifecycle + budget for UI
+    status: Optional[str] = None
+    budget_daily_usd: Optional[float] = None
     created_at: str
     updated_at: str
 
@@ -127,6 +165,13 @@ class RunResponse(BaseModel):
     request_id: str
 
 
+class AgentKillResponse(BaseModel):
+    ok: bool = True
+    agent_id: str
+    status: str
+    cancelled_runs: int = 0
+
+
 def _to_agent_item(model: AgentModel) -> AgentItem:
     return AgentItem(
         id=model.id,
@@ -134,6 +179,10 @@ def _to_agent_item(model: AgentModel) -> AgentItem:
         name=model.name,
         slug=model.slug,
         description=model.description,
+        status=getattr(model, "status", None),
+        budget_daily_usd=float(getattr(model, "budget_daily_usd", 0) or 0)
+        if getattr(model, "budget_daily_usd", None) is not None
+        else None,
         created_at=_dt_to_iso_z(model.created_at),
         updated_at=_dt_to_iso_z(model.updated_at),
     )
@@ -171,7 +220,7 @@ def create_agent(
                 },
             )
 
-        # If agent exists with same user_id and slug -> update agent
+        # If agent exists with same user_id and slug -> return existing
         agent = (
             db.query(AgentModel)
             .filter(
@@ -182,12 +231,9 @@ def create_agent(
         )
 
         if agent:
-            # find latest version
             last_spec = (
                 db.query(AgentSpecModel)
-                .filter(
-                    AgentSpecModel.agent_id == agent.id,
-                )
+                .filter(AgentSpecModel.agent_id == agent.id)
                 .order_by(AgentSpecModel.version.desc())
                 .first()
             )
@@ -199,7 +245,6 @@ def create_agent(
                 spec_version=last_spec.version if last_spec else None,
             )
 
-        # Otherwise: create a brand new agent + spec v1
         agent_id = _new_agent_id()
         agent = AgentModel(
             id=agent_id,
@@ -221,6 +266,19 @@ def create_agent(
         db.add(spec_row)
         db.commit()
         db.refresh(spec_row)
+
+        # Audit: agent created (safe metadata only)
+        try:
+            log_audit_event(
+                db,
+                user_id=current_user.id,
+                event_type="agent.created",
+                entity_type="agent",
+                entity_id=agent.id,
+                payload={"slug": agent.slug, "name": agent.name},
+            )
+        except Exception:
+            db.rollback()
 
         return AgentDetailResponse(
             ok=True,
@@ -255,9 +313,7 @@ def get_agent(
 
     spec_row = (
         db.query(AgentSpecModel)
-        .filter(
-            AgentSpecModel.agent_id == agent.id,
-        )
+        .filter(AgentSpecModel.agent_id == agent.id)
         .order_by(AgentSpecModel.version.desc())
         .first()
     )
@@ -307,15 +363,60 @@ def update_agent(
     if body.description is not None:
         agent.description = body.description.strip() if body.description else None
 
+    if body.status is not None:
+        allowed = {"active", "paused", "retired"}
+        if body.status not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "INVALID",
+                        "message": f"Invalid status '{body.status}'. Allowed: {sorted(allowed)}",
+                    },
+                },
+            )
+        agent.status = body.status
+
+    if body.budget_daily_usd is not None:
+        if body.budget_daily_usd < 0:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "INVALID",
+                        "message": "budget_daily_usd must be >= 0",
+                    },
+                },
+            )
+        agent.budget_daily_usd = body.budget_daily_usd
+
     db.add(agent)
     db.commit()
     db.refresh(agent)
 
+    # Audit: agent updated (safe metadata only)
+    try:
+        log_audit_event(
+            db,
+            user_id=current_user.id,
+            event_type="agent.updated",
+            entity_type="agent",
+            entity_id=agent.id,
+            payload={
+                "status": getattr(agent, "status", None),
+                "budget_daily_usd": float(getattr(agent, "budget_daily_usd", 0) or 0)
+                if getattr(agent, "budget_daily_usd", None) is not None
+                else None,
+            },
+        )
+    except Exception:
+        db.rollback()
+
     spec_row = (
         db.query(AgentSpecModel)
-        .filter(
-            AgentSpecModel.agent_id == agent.id,
-        )
+        .filter(AgentSpecModel.agent_id == agent.id)
         .order_by(AgentSpecModel.version.desc())
         .first()
     )
@@ -351,9 +452,7 @@ def create_agent_spec_version(
 
     latest = (
         db.query(AgentSpecModel)
-        .filter(
-            AgentSpecModel.agent_id == agent.id,
-        )
+        .filter(AgentSpecModel.agent_id == agent.id)
         .order_by(AgentSpecModel.version.desc())
         .first()
     )
@@ -368,6 +467,19 @@ def create_agent_spec_version(
     db.add(spec_row)
     db.commit()
     db.refresh(spec_row)
+
+    # Audit: spec version created
+    try:
+        log_audit_event(
+            db,
+            user_id=current_user.id,
+            event_type="agent.spec_created",
+            entity_type="agent",
+            entity_id=agent.id,
+            payload={"version": next_version},
+        )
+    except Exception:
+        db.rollback()
 
     return AgentDetailResponse(
         ok=True,
@@ -419,6 +531,48 @@ def start_agent_run(
             },
         )
 
+    # --- Job7: lifecycle enforcement (409 if not active) ---
+    agent_status = getattr(agent, "status", "active")
+    if agent_status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "ok": False,
+                "error": {
+                    "code": "AGENT_NOT_ACTIVE",
+                    "message": f"Agent is {agent_status}. Activate it to run.",
+                },
+            },
+        )
+
+    # --- Job7: best-effort daily budget enforcement ---
+    budget = getattr(agent, "budget_daily_usd", None)
+    if budget is not None:
+        try:
+            budget_val = float(budget)
+        except Exception:
+            budget_val = None
+
+        if budget_val is not None and budget_val >= 0:
+            spent = _get_agent_spend_today_usd(
+                db, user_id=current_user.id, agent_id=agent.id
+            )
+            if spent >= budget_val:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "ok": False,
+                        "error": {
+                            "code": "BUDGET_EXCEEDED",
+                            "message": "Daily budget exceeded for this agent.",
+                            "meta": {
+                                "budget_daily_usd": budget_val,
+                                "spent_today_usd": spent,
+                            },
+                        },
+                    },
+                )
+
     run_id = _new_run_id()
     request_id = str(uuid4())
 
@@ -445,9 +599,123 @@ def start_agent_run(
     )
     db.commit()
 
+    # Audit: run started (safe metadata only)
+    try:
+        log_audit_event(
+            db,
+            user_id=current_user.id,
+            event_type="run.started",
+            entity_type="run",
+            entity_id=run.id,
+            payload={
+                "agent_id": agent.id,
+                "source": body.source,
+                "request_id": request_id,
+            },
+        )
+    except Exception:
+        db.rollback()
+
     background_tasks.add_task(execute_run_via_router, run.id)
 
     return RunResponse(ok=True, run_id=run.id, request_id=request_id)
+
+
+@router.patch("/{agent_id}/kill", response_model=AgentKillResponse)
+def kill_agent(
+    agent_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AgentKillResponse:
+    """
+    Job7 kill endpoint:
+    - pause agent
+    - cancel running/pending runs
+    """
+    agent: AgentModel | None = (
+        db.query(AgentModel)
+        .filter(AgentModel.id == agent_id, AgentModel.user_id == current_user.id)
+        .first()
+    )
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "ok": False,
+                "error": {"code": "NOT_FOUND", "message": "Agent not found"},
+            },
+        )
+
+    # Pause the agent
+    agent.status = "paused"
+    db.add(agent)
+    db.commit()
+    db.refresh(agent)
+
+    # Cancel in-flight runs
+    runs = (
+        db.query(RunModel)
+        .filter(
+            RunModel.user_id == current_user.id,
+            RunModel.agent_id == agent.id,
+            RunModel.status.in_(["pending", "running"]),
+        )
+        .all()
+    )
+
+    cancelled = 0
+    for r in runs:
+        if r.status in {"success", "error", "cancelled"}:
+            continue
+
+        r.status = "cancelled"
+        r.error_message = "Cancelled by agent kill"
+        db.add(r)
+        db.commit()
+
+        db.add(
+            RunEventModel(
+                run_id=r.id,
+                type="cancelled",
+                payload={
+                    "message": "Cancelled by agent kill",
+                    "request_id": r.request_id,
+                },
+            )
+        )
+        db.commit()
+
+        cancelled += 1
+
+        # Audit per run cancel (safe)
+        try:
+            log_audit_event(
+                db,
+                user_id=current_user.id,
+                event_type="run.cancelled",
+                entity_type="run",
+                entity_id=r.id,
+                payload={"agent_id": agent.id, "reason": "agent_kill"},
+            )
+        except Exception:
+            db.rollback()
+
+    # Audit agent kill
+    try:
+        log_audit_event(
+            db,
+            user_id=current_user.id,
+            event_type="agent.killed",
+            entity_type="agent",
+            entity_id=agent.id,
+            payload={"cancelled_runs": cancelled},
+        )
+    except Exception:
+        db.rollback()
+
+    return AgentKillResponse(
+        ok=True, agent_id=agent.id, status=agent.status, cancelled_runs=cancelled
+    )
 
 
 @router.delete("/{agent_id}")
@@ -492,5 +760,18 @@ def delete_agent(
     # delete agent
     db.delete(agent)
     db.commit()
+
+    # Audit: agent deleted
+    try:
+        log_audit_event(
+            db,
+            user_id=current_user.id,
+            event_type="agent.deleted",
+            entity_type="agent",
+            entity_id=agent.id,
+            payload={},
+        )
+    except Exception:
+        db.rollback()
 
     return {"ok": True, "deleted": True}

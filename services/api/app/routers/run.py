@@ -171,6 +171,26 @@ def _create_event(
     db.commit()
 
 
+def _cancel_run_row(db: Session, run: RunModel, *, message: str) -> None:
+    """
+    Shared cancel logic so we can reuse behavior consistently.
+    """
+    if run.status in {"success", "error", "cancelled"}:
+        return
+
+    run.status = "cancelled"
+    run.error_message = message
+    db.add(run)
+    db.commit()
+
+    _create_event(
+        db,
+        run.id,
+        "cancelled",
+        {"message": message, "request_id": run.request_id},
+    )
+
+
 @router.get("", response_model=RunListResponse)
 def list_runs(
     limit: int = Query(50, ge=1, le=200),
@@ -253,18 +273,7 @@ def cancel_run(
     if run.status in {"success", "error", "cancelled"}:
         return RunCancelResponse(ok=True, run_id=run.id, status=run.status)
 
-    run.status = "cancelled"
-    run.error_message = "Cancelled by user"
-    db.add(run)
-    db.commit()
-
-    _create_event(
-        db,
-        run.id,
-        "cancelled",
-        {"message": "Cancelled by user", "request_id": run.request_id},
-    )
-
+    _cancel_run_row(db, run, message="Cancelled by user")
     return RunCancelResponse(ok=True, run_id=run.id, status=run.status)
 
 
@@ -274,7 +283,6 @@ def delete_run(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> RunDeleteResponse:
-    # Ensure the run belongs to the current user (isolation)
     run = (
         db.query(RunModel)
         .filter(RunModel.id == run_id, RunModel.user_id == current_user.id)
@@ -284,16 +292,13 @@ def delete_run(
         raise HTTPException(status_code=404, detail="run_not_found")
 
     try:
-        # Delete related run events first (avoid FK violations)
         deleted_events = (
             db.query(RunEventModel)
             .filter(RunEventModel.run_id == run_id)
             .delete(synchronize_session=False)
         )
 
-        # Then delete the run itself
         db.delete(run)
-
         db.commit()
         return RunDeleteResponse(ok=True, run_id=run_id, deleted_events=deleted_events)
 
@@ -354,7 +359,6 @@ def stream_run_events(
                         "utf-8"
                     )
 
-                # Terminal events (stop stream)
                 if ev.type in {"done", "error", "cancelled"}:
                     return
 
