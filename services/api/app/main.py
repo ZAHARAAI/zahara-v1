@@ -18,7 +18,9 @@ from .middleware.rate_limit import RateLimitMiddleware
 from .models.user import User
 from .routers import (
     agents,
+    agents_stats,
     api_keys,
+    audit,
     auth,
     dev,
     files,
@@ -119,7 +121,9 @@ async def internal_error_handler(request: Request, exc):
 
 # Include routers
 app.include_router(agents.router)
+app.include_router(agents_stats.router)
 app.include_router(api_keys.router)
+app.include_router(audit.router)
 app.include_router(auth.router)
 # app.include_router(dev.router)
 app.include_router(files.router)
