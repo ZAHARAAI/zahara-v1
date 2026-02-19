@@ -10,7 +10,6 @@ from fastapi import (
     BackgroundTasks,
     Depends,
     HTTPException,
-    Path,
     Query,
     status,
 )
@@ -31,17 +30,15 @@ from ..services.run_executor import execute_run_via_router
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
+# ---------------------------
+# Utilities
+# ---------------------------
+
 
 def _dt_to_iso_z(dt: datetime) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _utc_day_start(dt: datetime) -> datetime:
-    # dt must be timezone-aware
-    d = dt.astimezone(timezone.utc).date()
-    return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
 
 
 def _slugify(name: str) -> str:
@@ -54,27 +51,32 @@ def _slugify(name: str) -> str:
 
 
 def _new_agent_id() -> str:
-    """Generate a stable external agent id (similar to flows)."""
     return "ag_" + uuid4().hex[:10].upper()
 
 
 def _new_run_id() -> str:
-    """Generate a stable external run id."""
     return "run_" + uuid4().hex[:16]
 
 
 def _new_spec_id() -> str:
-    """Generate a stable external agent spec id."""
     return "as_" + uuid4().hex[:16]
+
+
+def _day_floor_utc(dt: datetime) -> datetime:
+    d = dt.astimezone(timezone.utc).date()
+    return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
+
+
+def _utc_today_start() -> datetime:
+    return _day_floor_utc(datetime.now(timezone.utc))
 
 
 def _get_agent_spend_today_usd(db: Session, *, user_id: int, agent_id: str) -> float:
     """
-    Best-effort daily spend aggregation:
-    sum runs.cost_estimate_usd for today (UTC) for this user+agent.
+    Best-effort daily spend aggregation (UTC day):
+    sum runs.cost_estimate_usd for today for this user+agent.
     """
-    now = datetime.now(timezone.utc)
-    start = _utc_day_start(now)
+    start = _utc_today_start()
 
     total = (
         db.query(func.coalesce(func.sum(RunModel.cost_estimate_usd), 0.0))
@@ -92,7 +94,10 @@ def _get_agent_spend_today_usd(db: Session, *, user_id: int, agent_id: str) -> f
         return 0.0
 
 
-# helpers for job7 sprint
+# ---------------------------
+# Job7 period helpers
+# ---------------------------
+
 Period = Literal["7d", "30d", "all"]
 
 
@@ -117,15 +122,6 @@ def _period_start(period: Period) -> Optional[datetime]:
         return None
     days = 7 if period == "7d" else 30
     return now - timedelta(days=days)
-
-
-def _day_floor_utc(dt: datetime) -> datetime:
-    d = dt.astimezone(timezone.utc).date()
-    return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
-
-
-def _utc_today_start() -> datetime:
-    return _day_floor_utc(datetime.now(timezone.utc))
 
 
 def _date_range_days(period: Period) -> List[datetime]:
@@ -156,9 +152,10 @@ class AgentCreate(BaseModel):
 class AgentUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    # Job7: allow lifecycle + budget updates from UI (optional but practical)
+
+    # Job7: allow lifecycle + budget updates from UI
     status: Optional[str] = None  # active | paused | retired
-    budget_daily_usd: Optional[float] = None  # null/None means no cap
+    budget_daily_usd: Optional[float] = None  # None means no cap
 
 
 class AgentSpecCreate(BaseModel):
@@ -171,9 +168,11 @@ class AgentItem(BaseModel):
     name: str
     slug: str
     description: Optional[str] = None
-    # Job7: surface lifecycle + budget for UI
+
+    # Job7
     status: Optional[str] = None
     budget_daily_usd: Optional[float] = None
+
     created_at: str
     updated_at: str
 
@@ -196,17 +195,11 @@ class AgentListResponse(BaseModel):
 
 
 class RunRequest(BaseModel):
-    """
-    run request payload (used by web/services/job6.ts)
-    """
-
     input: str = Field(..., description="User input or message for the agent.")
     source: str = Field(
         "vibe", description="Run source: vibe | pro | flow | agui | api | clinic"
     )
-    config: Optional[Dict[str, Any]] = Field(
-        default=None, description="Optional execution config to persist on the run."
-    )
+    config: Optional[Dict[str, Any]] = Field(default=None)
 
 
 class RunResponse(BaseModel):
@@ -222,9 +215,9 @@ class AgentKillResponse(BaseModel):
     cancelled_runs: int = 0
 
 
-# ----------------------------
-# response models for job7-sprint
-# ----------------------------
+# ---------------------------
+# Job7 response models (stats)
+# ---------------------------
 
 
 class RunsByDayPoint(BaseModel):
@@ -257,7 +250,7 @@ class AgentStatsItem(BaseModel):
     status: Optional[str] = None
     budget_daily_usd: Optional[float] = None
 
-    # ✅ Job7 agents page needs "used today" for budget progress
+    # Job7 agents page needs this for budget progress
     spent_today_usd: float = 0.0
 
     runs: int
@@ -286,6 +279,11 @@ class AgentStatsDetailResponse(BaseModel):
     p95_latency_ms: float
 
 
+# ---------------------------
+# Serialization
+# ---------------------------
+
+
 def _to_agent_item(model: AgentModel) -> AgentItem:
     return AgentItem(
         id=model.id,
@@ -300,6 +298,296 @@ def _to_agent_item(model: AgentModel) -> AgentItem:
         created_at=_dt_to_iso_z(model.created_at),
         updated_at=_dt_to_iso_z(model.updated_at),
     )
+
+
+# ======================================================================
+# IMPORTANT ROUTING NOTE:
+# Put static routes (e.g. /stats) BEFORE dynamic routes (/{agent_id})
+# Otherwise /agents/stats is captured as agent_id="stats".
+# ======================================================================
+
+# ----------------------------
+# Job7: batch stats (STATIC PATH)
+# ----------------------------
+
+
+@router.get("/stats", response_model=AgentStatsBatchResponse)
+def stats_batch(
+    period: str = Query("7d", description="7d | 30d | all"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AgentStatsBatchResponse:
+    """
+    GET /agents/stats?period=7d|30d|all
+    Returns per-agent stat objects (batch) to avoid N+1.
+    Includes spent_today_usd for budget progress.
+    """
+    p = _parse_period(period)
+    start = _period_start(p)
+
+    base_filter = [RunModel.user_id == current_user.id]
+    if start is not None:
+        base_filter.append(RunModel.created_at >= start)
+
+    # Subquery 1: runs/success/tokens/cost (includes latency NULL rows)
+    agg_main = (
+        db.query(
+            RunModel.agent_id.label("agent_id"),
+            func.count(RunModel.id).label("runs"),
+            func.coalesce(
+                func.sum(case((RunModel.status == "success", 1), else_=0)), 0
+            ).label("success"),
+            func.coalesce(func.sum(RunModel.tokens_total), 0).label("tokens_total"),
+            func.coalesce(func.sum(RunModel.cost_estimate_usd), 0.0).label(
+                "cost_total_usd"
+            ),
+        )
+        .filter(*base_filter)
+        .group_by(RunModel.agent_id)
+        .subquery()
+    )
+
+    # Subquery 2: latency metrics only where latency_ms NOT NULL
+    latency_filter = list(base_filter) + [RunModel.latency_ms.isnot(None)]
+    agg_latency = (
+        db.query(
+            RunModel.agent_id.label("agent_id"),
+            func.coalesce(func.avg(RunModel.latency_ms), 0.0).label("avg_latency_ms"),
+            func.percentile_cont(0.95)
+            .within_group(RunModel.latency_ms)
+            .label("p95_latency_ms"),
+        )
+        .filter(*latency_filter)
+        .group_by(RunModel.agent_id)
+        .subquery()
+    )
+
+    # Subquery 3: today's spend (UTC day)
+    today_start = _utc_today_start()
+    agg_today = (
+        db.query(
+            RunModel.agent_id.label("agent_id"),
+            func.coalesce(func.sum(RunModel.cost_estimate_usd), 0.0).label(
+                "spent_today_usd"
+            ),
+        )
+        .filter(
+            RunModel.user_id == current_user.id,
+            RunModel.created_at >= today_start,
+        )
+        .group_by(RunModel.agent_id)
+        .subquery()
+    )
+
+    rows = (
+        db.query(
+            AgentModel.id.label("agent_id"),
+            AgentModel.name,
+            AgentModel.slug,
+            getattr(AgentModel, "status", None),
+            getattr(AgentModel, "budget_daily_usd", None),
+            func.coalesce(agg_today.c.spent_today_usd, 0.0).label("spent_today_usd"),
+            func.coalesce(agg_main.c.runs, 0).label("runs"),
+            func.coalesce(agg_main.c.success, 0).label("success"),
+            func.coalesce(agg_main.c.tokens_total, 0).label("tokens_total"),
+            func.coalesce(agg_main.c.cost_total_usd, 0.0).label("cost_total_usd"),
+            func.coalesce(agg_latency.c.avg_latency_ms, 0.0).label("avg_latency_ms"),
+            func.coalesce(agg_latency.c.p95_latency_ms, 0.0).label("p95_latency_ms"),
+        )
+        .outerjoin(agg_main, agg_main.c.agent_id == AgentModel.id)
+        .outerjoin(agg_latency, agg_latency.c.agent_id == AgentModel.id)
+        .outerjoin(agg_today, agg_today.c.agent_id == AgentModel.id)
+        .filter(AgentModel.user_id == current_user.id)
+        .order_by(AgentModel.created_at.desc())
+        .all()
+    )
+
+    items: List[AgentStatsItem] = []
+    for r in rows:
+        runs = int(r.runs or 0)
+        success = int(r.success or 0)
+        success_rate = (success / runs) if runs > 0 else 0.0
+
+        budget_val = None
+        if r.budget_daily_usd is not None:
+            try:
+                budget_val = float(r.budget_daily_usd)
+            except Exception:
+                budget_val = None
+
+        status_val = None
+        try:
+            status_val = r.status
+        except Exception:
+            status_val = None
+
+        items.append(
+            AgentStatsItem(
+                agent_id=r.agent_id,
+                name=r.name,
+                slug=r.slug,
+                status=status_val,
+                budget_daily_usd=budget_val,
+                spent_today_usd=float(r.spent_today_usd or 0.0),
+                runs=runs,
+                success_rate=success_rate,
+                tokens_total=int(r.tokens_total or 0),
+                cost_total_usd=float(r.cost_total_usd or 0.0),
+                avg_latency_ms=float(r.avg_latency_ms or 0.0),
+                p95_latency_ms=float(r.p95_latency_ms or 0.0),
+            )
+        )
+
+    return AgentStatsBatchResponse(ok=True, items=items)
+
+
+@router.get("/stats/summary", response_model=AgentStatsSummaryResponse)
+def stats_summary(
+    period: str = Query("7d", description="7d | 30d | all"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AgentStatsSummaryResponse:
+    """
+    GET /agents/stats/summary?period=7d|30d|all
+    Returns a single object for KPI cards + chart.
+    """
+    p = _parse_period(period)
+    start = _period_start(p)
+
+    base_filter = [RunModel.user_id == current_user.id]
+    if start is not None:
+        base_filter.append(RunModel.created_at >= start)
+
+    total_runs = db.query(func.count(RunModel.id)).filter(*base_filter).scalar() or 0
+    total_runs = int(total_runs)
+
+    counts = (
+        db.query(
+            func.coalesce(
+                func.sum(case((RunModel.status == "success", 1), else_=0)), 0
+            ),
+            func.coalesce(func.sum(case((RunModel.status == "error", 1), else_=0)), 0),
+            func.coalesce(
+                func.sum(case((RunModel.status == "cancelled", 1), else_=0)), 0
+            ),
+        )
+        .filter(*base_filter)
+        .one()
+    )
+    success_cnt, error_cnt, cancelled_cnt = (  # noqa: F841
+        int(counts[0] or 0),
+        int(counts[1] or 0),
+        int(counts[2] or 0),
+    )
+
+    sums = (
+        db.query(
+            func.coalesce(func.sum(RunModel.tokens_total), 0),
+            func.coalesce(func.sum(RunModel.cost_estimate_usd), 0.0),
+        )
+        .filter(*base_filter)
+        .one()
+    )
+    tokens_total = int(sums[0] or 0)
+    cost_total_usd = float(sums[1] or 0.0)
+
+    latency_filter = list(base_filter) + [RunModel.latency_ms.isnot(None)]
+    avg_latency_ms = (
+        db.query(func.coalesce(func.avg(RunModel.latency_ms), 0.0))
+        .filter(*latency_filter)
+        .scalar()
+        or 0.0
+    )
+    avg_latency_ms = float(avg_latency_ms)
+
+    p95_latency_ms = (
+        db.query(func.percentile_cont(0.95).within_group(RunModel.latency_ms))
+        .filter(*latency_filter)
+        .scalar()
+        or 0.0
+    )
+    p95_latency_ms = float(p95_latency_ms)
+
+    success_rate = (success_cnt / total_runs) if total_runs > 0 else 0.0
+
+    # chart runs_by_day
+    days = _date_range_days(p)
+    chart_start = days[0]
+    chart_end = days[-1] + timedelta(days=1)
+
+    chart_rows = (
+        db.query(
+            func.date_trunc("day", RunModel.created_at).label("day"),
+            func.count(RunModel.id).label("runs"),
+            func.coalesce(
+                func.sum(case((RunModel.status == "success", 1), else_=0)), 0
+            ).label("success"),
+            func.coalesce(
+                func.sum(case((RunModel.status == "error", 1), else_=0)), 0
+            ).label("error"),
+            func.coalesce(
+                func.sum(case((RunModel.status == "cancelled", 1), else_=0)), 0
+            ).label("cancelled"),
+            func.coalesce(func.sum(RunModel.cost_estimate_usd), 0.0).label("cost_usd"),
+            func.coalesce(func.sum(RunModel.tokens_total), 0).label("tokens_total"),
+        )
+        .filter(
+            RunModel.user_id == current_user.id,
+            RunModel.created_at >= chart_start,
+            RunModel.created_at < chart_end,
+        )
+        .group_by("day")
+        .order_by("day")
+        .all()
+    )
+
+    by_day: Dict[str, RunsByDayPoint] = {}
+    for r in chart_rows:
+        day_dt: datetime = r.day
+        key = day_dt.date().isoformat()
+        by_day[key] = RunsByDayPoint(
+            date=key,
+            runs=int(r.runs or 0),
+            success=int(r.success or 0),
+            error=int(r.error or 0),
+            cancelled=int(r.cancelled or 0),
+            cost_usd=float(r.cost_usd or 0.0),
+            tokens_total=int(r.tokens_total or 0),
+        )
+
+    runs_by_day: List[RunsByDayPoint] = []
+    for d in days:
+        key = d.date().isoformat()
+        runs_by_day.append(
+            by_day.get(
+                key,
+                RunsByDayPoint(
+                    date=key,
+                    runs=0,
+                    success=0,
+                    error=0,
+                    cancelled=0,
+                    cost_usd=0.0,
+                    tokens_total=0,
+                ),
+            )
+        )
+
+    return AgentStatsSummaryResponse(
+        ok=True,
+        total_runs=total_runs,
+        success_rate=success_rate,
+        tokens_total=tokens_total,
+        cost_total_usd=cost_total_usd,
+        avg_latency_ms=avg_latency_ms,
+        p95_latency_ms=p95_latency_ms,
+        runs_by_day=runs_by_day,
+    )
+
+
+# ---------------------------
+# Standard CRUD (safe after /stats)
+# ---------------------------
 
 
 @router.get("", response_model=AgentListResponse)
@@ -381,7 +669,7 @@ def create_agent(
         db.commit()
         db.refresh(spec_row)
 
-        # Audit: agent created (safe metadata only)
+        # Audit: agent created
         try:
             log_audit_event(
                 db,
@@ -407,7 +695,7 @@ def create_agent(
 
 @router.get("/{agent_id}", response_model=AgentDetailResponse)
 def get_agent(
-    agent_id: str = Path(..., pattern=r"^ag_[A-Z0-9]+$"),
+    agent_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AgentDetailResponse:
@@ -510,7 +798,7 @@ def update_agent(
     db.commit()
     db.refresh(agent)
 
-    # Audit: agent updated (safe metadata only)
+    # Audit: agent updated
     try:
         log_audit_event(
             db,
@@ -604,7 +892,7 @@ def create_agent_spec_version(
 
 
 # ---------------------------
-# POST /agents/{id}/run  (run pipeline entrypoint)
+# Run entrypoint
 # ---------------------------
 
 
@@ -620,14 +908,6 @@ def start_agent_run(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> RunResponse:
-    """
-    run pipeline entrypoint.
-
-    - Creates a run row (pending->running->success|error)
-    - Creates initial run events
-    - Kicks off background execution via the central router
-    - Returns run_id and request_id for SSE subscription
-    """
     agent: AgentModel | None = (
         db.query(AgentModel)
         .filter(
@@ -645,7 +925,7 @@ def start_agent_run(
             },
         )
 
-    # --- Job7: lifecycle enforcement (409 if not active) ---
+    # Job7: lifecycle enforcement
     if getattr(agent, "status", "active") != "active":
         raise HTTPException(
             status_code=409,
@@ -658,7 +938,7 @@ def start_agent_run(
             },
         )
 
-    # --- Job7: best-effort daily budget enforcement ---
+    # Job7: best-effort daily budget enforcement
     budget = getattr(agent, "budget_daily_usd", None)
     if budget is not None:
         try:
@@ -712,7 +992,7 @@ def start_agent_run(
     )
     db.commit()
 
-    # Audit: run started (safe metadata only)
+    # Audit: run started
     try:
         log_audit_event(
             db,
@@ -734,19 +1014,17 @@ def start_agent_run(
     return RunResponse(ok=True, run_id=run.id, request_id=request_id)
 
 
+# ---------------------------
+# Job7: kill endpoint
+# ---------------------------
+
+
 @router.patch("/{agent_id}/kill", response_model=AgentKillResponse)
 def kill_agent(
-    agent_id: str = Path(..., pattern=r"^ag_[A-Z0-9]+$"),
+    agent_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AgentKillResponse:
-    """
-    Job7 kill endpoint:
-    - pause agent
-    - cancel running/pending runs
-    - append cancelled events
-    - audit
-    """
     agent: AgentModel | None = (
         db.query(AgentModel)
         .filter(AgentModel.id == agent_id, AgentModel.user_id == current_user.id)
@@ -761,11 +1039,11 @@ def kill_agent(
             },
         )
 
-    # If already paused/retired, still proceed to cancel in-flight runs (safe)
+    # Pause agent
     agent.status = "paused"
     db.add(agent)
 
-    # Cancel in-flight runs in one go
+    # Cancel pending/running runs
     runs = (
         db.query(RunModel)
         .filter(
@@ -778,12 +1056,10 @@ def kill_agent(
 
     cancelled = 0
     for r in runs:
-        # Mark cancelled
         r.status = "cancelled"
         r.error_message = "Cancelled by agent kill"
         db.add(r)
 
-        # Add event (SSE will end on cancelled)
         db.add(
             RunEventModel(
                 run_id=r.id,
@@ -819,7 +1095,6 @@ def kill_agent(
         commit=False,
     )
 
-    # ✅ Single commit for all changes
     try:
         db.commit()
     except Exception as e:
@@ -830,15 +1105,19 @@ def kill_agent(
         )
 
     db.refresh(agent)
-
     return AgentKillResponse(
         ok=True, agent_id=agent.id, status=agent.status, cancelled_runs=cancelled
     )
 
 
+# ---------------------------
+# Delete agent
+# ---------------------------
+
+
 @router.delete("/{agent_id}")
 def delete_agent(
-    agent_id: str = Path(..., pattern=r"^ag_[A-Z0-9]+$"),
+    agent_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -856,7 +1135,6 @@ def delete_agent(
             },
         )
 
-    # delete run_events for runs of this agent
     run_ids = [
         r[0] for r in db.query(RunModel.id).filter(RunModel.agent_id == agent.id).all()
     ]
@@ -865,21 +1143,16 @@ def delete_agent(
             synchronize_session=False
         )
 
-    # delete runs
     db.query(RunModel).filter(RunModel.agent_id == agent.id).delete(
         synchronize_session=False
     )
-
-    # delete all agent specs (all versions)
     db.query(AgentSpecModel).filter(AgentSpecModel.agent_id == agent.id).delete(
         synchronize_session=False
     )
 
-    # delete agent
     db.delete(agent)
     db.commit()
 
-    # Audit: agent deleted
     try:
         log_audit_event(
             db,
@@ -895,299 +1168,18 @@ def delete_agent(
     return {"ok": True, "deleted": True}
 
 
-# ----------------------------
-# endpoints for job7 sprint
-# ----------------------------
-
-
-@router.get("/stats", response_model=AgentStatsBatchResponse)
-def stats_batch(
-    period: str = Query("7d", description="7d | 30d | all"),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> AgentStatsBatchResponse:
-    """
-    Job7:
-    GET /agents/stats?period=7d
-    Returns per-agent stat objects (batch) to avoid N+1.
-    Includes spent_today_usd for budget progress.
-    """
-    p = _parse_period(period)
-    start = _period_start(p)
-
-    base_filter = [RunModel.user_id == current_user.id]
-    if start is not None:
-        base_filter.append(RunModel.created_at >= start)
-
-    # Subquery 1: runs/success/tokens/cost (includes latency NULL rows)
-    agg_main = (
-        db.query(
-            RunModel.agent_id.label("agent_id"),
-            func.count(RunModel.id).label("runs"),
-            func.coalesce(
-                func.sum(case((RunModel.status == "success", 1), else_=0)), 0
-            ).label("success"),
-            func.coalesce(func.sum(RunModel.tokens_total), 0).label("tokens_total"),
-            func.coalesce(func.sum(RunModel.cost_estimate_usd), 0.0).label(
-                "cost_total_usd"
-            ),
-        )
-        .filter(*base_filter)
-        .group_by(RunModel.agent_id)
-        .subquery()
-    )
-
-    # Subquery 2: latency metrics only where latency_ms NOT NULL
-    latency_filter = list(base_filter) + [RunModel.latency_ms.isnot(None)]
-    agg_latency = (
-        db.query(
-            RunModel.agent_id.label("agent_id"),
-            func.coalesce(func.avg(RunModel.latency_ms), 0.0).label("avg_latency_ms"),
-            func.percentile_cont(0.95)
-            .within_group(RunModel.latency_ms)
-            .label("p95_latency_ms"),
-        )
-        .filter(*latency_filter)
-        .group_by(RunModel.agent_id)
-        .subquery()
-    )
-
-    # Subquery 3: today's spend (UTC day) — for budget progress
-    today_start = _utc_today_start()
-    agg_today = (
-        db.query(
-            RunModel.agent_id.label("agent_id"),
-            func.coalesce(func.sum(RunModel.cost_estimate_usd), 0.0).label(
-                "spent_today_usd"
-            ),
-        )
-        .filter(
-            RunModel.user_id == current_user.id,
-            RunModel.created_at >= today_start,
-        )
-        .group_by(RunModel.agent_id)
-        .subquery()
-    )
-
-    rows = (
-        db.query(
-            AgentModel.id.label("agent_id"),
-            AgentModel.name,
-            AgentModel.slug,
-            getattr(AgentModel, "status", None),
-            getattr(AgentModel, "budget_daily_usd", None),
-            func.coalesce(agg_today.c.spent_today_usd, 0.0).label("spent_today_usd"),
-            func.coalesce(agg_main.c.runs, 0).label("runs"),
-            func.coalesce(agg_main.c.success, 0).label("success"),
-            func.coalesce(agg_main.c.tokens_total, 0).label("tokens_total"),
-            func.coalesce(agg_main.c.cost_total_usd, 0.0).label("cost_total_usd"),
-            func.coalesce(agg_latency.c.avg_latency_ms, 0.0).label("avg_latency_ms"),
-            func.coalesce(agg_latency.c.p95_latency_ms, 0.0).label("p95_latency_ms"),
-        )
-        .outerjoin(agg_main, agg_main.c.agent_id == AgentModel.id)
-        .outerjoin(agg_latency, agg_latency.c.agent_id == AgentModel.id)
-        .outerjoin(agg_today, agg_today.c.agent_id == AgentModel.id)
-        .filter(AgentModel.user_id == current_user.id)
-        .order_by(AgentModel.created_at.desc())
-        .all()
-    )
-
-    items: List[AgentStatsItem] = []
-    for r in rows:
-        runs = int(r.runs or 0)
-        success = int(r.success or 0)
-        success_rate = (success / runs) if runs > 0 else 0.0
-
-        budget_val = None
-        if r.budget_daily_usd is not None:
-            try:
-                budget_val = float(r.budget_daily_usd)
-            except Exception:
-                budget_val = None
-
-        status_val = None
-        try:
-            status_val = r.status
-        except Exception:
-            status_val = None
-
-        items.append(
-            AgentStatsItem(
-                agent_id=r.agent_id,
-                name=r.name,
-                slug=r.slug,
-                status=status_val,
-                budget_daily_usd=budget_val,
-                spent_today_usd=float(r.spent_today_usd or 0.0),
-                runs=runs,
-                success_rate=success_rate,
-                tokens_total=int(r.tokens_total or 0),
-                cost_total_usd=float(r.cost_total_usd or 0.0),
-                avg_latency_ms=float(r.avg_latency_ms or 0.0),
-                p95_latency_ms=float(r.p95_latency_ms or 0.0),
-            )
-        )
-
-    return AgentStatsBatchResponse(ok=True, items=items)
-
-
-@router.get("/stats/summary", response_model=AgentStatsSummaryResponse)
-def stats_summary(
-    period: str = Query("7d", description="7d | 30d | all"),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> AgentStatsSummaryResponse:
-    """
-    Job7:
-    GET /agents/stats/summary?period=7d
-    Returns a single object for KPI cards + chart.
-    """
-    p = _parse_period(period)
-    start = _period_start(p)
-
-    base_filter = [RunModel.user_id == current_user.id]
-    if start is not None:
-        base_filter.append(RunModel.created_at >= start)
-
-    total_runs = db.query(func.count(RunModel.id)).filter(*base_filter).scalar() or 0
-    total_runs = int(total_runs)
-
-    counts = (
-        db.query(
-            func.coalesce(
-                func.sum(case((RunModel.status == "success", 1), else_=0)), 0
-            ),
-            func.coalesce(func.sum(case((RunModel.status == "error", 1), else_=0)), 0),
-            func.coalesce(
-                func.sum(case((RunModel.status == "cancelled", 1), else_=0)), 0
-            ),
-        )
-        .filter(*base_filter)
-        .one()
-    )
-    success_cnt, error_cnt, cancelled_cnt = (  # noqa: F841
-        int(counts[0] or 0),
-        int(counts[1] or 0),
-        int(counts[2] or 0),
-    )
-
-    sums = (
-        db.query(
-            func.coalesce(func.sum(RunModel.tokens_total), 0),
-            func.coalesce(func.sum(RunModel.cost_estimate_usd), 0.0),
-        )
-        .filter(*base_filter)
-        .one()
-    )
-    tokens_total = int(sums[0] or 0)
-    cost_total_usd = float(sums[1] or 0.0)
-
-    latency_filter = list(base_filter) + [RunModel.latency_ms.isnot(None)]
-    avg_latency_ms = (
-        db.query(func.coalesce(func.avg(RunModel.latency_ms), 0.0))
-        .filter(*latency_filter)
-        .scalar()
-        or 0.0
-    )
-    avg_latency_ms = float(avg_latency_ms)
-
-    p95_latency_ms = (
-        db.query(func.percentile_cont(0.95).within_group(RunModel.latency_ms))
-        .filter(*latency_filter)
-        .scalar()
-        or 0.0
-    )
-    p95_latency_ms = float(p95_latency_ms)
-
-    success_rate = (success_cnt / total_runs) if total_runs > 0 else 0.0
-
-    # --- chart runs_by_day ---
-    days = _date_range_days(p)
-    chart_start = days[0]
-    chart_end = days[-1] + timedelta(days=1)
-
-    chart_rows = (
-        db.query(
-            func.date_trunc("day", RunModel.created_at).label("day"),
-            func.count(RunModel.id).label("runs"),
-            func.coalesce(
-                func.sum(case((RunModel.status == "success", 1), else_=0)), 0
-            ).label("success"),
-            func.coalesce(
-                func.sum(case((RunModel.status == "error", 1), else_=0)), 0
-            ).label("error"),
-            func.coalesce(
-                func.sum(case((RunModel.status == "cancelled", 1), else_=0)), 0
-            ).label("cancelled"),
-            func.coalesce(func.sum(RunModel.cost_estimate_usd), 0.0).label("cost_usd"),
-            func.coalesce(func.sum(RunModel.tokens_total), 0).label("tokens_total"),
-        )
-        .filter(
-            RunModel.user_id == current_user.id,
-            RunModel.created_at >= chart_start,
-            RunModel.created_at < chart_end,
-        )
-        .group_by("day")
-        .order_by("day")
-        .all()
-    )
-
-    by_day: Dict[str, RunsByDayPoint] = {}
-    for r in chart_rows:
-        day_dt: datetime = r.day
-        key = day_dt.date().isoformat()
-        by_day[key] = RunsByDayPoint(
-            date=key,
-            runs=int(r.runs or 0),
-            success=int(r.success or 0),
-            error=int(r.error or 0),
-            cancelled=int(r.cancelled or 0),
-            cost_usd=float(r.cost_usd or 0.0),
-            tokens_total=int(r.tokens_total or 0),
-        )
-
-    runs_by_day: List[RunsByDayPoint] = []
-    for d in days:
-        key = d.date().isoformat()
-        runs_by_day.append(
-            by_day.get(
-                key,
-                RunsByDayPoint(
-                    date=key,
-                    runs=0,
-                    success=0,
-                    error=0,
-                    cancelled=0,
-                    cost_usd=0.0,
-                    tokens_total=0,
-                ),
-            )
-        )
-
-    return AgentStatsSummaryResponse(
-        ok=True,
-        total_runs=total_runs,
-        success_rate=success_rate,
-        tokens_total=tokens_total,
-        cost_total_usd=cost_total_usd,
-        avg_latency_ms=avg_latency_ms,
-        p95_latency_ms=p95_latency_ms,
-        runs_by_day=runs_by_day,
-    )
+# ---------------------------
+# Per-agent stats (does not conflict with /stats)
+# ---------------------------
 
 
 @router.get("/{agent_id}/stats", response_model=AgentStatsDetailResponse)
 def stats_single_agent(
-    agent_id: str = Path(..., pattern=r"^ag_[A-Z0-9]+$"),
+    agent_id: str,
     period: str = Query("7d", description="7d | 30d | all"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AgentStatsDetailResponse:
-    """
-    Job7:
-    GET /agents/{agent_id}/stats?period=7d|30d|all
-    Includes runs, success rate, tokens, cost, avg latency, p95 latency.
-    """
     p = _parse_period(period)
     start = _period_start(p)
 
