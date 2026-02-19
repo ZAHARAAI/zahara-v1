@@ -9,7 +9,6 @@ from ..models.audit_log import AuditLog
 
 
 def _new_audit_id() -> str:
-    # Consistent with your run/agent/spec ids style
     return "al_" + uuid4().hex[:16]
 
 
@@ -21,13 +20,13 @@ def log_audit_event(
     entity_type: Optional[str] = None,
     entity_id: Optional[str] = None,
     payload: Optional[Dict[str, Any]] = None,
+    commit: bool = True,  # ✅ new
 ) -> None:
     """
     Insert an audit log row.
 
     IMPORTANT:
     - Never log provider key values or decrypted secrets.
-    - payload should only include safe metadata.
     """
     row = AuditLog(
         id=_new_audit_id(),
@@ -38,4 +37,5 @@ def log_audit_event(
         payload=payload or {},
     )
     db.add(row)
-    db.commit()
+    if commit:
+        db.commit()

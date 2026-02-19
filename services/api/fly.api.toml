@@ -1,4 +1,3 @@
-# fly.api.toml (services/api)
 app = "zahara-v1-api"
 primary_region = "iad"
 

@@ -1,7 +1,7 @@
 """Job7: observability + control layer (agents lifecycle, audit_log, run indexes)
 
 Revision ID: 002
-Revises:
+Revises: 001
 Create Date: 2026-02-18
 """
 
@@ -10,7 +10,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "002"
-down_revision = None
+down_revision = "001"
 branch_labels = None
 depends_on = None
 

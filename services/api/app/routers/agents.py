@@ -532,15 +532,14 @@ def start_agent_run(
         )
 
     # --- Job7: lifecycle enforcement (409 if not active) ---
-    agent_status = getattr(agent, "status", "active")
-    if agent_status != "active":
+    if getattr(agent, "status", "active") != "active":
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
+            status_code=409,
             detail={
                 "ok": False,
                 "error": {
                     "code": "AGENT_NOT_ACTIVE",
-                    "message": f"Agent is {agent_status}. Activate it to run.",
+                    "message": f"Agent is {agent.status}. Activate it to run.",
                 },
             },
         )
@@ -631,6 +630,8 @@ def kill_agent(
     Job7 kill endpoint:
     - pause agent
     - cancel running/pending runs
+    - append cancelled events
+    - audit
     """
     agent: AgentModel | None = (
         db.query(AgentModel)
@@ -646,13 +647,11 @@ def kill_agent(
             },
         )
 
-    # Pause the agent
+    # If already paused/retired, still proceed to cancel in-flight runs (safe)
     agent.status = "paused"
     db.add(agent)
-    db.commit()
-    db.refresh(agent)
 
-    # Cancel in-flight runs
+    # Cancel in-flight runs in one go
     runs = (
         db.query(RunModel)
         .filter(
@@ -665,14 +664,12 @@ def kill_agent(
 
     cancelled = 0
     for r in runs:
-        if r.status in {"success", "error", "cancelled"}:
-            continue
-
+        # Mark cancelled
         r.status = "cancelled"
         r.error_message = "Cancelled by agent kill"
         db.add(r)
-        db.commit()
 
+        # Add event (SSE will end on cancelled)
         db.add(
             RunEventModel(
                 run_id=r.id,
@@ -683,35 +680,42 @@ def kill_agent(
                 },
             )
         )
-        db.commit()
 
         cancelled += 1
 
-        # Audit per run cancel (safe)
-        try:
-            log_audit_event(
-                db,
-                user_id=current_user.id,
-                event_type="run.cancelled",
-                entity_type="run",
-                entity_id=r.id,
-                payload={"agent_id": agent.id, "reason": "agent_kill"},
-            )
-        except Exception:
-            db.rollback()
-
-    # Audit agent kill
-    try:
+        # Audit per run cancel (no commit here)
         log_audit_event(
             db,
             user_id=current_user.id,
-            event_type="agent.killed",
-            entity_type="agent",
-            entity_id=agent.id,
-            payload={"cancelled_runs": cancelled},
+            event_type="run.cancelled",
+            entity_type="run",
+            entity_id=r.id,
+            payload={"agent_id": agent.id, "reason": "agent_kill"},
+            commit=False,
         )
-    except Exception:
+
+    # Audit agent kill (no commit here)
+    log_audit_event(
+        db,
+        user_id=current_user.id,
+        event_type="agent.killed",
+        entity_type="agent",
+        entity_id=agent.id,
+        payload={"cancelled_runs": cancelled},
+        commit=False,
+    )
+
+    # ✅ Single commit for all changes
+    try:
+        db.commit()
+    except Exception as e:
         db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"ok": False, "error": {"code": "KILL_FAILED", "message": str(e)}},
+        )
+
+    db.refresh(agent)
 
     return AgentKillResponse(
         ok=True, agent_id=agent.id, status=agent.status, cancelled_runs=cancelled
