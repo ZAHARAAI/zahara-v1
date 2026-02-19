@@ -221,6 +221,70 @@ class AgentKillResponse(BaseModel):
     cancelled_runs: int = 0
 
 
+# ----------------------------
+# response models for job7-sprint
+# ----------------------------
+
+
+class RunsByDayPoint(BaseModel):
+    date: str  # YYYY-MM-DD
+    runs: int
+    success: int
+    error: int
+    cancelled: int
+    cost_usd: float
+    tokens_total: int
+
+
+class AgentStatsSummaryResponse(BaseModel):
+    ok: bool = True
+
+    total_runs: int
+    success_rate: float  # 0..1
+    tokens_total: int
+    cost_total_usd: float
+    avg_latency_ms: float
+    p95_latency_ms: float
+
+    runs_by_day: List[RunsByDayPoint]
+
+
+class AgentStatsItem(BaseModel):
+    agent_id: str
+    name: str
+    slug: str
+    status: Optional[str] = None
+    budget_daily_usd: Optional[float] = None
+
+    # ✅ Job7 agents page needs "used today" for budget progress
+    spent_today_usd: float = 0.0
+
+    runs: int
+    success_rate: float
+    tokens_total: int
+    cost_total_usd: float
+    avg_latency_ms: float
+    p95_latency_ms: float
+
+
+class AgentStatsBatchResponse(BaseModel):
+    ok: bool = True
+    items: List[AgentStatsItem]
+
+
+class AgentStatsDetailResponse(BaseModel):
+    ok: bool = True
+    agent_id: str
+    period: str
+
+    runs: int
+    success_rate: float
+    tokens_total: int
+    cost_total_usd: float
+    avg_latency_ms: float
+    p95_latency_ms: float
+
+
 def _to_agent_item(model: AgentModel) -> AgentItem:
     return AgentItem(
         id=model.id,
@@ -831,72 +895,139 @@ def delete_agent(
 
 
 # ----------------------------
-# response models for job7-sprint
-# ----------------------------
-
-
-class RunsByDayPoint(BaseModel):
-    date: str  # YYYY-MM-DD
-    runs: int
-    success: int
-    error: int
-    cancelled: int
-    cost_usd: float
-    tokens_total: int
-
-
-class AgentStatsSummaryResponse(BaseModel):
-    ok: bool = True
-
-    total_runs: int
-    success_rate: float  # 0..1
-    tokens_total: int
-    cost_total_usd: float
-    avg_latency_ms: float
-    p95_latency_ms: float
-
-    runs_by_day: List[RunsByDayPoint]
-
-
-class AgentStatsItem(BaseModel):
-    agent_id: str
-    name: str
-    slug: str
-    status: Optional[str] = None
-    budget_daily_usd: Optional[float] = None
-
-    # ✅ Job7 agents page needs "used today" for budget progress
-    spent_today_usd: float = 0.0
-
-    runs: int
-    success_rate: float
-    tokens_total: int
-    cost_total_usd: float
-    avg_latency_ms: float
-    p95_latency_ms: float
-
-
-class AgentStatsBatchResponse(BaseModel):
-    ok: bool = True
-    items: List[AgentStatsItem]
-
-
-class AgentStatsDetailResponse(BaseModel):
-    ok: bool = True
-    agent_id: str
-    period: str
-
-    runs: int
-    success_rate: float
-    tokens_total: int
-    cost_total_usd: float
-    avg_latency_ms: float
-    p95_latency_ms: float
-
-
-# ----------------------------
 # endpoints for job7 sprint
 # ----------------------------
+
+
+@router.get("/stats", response_model=AgentStatsBatchResponse)
+def stats_batch(
+    period: str = Query("7d", description="7d | 30d | all"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AgentStatsBatchResponse:
+    """
+    Job7:
+    GET /agents/stats?period=7d
+    Returns per-agent stat objects (batch) to avoid N+1.
+    Includes spent_today_usd for budget progress.
+    """
+    p = _parse_period(period)
+    start = _period_start(p)
+
+    base_filter = [RunModel.user_id == current_user.id]
+    if start is not None:
+        base_filter.append(RunModel.created_at >= start)
+
+    # Subquery 1: runs/success/tokens/cost (includes latency NULL rows)
+    agg_main = (
+        db.query(
+            RunModel.agent_id.label("agent_id"),
+            func.count(RunModel.id).label("runs"),
+            func.coalesce(
+                func.sum(case((RunModel.status == "success", 1), else_=0)), 0
+            ).label("success"),
+            func.coalesce(func.sum(RunModel.tokens_total), 0).label("tokens_total"),
+            func.coalesce(func.sum(RunModel.cost_estimate_usd), 0.0).label(
+                "cost_total_usd"
+            ),
+        )
+        .filter(*base_filter)
+        .group_by(RunModel.agent_id)
+        .subquery()
+    )
+
+    # Subquery 2: latency metrics only where latency_ms NOT NULL
+    latency_filter = list(base_filter) + [RunModel.latency_ms.isnot(None)]
+    agg_latency = (
+        db.query(
+            RunModel.agent_id.label("agent_id"),
+            func.coalesce(func.avg(RunModel.latency_ms), 0.0).label("avg_latency_ms"),
+            func.percentile_cont(0.95)
+            .within_group(RunModel.latency_ms)
+            .label("p95_latency_ms"),
+        )
+        .filter(*latency_filter)
+        .group_by(RunModel.agent_id)
+        .subquery()
+    )
+
+    # Subquery 3: today's spend (UTC day) — for budget progress
+    today_start = _utc_today_start()
+    agg_today = (
+        db.query(
+            RunModel.agent_id.label("agent_id"),
+            func.coalesce(func.sum(RunModel.cost_estimate_usd), 0.0).label(
+                "spent_today_usd"
+            ),
+        )
+        .filter(
+            RunModel.user_id == current_user.id,
+            RunModel.created_at >= today_start,
+        )
+        .group_by(RunModel.agent_id)
+        .subquery()
+    )
+
+    rows = (
+        db.query(
+            AgentModel.id.label("agent_id"),
+            AgentModel.name,
+            AgentModel.slug,
+            getattr(AgentModel, "status", None),
+            getattr(AgentModel, "budget_daily_usd", None),
+            func.coalesce(agg_today.c.spent_today_usd, 0.0).label("spent_today_usd"),
+            func.coalesce(agg_main.c.runs, 0).label("runs"),
+            func.coalesce(agg_main.c.success, 0).label("success"),
+            func.coalesce(agg_main.c.tokens_total, 0).label("tokens_total"),
+            func.coalesce(agg_main.c.cost_total_usd, 0.0).label("cost_total_usd"),
+            func.coalesce(agg_latency.c.avg_latency_ms, 0.0).label("avg_latency_ms"),
+            func.coalesce(agg_latency.c.p95_latency_ms, 0.0).label("p95_latency_ms"),
+        )
+        .outerjoin(agg_main, agg_main.c.agent_id == AgentModel.id)
+        .outerjoin(agg_latency, agg_latency.c.agent_id == AgentModel.id)
+        .outerjoin(agg_today, agg_today.c.agent_id == AgentModel.id)
+        .filter(AgentModel.user_id == current_user.id)
+        .order_by(AgentModel.created_at.desc())
+        .all()
+    )
+
+    items: List[AgentStatsItem] = []
+    for r in rows:
+        runs = int(r.runs or 0)
+        success = int(r.success or 0)
+        success_rate = (success / runs) if runs > 0 else 0.0
+
+        budget_val = None
+        if r.budget_daily_usd is not None:
+            try:
+                budget_val = float(r.budget_daily_usd)
+            except Exception:
+                budget_val = None
+
+        status_val = None
+        try:
+            status_val = r.status
+        except Exception:
+            status_val = None
+
+        items.append(
+            AgentStatsItem(
+                agent_id=r.agent_id,
+                name=r.name,
+                slug=r.slug,
+                status=status_val,
+                budget_daily_usd=budget_val,
+                spent_today_usd=float(r.spent_today_usd or 0.0),
+                runs=runs,
+                success_rate=success_rate,
+                tokens_total=int(r.tokens_total or 0),
+                cost_total_usd=float(r.cost_total_usd or 0.0),
+                avg_latency_ms=float(r.avg_latency_ms or 0.0),
+                p95_latency_ms=float(r.p95_latency_ms or 0.0),
+            )
+        )
+
+    return AgentStatsBatchResponse(ok=True, items=items)
 
 
 @router.get("/stats/summary", response_model=AgentStatsSummaryResponse)
@@ -1042,137 +1173,6 @@ def stats_summary(
         p95_latency_ms=p95_latency_ms,
         runs_by_day=runs_by_day,
     )
-
-
-@router.get("/stats", response_model=AgentStatsBatchResponse)
-def stats_batch(
-    period: str = Query("7d", description="7d | 30d | all"),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> AgentStatsBatchResponse:
-    """
-    Job7:
-    GET /agents/stats?period=7d
-    Returns per-agent stat objects (batch) to avoid N+1.
-    Includes spent_today_usd for budget progress.
-    """
-    p = _parse_period(period)
-    start = _period_start(p)
-
-    base_filter = [RunModel.user_id == current_user.id]
-    if start is not None:
-        base_filter.append(RunModel.created_at >= start)
-
-    # Subquery 1: runs/success/tokens/cost (includes latency NULL rows)
-    agg_main = (
-        db.query(
-            RunModel.agent_id.label("agent_id"),
-            func.count(RunModel.id).label("runs"),
-            func.coalesce(
-                func.sum(case((RunModel.status == "success", 1), else_=0)), 0
-            ).label("success"),
-            func.coalesce(func.sum(RunModel.tokens_total), 0).label("tokens_total"),
-            func.coalesce(func.sum(RunModel.cost_estimate_usd), 0.0).label(
-                "cost_total_usd"
-            ),
-        )
-        .filter(*base_filter)
-        .group_by(RunModel.agent_id)
-        .subquery()
-    )
-
-    # Subquery 2: latency metrics only where latency_ms NOT NULL
-    latency_filter = list(base_filter) + [RunModel.latency_ms.isnot(None)]
-    agg_latency = (
-        db.query(
-            RunModel.agent_id.label("agent_id"),
-            func.coalesce(func.avg(RunModel.latency_ms), 0.0).label("avg_latency_ms"),
-            func.percentile_cont(0.95)
-            .within_group(RunModel.latency_ms)
-            .label("p95_latency_ms"),
-        )
-        .filter(*latency_filter)
-        .group_by(RunModel.agent_id)
-        .subquery()
-    )
-
-    # Subquery 3: today's spend (UTC day) — for budget progress
-    today_start = _utc_today_start()
-    agg_today = (
-        db.query(
-            RunModel.agent_id.label("agent_id"),
-            func.coalesce(func.sum(RunModel.cost_estimate_usd), 0.0).label(
-                "spent_today_usd"
-            ),
-        )
-        .filter(
-            RunModel.user_id == current_user.id,
-            RunModel.created_at >= today_start,
-        )
-        .group_by(RunModel.agent_id)
-        .subquery()
-    )
-
-    rows = (
-        db.query(
-            AgentModel.id.label("agent_id"),
-            AgentModel.name,
-            AgentModel.slug,
-            getattr(AgentModel, "status", None),
-            getattr(AgentModel, "budget_daily_usd", None),
-            func.coalesce(agg_today.c.spent_today_usd, 0.0).label("spent_today_usd"),
-            func.coalesce(agg_main.c.runs, 0).label("runs"),
-            func.coalesce(agg_main.c.success, 0).label("success"),
-            func.coalesce(agg_main.c.tokens_total, 0).label("tokens_total"),
-            func.coalesce(agg_main.c.cost_total_usd, 0.0).label("cost_total_usd"),
-            func.coalesce(agg_latency.c.avg_latency_ms, 0.0).label("avg_latency_ms"),
-            func.coalesce(agg_latency.c.p95_latency_ms, 0.0).label("p95_latency_ms"),
-        )
-        .outerjoin(agg_main, agg_main.c.agent_id == AgentModel.id)
-        .outerjoin(agg_latency, agg_latency.c.agent_id == AgentModel.id)
-        .outerjoin(agg_today, agg_today.c.agent_id == AgentModel.id)
-        .filter(AgentModel.user_id == current_user.id)
-        .order_by(AgentModel.created_at.desc())
-        .all()
-    )
-
-    items: List[AgentStatsItem] = []
-    for r in rows:
-        runs = int(r.runs or 0)
-        success = int(r.success or 0)
-        success_rate = (success / runs) if runs > 0 else 0.0
-
-        budget_val = None
-        if r.budget_daily_usd is not None:
-            try:
-                budget_val = float(r.budget_daily_usd)
-            except Exception:
-                budget_val = None
-
-        status_val = None
-        try:
-            status_val = r.status
-        except Exception:
-            status_val = None
-
-        items.append(
-            AgentStatsItem(
-                agent_id=r.agent_id,
-                name=r.name,
-                slug=r.slug,
-                status=status_val,
-                budget_daily_usd=budget_val,
-                spent_today_usd=float(r.spent_today_usd or 0.0),
-                runs=runs,
-                success_rate=success_rate,
-                tokens_total=int(r.tokens_total or 0),
-                cost_total_usd=float(r.cost_total_usd or 0.0),
-                avg_latency_ms=float(r.avg_latency_ms or 0.0),
-                p95_latency_ms=float(r.p95_latency_ms or 0.0),
-            )
-        )
-
-    return AgentStatsBatchResponse(ok=True, items=items)
 
 
 @router.get("/{agent_id}/stats", response_model=AgentStatsDetailResponse)

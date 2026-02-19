@@ -36,7 +36,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-screen bg-bg text-fg min-w-[1200px]">
+      <body className="min-h-dvh bg-bg text-fg">
         <Providers>{children}</Providers>
       </body>
     </html>

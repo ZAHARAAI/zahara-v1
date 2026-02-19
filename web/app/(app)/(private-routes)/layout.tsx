@@ -11,7 +11,7 @@ export default async function PrivateRoutesLayout({
   const token = await getAccessToken();
   if (!token) redirect("/login");
   return (
-    <div className="flex min-h-screen bg-bg text-fg">
+    <div className="flex min-h-dvh bg-bg text-fg min-w-[1200px]">
       <LeftNav />
       <div className="flex-1 flex flex-col">
         <div className="flex-1 p-4">{children}</div>

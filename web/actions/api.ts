@@ -23,6 +23,8 @@ export const api = async (path: string, init: RequestInit = {}) => {
         cache: "no-store",
       });
 
+      console.log(res);
+
       if (!res.ok) throw new Error(res.statusText);
 
       const json = await res.json();
@@ -32,7 +34,7 @@ export const api = async (path: string, init: RequestInit = {}) => {
       last = (e as Error).message;
       if (attempt < Retry.max) {
         await new Promise((r) =>
-          setTimeout(r, Retry.backoffMs * (attempt + 1))
+          setTimeout(r, Retry.backoffMs * (attempt + 1)),
         );
       }
     }

@@ -54,7 +54,7 @@ export type CreateAgentRequest = {
 };
 
 export async function createAgent(
-  body: CreateAgentRequest
+  body: CreateAgentRequest,
 ): Promise<AgentSpec> {
   const json = await api(`/agents`, {
     method: "POST",
@@ -72,7 +72,7 @@ export async function getAgent(agent_id: string): Promise<AgentSpec> {
 
 export async function patchAgent(
   agent_id: string,
-  body: Partial<Pick<Agent, "name" | "slug" | "description">>
+  body: Partial<Pick<Agent, "name" | "slug" | "description">>,
 ): Promise<AgentSpec> {
   const json = await api(`/agents/${encodeURIComponent(agent_id)}`, {
     method: "PATCH",
@@ -84,7 +84,7 @@ export async function patchAgent(
 
 export async function saveAgentSpec(
   agent_id: string,
-  spec: Record<string, any>
+  spec: Record<string, any>,
 ): Promise<AgentSpec> {
   const json = await api(`/agents/${encodeURIComponent(agent_id)}/spec`, {
     method: "POST",
@@ -114,7 +114,7 @@ export type FlowAgentUpsertParams = {
 };
 
 export async function upsertAgentFromFlow(
-  params: FlowAgentUpsertParams
+  params: FlowAgentUpsertParams,
 ): Promise<AgentSpec> {
   // Spec shape is free-form JSON; backend stores it as agent_specs.content (JSONB).
   const spec = {
@@ -148,7 +148,7 @@ export async function upsertAgentFromFlow(
 }
 
 export async function deleteAgent(
-  agent_id: string
+  agent_id: string,
 ): Promise<{ ok: boolean; deleted: boolean }> {
   const json = await api(`/agents/${encodeURIComponent(agent_id)}`, {
     method: "DELETE",
@@ -197,7 +197,7 @@ export type StartRunResponse = {
 
 export async function startAgentRun(
   agent_id: string,
-  body: StartRunRequest
+  body: StartRunRequest,
 ): Promise<StartRunResponse> {
   const json = await api(`/agents/${encodeURIComponent(agent_id)}/run`, {
     method: "POST",
@@ -226,7 +226,7 @@ export function streamRun(
     autoCloseMs?: number;
     /** Optional fade duration */
     fadeMs?: number;
-  }
+  },
 ) {
   const url = `/api/sse/runs/${encodeURIComponent(run_id)}`;
   const es = new EventSource(url);
@@ -250,7 +250,7 @@ export function streamRun(
       const closeMs =
         typeof opts?.autoCloseMs === "number"
           ? opts.autoCloseMs
-          : st.autoCloseMs ?? 1000;
+          : (st.autoCloseMs ?? 1000);
 
       st.safeHideAfter(closeMs, st.sessionId, opts?.fadeMs ?? 180);
     } else if (ev.type === "error") {
@@ -352,7 +352,7 @@ export async function listRuns({
   const json = await api(
     `/runs?limit=${limit}&offset=${offset}` +
       (agent_id ? `&agent_id=${agent_id}` : "") +
-      (status ? `&status=${status}` : "")
+      (status ? `&status=${status}` : ""),
   );
   const data = ensureOk(json, "listing runs");
   return data;
@@ -387,7 +387,7 @@ export type RunEventDTO = {
 };
 
 export async function getRunDetail(
-  run_id: string
+  run_id: string,
 ): Promise<{ ok: boolean; run: RunDetail; events: RunEventDTO[] }> {
   const json = await api(`/runs/${encodeURIComponent(run_id)}`);
   const data = ensureOk(json, `loading run ${run_id}`);
@@ -461,7 +461,7 @@ export async function createProviderKey(body: {
 }
 
 export async function deleteProviderKey(
-  keyId: string
+  keyId: string,
 ): Promise<{ ok: boolean; deleted: boolean }> {
   const json = await api(`/provider_keys/${encodeURIComponent(keyId)}`, {
     method: "DELETE",
@@ -545,7 +545,7 @@ export async function readFile(path: string): Promise<IdeFile> {
 export async function saveFile(
   path: string,
   content: string,
-  sha?: string | null
+  sha?: string | null,
 ): Promise<SaveFileResponse> {
   const json = await api(`/files/${encodeURIComponent(path)}`, {
     method: "PUT",
@@ -575,21 +575,21 @@ export async function listConnectors(): Promise<McpConnector[]> {
   const json = await api(`/mcp/connectors`);
   const data: { ok: boolean; connectors: McpConnector[] } = ensureOk(
     json,
-    "listing connectors"
+    "listing connectors",
   );
   return data.connectors;
 }
 
 export async function patchConnector(
   connector_id: string,
-  body: Partial<McpConnector>
+  body: Partial<McpConnector>,
 ): Promise<{ ok: boolean; id: string; enabled: boolean }> {
   const json = await api(
     `/mcp/connectors/${encodeURIComponent(connector_id)}`,
     {
       method: "PATCH",
       body: JSON.stringify(body),
-    }
+    },
   );
   return ensureOk(json, `patching connector ${connector_id}`);
 }
@@ -605,4 +605,44 @@ export async function testConnector(body: { connector_id: string }): Promise<{
     body: JSON.stringify(body),
   });
   return ensureOk(json, "testing connector");
+}
+
+// job7 sprint functions
+export type AgentStatsItem = {
+  agent_id: string;
+  name: string;
+  slug: string;
+  status?: "active" | "paused" | "retired" | string | null;
+  budget_daily_usd?: number | null;
+
+  // ✅ Job7
+  spent_today_usd: number;
+
+  runs: number;
+  success_rate: number; // 0..1
+  tokens_total: number;
+  cost_total_usd: number;
+  avg_latency_ms: number;
+  p95_latency_ms: number;
+};
+
+export async function getAgentsStats(
+  period: "7d" | "30d" | "all" = "7d",
+): Promise<AgentStatsItem[]> {
+  const json = await api(`/agents/stats?period=${encodeURIComponent(period)}`);
+  const data = ensureOk(json, "loading agent stats");
+  return data.items ?? [];
+}
+
+export async function killAgent(agent_id: string): Promise<{
+  ok: boolean;
+  agent_id: string;
+  status: "paused" | string;
+  cancelled_runs?: number;
+}> {
+  const json = await api(`/agents/${encodeURIComponent(agent_id)}/kill`, {
+    method: "PATCH",
+  });
+  const data = ensureOk(json, "killing agent");
+  return data;
 }
