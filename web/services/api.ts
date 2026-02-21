@@ -25,6 +25,8 @@ export type Agent = {
   user_id: number;
   name: string;
   slug: string;
+  status?: "active" | "paused" | "retired" | string | null;
+  budget_daily_usd?: number | null;
   description?: string | null;
   created_at: string;
   updated_at: string;
@@ -72,7 +74,9 @@ export async function getAgent(agent_id: string): Promise<AgentSpec> {
 
 export async function patchAgent(
   agent_id: string,
-  body: Partial<Pick<Agent, "name" | "slug" | "description">>,
+  body: Partial<
+    Pick<Agent, "name" | "slug" | "description" | "status" | "budget_daily_usd">
+  >,
 ): Promise<AgentSpec> {
   const json = await api(`/agents/${encodeURIComponent(agent_id)}`, {
     method: "PATCH",
@@ -338,22 +342,19 @@ export type RunListResponse = {
   offset: number;
 };
 
-export async function listRuns({
-  limit = 50,
-  offset = 0,
-  agent_id,
-  status,
-}: {
-  limit: number;
-  offset: number;
+export async function listRuns(params?: {
+  limit?: number;
+  offset?: number;
   agent_id?: string;
   status?: "pending" | "running" | "success" | "error" | string;
 }): Promise<RunListResponse> {
-  const json = await api(
-    `/runs?limit=${limit}&offset=${offset}` +
-      (agent_id ? `&agent_id=${agent_id}` : "") +
-      (status ? `&status=${status}` : ""),
-  );
+  const sp = new URLSearchParams();
+  sp.set("limit", String(params?.limit ?? 50));
+  sp.set("offset", String(params?.offset ?? 0));
+  if (params?.agent_id) sp.set("agent_id", params.agent_id);
+  if (params?.status) sp.set("status", params.status);
+
+  const json = await api(`/runs?${sp.toString()}`);
   const data = ensureOk(json, "listing runs");
   return data;
 }
@@ -634,6 +635,30 @@ export async function getAgentsStats(
   return data.items ?? [];
 }
 
+export type AgentStatsDetail = {
+  ok: boolean;
+  agent_id: string;
+  period: "7d" | "30d" | "all" | string;
+  runs: number;
+  success_rate: number; // 0..1
+  tokens_total: number;
+  cost_total_usd: number;
+  avg_latency_ms: number;
+  p95_latency_ms: number;
+};
+
+export async function getAgentStatsDetail(
+  agent_id: string,
+  period: "7d" | "30d" | "all" = "7d",
+): Promise<AgentStatsDetail> {
+  const json = await api(
+    `/agents/${encodeURIComponent(agent_id)}/stats?period=${encodeURIComponent(
+      period,
+    )}`,
+  );
+  return ensureOk(json, "loading agent stats detail");
+}
+
 export async function killAgent(agent_id: string): Promise<{
   ok: boolean;
   agent_id: string;
@@ -645,4 +670,69 @@ export async function killAgent(agent_id: string): Promise<{
   });
   const data = ensureOk(json, "killing agent");
   return data;
+}
+
+export type RunsByDayPoint = {
+  date: string; // YYYY-MM-DD
+  runs: number;
+  success: number;
+  error: number;
+  cancelled: number;
+  cost_usd: number;
+  tokens_total: number;
+};
+
+export type AgentStatsSummary = {
+  ok: boolean;
+  total_runs: number;
+  success_rate: number;
+  tokens_total: number;
+  cost_total_usd: number;
+  avg_latency_ms: number;
+  p95_latency_ms: number;
+  runs_by_day: RunsByDayPoint[];
+};
+
+export async function getAgentsStatsSummary(
+  period: "7d" | "30d" | "all" = "7d",
+): Promise<AgentStatsSummary> {
+  const json = await api(
+    `/agents/stats/summary?period=${encodeURIComponent(period)}`,
+  );
+  return ensureOk(json, "loading stats summary");
+}
+
+export type AuditLogItem = {
+  id: string;
+  event_type: string;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  payload?: any;
+  created_at: string;
+};
+
+export async function listAudit(params?: {
+  limit?: number;
+  offset?: number;
+  type?: string;
+  entity_type?: string;
+  entity_id?: string;
+  from?: string;
+  to?: string;
+}): Promise<{ items: AuditLogItem[]; total: number }> {
+  const sp = new URLSearchParams();
+  if (params?.limit != null) sp.set("limit", String(params.limit));
+  if (params?.offset != null) sp.set("offset", String(params.offset));
+  if (params?.type) sp.set("type", params.type);
+  if (params?.entity_type) sp.set("entity_type", params.entity_type);
+  if (params?.entity_id) sp.set("entity_id", params.entity_id);
+  if (params?.from) sp.set("from", params.from);
+  if (params?.to) sp.set("to", params.to);
+
+  const json = await api(`/audit?${sp.toString()}`);
+  const data = ensureOk(json, "listing audit logs");
+  return {
+    items: data.items ?? [],
+    total: data.total ?? 0,
+  };
 }
