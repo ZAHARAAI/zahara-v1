@@ -7,12 +7,12 @@ from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..database import SessionLocal, get_db
 from ..middleware.auth import get_current_user
 from ..models.run import Run as RunModel
 from ..models.run_event import RunEvent as RunEventModel
@@ -20,7 +20,8 @@ from ..models.user import User
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
-HEARTBEAT_INTERVAL_SECONDS = 180
+# Job7 SSE hardening: keep connections alive behind proxies (15-30s recommended)
+HEARTBEAT_INTERVAL_SECONDS = 20
 
 
 def _dt_to_iso_z(dt: Optional[datetime]) -> str:
@@ -313,7 +314,13 @@ def delete_run(
 @router.get("/{run_id}/events")
 def stream_run_events(
     run_id: str,
+    request: Request,
     framed: bool = Query(False, description="If true, emit SSE 'event:' lines"),
+    after_event_id: int = Query(
+        0,
+        ge=0,
+        description="Start streaming after this event id (helps resume on reconnect)",
+    ),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
@@ -326,59 +333,85 @@ def stream_run_events(
         raise HTTPException(status_code=404, detail="run_not_found")
 
     async def event_generator() -> AsyncGenerator[bytes, None]:
-        last_id = 0
-        last_ping = time.time()
+        # Support standard SSE resume header.
+        header_last = 0
+        try:
+            if request is not None:
+                header_last = int(request.headers.get("last-event-id", "0") or 0)
+        except Exception:
+            header_last = 0
+
+        last_id = max(after_event_id or 0, header_last or 0)
+        last_heartbeat = time.time()
 
         while True:
-            new_events = (
-                db.query(RunEventModel)
-                .filter(RunEventModel.run_id == run_id, RunEventModel.id > last_id)
-                .order_by(RunEventModel.id.asc())
-                .limit(200)
-                .all()
-            )
+            # IMPORTANT: Do not keep a DB session open across yields.
+            with SessionLocal() as s:
+                new_events = (
+                    s.query(RunEventModel)
+                    .filter(RunEventModel.run_id == run_id, RunEventModel.id > last_id)
+                    .order_by(RunEventModel.id.asc())
+                    .limit(200)
+                    .all()
+                )
 
-            for ev in new_events:
-                last_id = ev.id
-                data = {
-                    "type": ev.type,
-                    "ts": _dt_to_iso_z(ev.created_at),
-                    "created_at": _dt_to_iso_z(ev.created_at),
-                    "request_id": run.request_id,
-                    "payload": ev.payload or {},
-                    "id": ev.id,
-                    "message": (ev.payload or {}).get("message"),
-                }
+                for ev in new_events:
+                    last_id = ev.id
+                    data = {
+                        "type": ev.type,
+                        "ts": _dt_to_iso_z(ev.created_at),
+                        "created_at": _dt_to_iso_z(ev.created_at),
+                        "request_id": run.request_id,
+                        "payload": ev.payload or {},
+                        "id": ev.id,
+                        "message": (ev.payload or {}).get("message"),
+                    }
 
-                if framed:
-                    yield f"event: {ev.type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode(
-                        "utf-8"
+                    if framed:
+                        yield (
+                            f"event: {ev.type}\n"
+                            f"id: {ev.id}\n"
+                            f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+                        ).encode("utf-8")
+                    else:
+                        yield (
+                            f"id: {ev.id}\n"
+                            f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+                        ).encode("utf-8")
+
+                    if ev.type in {"done", "error", "cancelled"}:
+                        return
+
+                # If no new events and run is terminal, stop streaming.
+                if not new_events:
+                    r = (
+                        s.query(RunModel)
+                        .filter(
+                            RunModel.id == run_id, RunModel.user_id == current_user.id
+                        )
+                        .first()
                     )
-                else:
-                    yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n".encode(
-                        "utf-8"
-                    )
-
-                if ev.type in {"done", "error", "cancelled"}:
-                    return
+                    if r and r.status in {"success", "error", "cancelled"}:
+                        return
 
             now = time.time()
-            if now - last_ping >= HEARTBEAT_INTERVAL_SECONDS:
-                last_ping = now
-                ping = {
-                    "type": "ping",
+            if now - last_heartbeat >= HEARTBEAT_INTERVAL_SECONDS:
+                last_heartbeat = now
+                hb = {
+                    "type": "heartbeat",
                     "ts": _dt_to_iso_z(datetime.now(timezone.utc)),
                     "created_at": _dt_to_iso_z(datetime.now(timezone.utc)),
                     "request_id": run.request_id,
                     "payload": {"request_id": run.request_id},
-                    "message": "ping",
+                    "message": "heartbeat",
                 }
                 if framed:
-                    yield f"event: ping\ndata: {json.dumps(ping, ensure_ascii=False)}\n\n".encode(
-                        "utf-8"
-                    )
+                    yield (
+                        f"event: heartbeat\n"
+                        f"data: {json.dumps(hb, ensure_ascii=False)}\n\n"
+                    ).encode("utf-8")
                 else:
-                    yield f"data: {json.dumps(ping, ensure_ascii=False)}\n\n".encode(
+                    yield f"data: {json.dumps(hb, ensure_ascii=False)}\n\n".encode(
                         "utf-8"
                     )
 
