@@ -213,11 +213,22 @@ export default function VibePage() {
     ]);
 
     try {
-      const { run_id } = await startAgentRun(selectedAgentId, {
+      const res = await startAgentRun(selectedAgentId, {
         input: text,
         source: "vibe",
         config: { surface: "vibe" },
       });
+
+      if (res?.budget && typeof res.budget.percent_used === "number") {
+        const pct = res.budget.percent_used;
+        if (pct >= 80 && pct < 100) {
+          toast.warning(
+            `Budget warning: ${pct.toFixed(0)}% of today's agent budget used`,
+          );
+        }
+      }
+
+      const run_id = res.run_id;
 
       setCurrentRunId(run_id);
       show("BUILD", "Running…");

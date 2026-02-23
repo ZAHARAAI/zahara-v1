@@ -55,7 +55,7 @@ function formatLine(type: string, message?: string, payload?: any) {
   if (type === "done") return "done";
   return clip(
     String(message ?? payload?.message ?? safeJson(payload ?? "")),
-    220
+    220,
   );
 }
 
@@ -151,9 +151,7 @@ export default function BuildModal({
           </div>
 
           {!logs || logs.length === 0 ? (
-            <div className="text-[11px] text-muted_fg">
-              Waiting for stream…
-            </div>
+            <div className="text-[11px] text-muted_fg">Waiting for stream…</div>
           ) : (
             <ul className="space-y-1">
               {logs.map((l, idx) => (

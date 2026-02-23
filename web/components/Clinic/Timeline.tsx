@@ -26,7 +26,8 @@ import {
   getRunDetail,
   getAgent,
   listRuns,
-  startAgentRun,
+  retryRun,
+  exportRunAsJson,
   streamRun,
   type RunDetail,
   type RunEventDTO,
@@ -205,33 +206,11 @@ export default function Timeline() {
 
   const agentIdFromUrl = searchParams.get("agentId") ?? "";
 
-  const [agentFilterLabel, setAgentFilterLabel] = useState<string>("");
-
-  // Resolve agent name for the filter badge (best-effort)
-  useEffect(() => {
-    let alive = true;
-
-    async function loadAgentLabel() {
-      if (!agentIdFromUrl) {
-        setAgentFilterLabel("");
-        return;
-      }
-      try {
-        const res = await getAgent(agentIdFromUrl);
-        const name = res?.agent?.name ?? "";
-        if (alive) setAgentFilterLabel(name || "");
-      } catch {
-        if (alive) setAgentFilterLabel("");
-      }
-    }
-
-    void loadAgentLabel();
-    return () => {
-      alive = false;
-    };
-  }, [agentIdFromUrl]);
+  const [agentFilterName, setAgentFilterName] = useState<string>("");
+  const [loadingAgentFilterName, setLoadingAgentFilterName] = useState(false);
 
   const [retrying, setRetrying] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // Used for auto-scrolling to terminal event
   const terminalEventElRef = useRef<HTMLLIElement | null>(null);
@@ -250,6 +229,30 @@ export default function Timeline() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, agentIdFromUrl]);
+
+  // Resolve agent name for the filter badge (best-effort)
+  useEffect(() => {
+    if (!agentIdFromUrl) {
+      setAgentFilterName("");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingAgentFilterName(true);
+        const res = await getAgent(agentIdFromUrl);
+        const nm = res?.agent?.name ?? "";
+        if (!cancelled) setAgentFilterName(nm);
+      } catch {
+        if (!cancelled) setAgentFilterName("");
+      } finally {
+        if (!cancelled) setLoadingAgentFilterName(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [agentIdFromUrl]);
 
   // If the URL changes (e.g. user pasted a link), react to it.
   useEffect(() => {
@@ -350,16 +353,7 @@ export default function Timeline() {
 
     setRetrying(true);
     try {
-      const res = await startAgentRun(old.agent_id!, {
-        input: old.input!,
-        source: "clinic",
-        config: {
-          surface: "clinic",
-          retry_of: old.id,
-          model: old.model,
-          provider: old.provider,
-        },
-      });
+      const res = await retryRun(old.id);
 
       toast.success("Retry started");
 
@@ -369,7 +363,7 @@ export default function Timeline() {
       // Stop any previous Clinic stream, then stream this new run
       clinicStopRef.current?.();
       clinicStopRef.current = streamRun(
-        res.run_id,
+        res.new_run_id,
         () => {
           // no-op: streamRun will still push to BuildModal via useRunUIStore
         },
@@ -380,13 +374,37 @@ export default function Timeline() {
       );
 
       // refresh runs and select the new run
-      await loadRuns(res.run_id);
+      await loadRuns(res.new_run_id);
     } catch (err: any) {
       console.error("Retry failed", err);
       toast.error(err?.message ?? "Failed to retry run");
       runUI.setError(err?.message ?? "Failed to retry run");
     } finally {
       setRetrying(false);
+    }
+  }
+
+  async function handleExportJson() {
+    if (!detail?.run?.id) return;
+    setExporting(true);
+    try {
+      const payload = await exportRunAsJson(detail.run.id);
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `run_${detail.run.id}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Exported run JSON");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to export run");
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -416,7 +434,34 @@ export default function Timeline() {
         {/* Left: run list */}
         <div className="w-[360px] shrink-0 rounded-2xl border border-border bg-card overflow-hidden">
           <div className="border-b border-border px-3 py-2 flex items-center justify-between">
-            <div className="text-sm font-semibold">Clinic</div>
+            <div className="flex items-center gap-2">
+              <div className="text-sm font-semibold">Clinic</div>
+
+              {agentIdFromUrl ? (
+                <span className="inline-flex items-center gap-2 rounded-full border border-border bg-panel px-2 py-0.5 text-[10px] text-muted_fg">
+                  <span>
+                    Filtered: Agent{" "}
+                    <span className="text-fg">
+                      {loadingAgentFilterName
+                        ? "…"
+                        : agentFilterName || agentIdFromUrl}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    className="text-muted_fg hover:text-fg"
+                    title="Clear agent filter"
+                    onClick={() => {
+                      const sp = new URLSearchParams(searchParams.toString());
+                      sp.delete("agentId");
+                      router.replace(`${pathname}?${sp.toString()}`);
+                    }}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ) : null}
+            </div>
             <Button
               size="xs"
               variant="outline"
@@ -428,37 +473,9 @@ export default function Timeline() {
           </div>
 
           <div className="p-3 border-b border-border flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-muted_fg">
-                Total: {runs.length}
-              </span>
-
-              {agentIdFromUrl ? (
-                <div className="flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-1 text-[11px] text-muted_fg">
-                  <span className="truncate max-w-[180px]">
-                    Filtered: Agent {agentFilterLabel || agentIdFromUrl}
-                  </span>
-                  <button
-                    type="button"
-                    className="ml-1 rounded-full px-1 hover:bg-background"
-                    onClick={() => {
-                      const params = new URLSearchParams(
-                        searchParams.toString(),
-                      );
-                      params.delete("agentId");
-                      // keep runId if present (deep-link), remove empty query
-                      const qs = params.toString();
-                      router.replace(qs ? `${pathname}?${qs}` : pathname);
-                    }}
-                    aria-label="Clear agent filter"
-                    title="Clear filter"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ) : null}
-            </div>
-
+            <span className="text-[11px] text-muted_fg">
+              Total: {runs.length}
+            </span>
             <Select
               value={statusFilter}
               onChange={(v) => setStatusFilter(v)}
@@ -560,6 +577,15 @@ export default function Timeline() {
                         {retrying ? "Retrying…" : "Retry"}
                       </Button>
                     )}
+
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      disabled={exporting}
+                      onClick={() => void handleExportJson()}
+                    >
+                      {exporting ? "Exporting…" : "Export JSON"}
+                    </Button>
 
                     {/* Replay if run status success */}
                     {detail.run.status.toLowerCase() === "success" && (

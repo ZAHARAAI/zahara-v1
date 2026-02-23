@@ -21,7 +21,7 @@ const ProEditor = () => {
     (value) => {
       setContent(value ?? "");
     },
-    [setContent]
+    [setContent],
   );
 
   // Cmd/Ctrl + S

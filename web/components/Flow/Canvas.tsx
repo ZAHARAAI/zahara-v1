@@ -37,21 +37,21 @@ export default function Canvas() {
     (changes: NodeChange[]) => {
       setNodes(applyNodeChanges(changes, nodes as Node<AnyNodeData>[]));
     },
-    [nodes, setNodes]
+    [nodes, setNodes],
   );
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
       setEdges(applyEdgeChanges(changes, edges as Edge[]));
     },
-    [edges, setEdges]
+    [edges, setEdges],
   );
 
   const onConnect = useCallback(
     (connection: Connection) => {
       setEdges(addEdge(connection, edges));
     },
-    [edges, setEdges]
+    [edges, setEdges],
   );
 
   const onSelectionChange = useCallback(
@@ -59,7 +59,7 @@ export default function Canvas() {
       const first = params?.nodes?.[0];
       select(first?.id);
     },
-    [select]
+    [select],
   );
 
   return (

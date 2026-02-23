@@ -293,7 +293,17 @@ export default function AgentsPage() {
                   </div>
 
                   <div className="col-span-1 text-sm">
-                    <div>{fmtUsd(spent)}</div>
+                    <div className="flex items-center gap-1">
+                      <span>{fmtUsd(spent)}</span>
+                      {r.spent_today_is_approximate ? (
+                        <span
+                          className="rounded-full border border-border px-1.5 py-0.5 text-[10px] opacity-80"
+                          title="Today spend includes estimated costs for runs without stored cost"
+                        >
+                          ~
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="text-xs opacity-70">
                       {budget > 0 ? `${Math.round(ratio * 100)}%` : "—"}
                     </div>

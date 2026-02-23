@@ -22,7 +22,7 @@ export const api = async (path: string, init: RequestInit = {}) => {
         body: init.body,
         cache: "no-store",
       });
-
+      // console.log(res);
       if (!res.ok) throw new Error(res.statusText);
 
       const json = await res.json();

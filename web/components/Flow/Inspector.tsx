@@ -89,7 +89,7 @@ export default function Inspector() {
 
   const selected = useMemo(
     () => nodes.find((n) => n.id === selectedId),
-    [nodes, selectedId]
+    [nodes, selectedId],
   );
 
   // infer kind from node.type first, fallback to data.type
@@ -106,7 +106,7 @@ export default function Inspector() {
     const next = nodes.map((n) =>
       n.id === selected.id
         ? { ...n, data: { ...(n.data as any), ...patch } }
-        : n
+        : n,
     );
     setNodes(next as any);
   };
@@ -114,7 +114,7 @@ export default function Inspector() {
   const openInPro = () => {
     router.push(
       "/pro" +
-        (meta?.agentId ? `?agentId=${encodeURIComponent(meta.agentId)}` : "")
+        (meta?.agentId ? `?agentId=${encodeURIComponent(meta.agentId)}` : ""),
     );
   };
 
@@ -422,7 +422,7 @@ export default function Inspector() {
                           onClick={() => {
                             try {
                               const parsed = parseJsonLoose(
-                                stringifyArgs(data?.args)
+                                stringifyArgs(data?.args),
                               );
                               // Normalize stored value to an object on apply
                               updateNodeData({ args: parsed } as any);

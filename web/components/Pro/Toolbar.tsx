@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Play, Sparkles, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { useEventBus } from "@/hooks/useEventBus";
 import { useProStore } from "@/hooks/useProStore";
@@ -90,11 +91,22 @@ const Toolbar = () => {
     runUI.show("BUILD", "Running via Job 6 router…", { autoCloseMs: 1500 });
 
     try {
-      const { run_id } = await startAgentRun(agentId, {
+      const res = await startAgentRun(agentId, {
         input: content,
         source: "pro",
         config: { path: selectedPath, surface: "pro" },
       });
+
+      if (res?.budget && typeof res.budget.percent_used === "number") {
+        const pct = res.budget.percent_used;
+        if (pct >= 80 && pct < 100) {
+          toast.warning(
+            `Budget warning: ${pct.toFixed(0)}% of today's agent budget used`,
+          );
+        }
+      }
+
+      const run_id = res.run_id;
 
       setRunId?.(run_id);
       setLastRunId(run_id);

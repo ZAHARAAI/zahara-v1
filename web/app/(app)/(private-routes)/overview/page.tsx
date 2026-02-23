@@ -213,6 +213,23 @@ export default function OverviewPage() {
                   <div className="mt-1 text-xs opacity-70">
                     id: <span className="font-mono">{r.id}</span>
                   </div>
+                  <div className="mt-1 text-xs opacity-70">
+                    cost:{" "}
+                    <span className="font-medium">
+                      {typeof r.cost_estimate_usd === "number"
+                        ? fmtUsd(Number(r.cost_estimate_usd))
+                        : "—"}
+                    </span>
+                    {typeof r.cost_estimate_usd !== "number" &&
+                    Number(r.tokens_total ?? 0) > 0 ? (
+                      <span
+                        className="ml-1 inline-flex items-center rounded-full border border-border px-1.5 py-0.5 text-[10px] opacity-80"
+                        title="~ indicates cost is not stored for this run; shown as unknown/estimated."
+                      >
+                        ~
+                      </span>
+                    ) : null}
+                  </div>
                 </Link>
               ))
             )}

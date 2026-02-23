@@ -2,11 +2,12 @@
 "use client";
 import {
   Activity,
+  ClipboardList,
   Code2,
   Key,
   LayoutDashboard,
-  Settings,
   Users,
+  Settings,
   Workflow,
 } from "lucide-react";
 import Link from "next/link";
@@ -47,6 +48,7 @@ export default function LeftNav() {
       <NavItem href="/vibe" label="Vibe" Icon={LayoutDashboard} />
       <NavItem href="/pro" label="Pro" Icon={Code2} />
       <NavItem href="/clinic" label="Clinic" Icon={Activity} />
+      <NavItem href="/audit" label="Audit" Icon={ClipboardList} />
       <NavItem href="/mcp" label="MCP" Icon={Settings} />
       <NavItem href="/providers" label="Provider Keys" Icon={Key} />
 

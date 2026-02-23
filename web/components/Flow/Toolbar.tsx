@@ -73,7 +73,7 @@ export default function Toolbar() {
       toast.success(
         agentId
           ? `Updated agent spec (v${version}) for this flow`
-          : `Created new agent for this flow: ${newAgentId}`
+          : `Created new agent for this flow: ${newAgentId}`,
       );
     } catch (err: any) {
       // console.error("Failed to save agent from flow", err);
@@ -116,11 +116,22 @@ export default function Toolbar() {
     };
 
     try {
-      const { run_id } = await startAgentRun(currentAgentId, {
+      const res = await startAgentRun(currentAgentId, {
         input,
         source: "flow",
         config: { flowName },
       });
+
+      if (res?.budget && typeof res.budget.percent_used === "number") {
+        const pct = res.budget.percent_used;
+        if (pct >= 80 && pct < 100) {
+          toast.warning(
+            `Budget warning: ${pct.toFixed(0)}% of today's agent budget used`,
+          );
+        }
+      }
+
+      const run_id = res.run_id;
 
       addLocal({
         type: "log",
@@ -141,7 +152,7 @@ export default function Toolbar() {
             stop();
           }
         },
-        { autoCloseMs: 1200 }
+        { autoCloseMs: 1200 },
       );
     } catch (err: any) {
       hide();
@@ -183,8 +194,8 @@ export default function Toolbar() {
           {saving
             ? "Saving..."
             : meta?.agentId
-            ? "Update Agent Spec"
-            : "Save as Agent"}
+              ? "Update Agent Spec"
+              : "Save as Agent"}
         </Button>
 
         <Input

@@ -197,6 +197,18 @@ export type StartRunResponse = {
   ok: boolean;
   run_id: string;
   request_id: string;
+  budget?: {
+    budget_daily_usd: number;
+    spent_today_usd: number;
+    spent_today_is_approximate?: boolean;
+    percent_used: number;
+  } | null;
+};
+
+export type RetryRunResponse = {
+  ok: boolean;
+  new_run_id: string;
+  retry_of: string;
 };
 
 export async function startAgentRun(
@@ -331,6 +343,7 @@ export type RunListItem = {
   latency_ms?: number | null;
   tokens_total?: number | null;
   cost_estimate_usd?: number | null;
+  cost_is_approximate?: boolean | null;
   created_at: string;
 };
 
@@ -362,6 +375,8 @@ export async function listRuns(params?: {
 export type RunDetail = {
   id: string;
   agent_id?: string | null;
+  agent_spec_id?: string | null;
+  retry_of_run_id?: string | null;
   user_id?: number | null;
   request_id?: string | null;
   status: string;
@@ -373,6 +388,7 @@ export type RunDetail = {
   tokens_out?: number | null;
   tokens_total?: number | null;
   cost_estimate_usd?: number | null;
+  cost_is_approximate?: boolean | null;
   error_message?: string | null;
   input: string;
   created_at: string;
@@ -393,6 +409,18 @@ export async function getRunDetail(
   const json = await api(`/runs/${encodeURIComponent(run_id)}`);
   const data = ensureOk(json, `loading run ${run_id}`);
   return data;
+}
+
+export async function retryRun(run_id: string): Promise<RetryRunResponse> {
+  const json = await api(`/runs/${encodeURIComponent(run_id)}/retry`, {
+    method: "POST",
+  });
+  return ensureOk(json, "retrying run");
+}
+
+export async function exportRunAsJson(run_id: string): Promise<any> {
+  const json = await api(`/runs/${encodeURIComponent(run_id)}/export`);
+  return ensureOk(json, "exporting run");
 }
 
 export type RunCancelResponse = {
@@ -618,6 +646,7 @@ export type AgentStatsItem = {
 
   // ✅ Job7
   spent_today_usd: number;
+  spent_today_is_approximate?: boolean;
 
   runs: number;
   success_rate: number; // 0..1
@@ -645,6 +674,8 @@ export type AgentStatsDetail = {
   cost_total_usd: number;
   avg_latency_ms: number;
   p95_latency_ms: number;
+  spent_today_usd?: number;
+  spent_today_is_approximate?: boolean;
 };
 
 export async function getAgentStatsDetail(
@@ -714,15 +745,21 @@ export type AuditLogItem = {
 export async function listAudit(params?: {
   limit?: number;
   offset?: number;
+  cursor?: string;
   type?: string;
   entity_type?: string;
   entity_id?: string;
   from?: string;
   to?: string;
-}): Promise<{ items: AuditLogItem[]; total: number }> {
+}): Promise<{
+  items: AuditLogItem[];
+  total: number;
+  next_cursor?: string | null;
+}> {
   const sp = new URLSearchParams();
   if (params?.limit != null) sp.set("limit", String(params.limit));
   if (params?.offset != null) sp.set("offset", String(params.offset));
+  if (params?.cursor) sp.set("cursor", params.cursor);
   if (params?.type) sp.set("type", params.type);
   if (params?.entity_type) sp.set("entity_type", params.entity_type);
   if (params?.entity_id) sp.set("entity_id", params.entity_id);
@@ -734,5 +771,6 @@ export async function listAudit(params?: {
   return {
     items: data.items ?? [],
     total: data.total ?? 0,
+    next_cursor: data.next_cursor ?? null,
   };
 }

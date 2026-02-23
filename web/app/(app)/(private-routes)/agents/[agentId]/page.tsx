@@ -180,6 +180,36 @@ export default function AgentDetailPage() {
     return pt?.cost_usd ?? 0;
   }, [chartData]);
 
+  const spentTodayIsApprox = useMemo(() => {
+    // 1) Prefer backend truth (ultimate correctness)
+    const backendFlag = (stats as any)?.spent_today_is_approximate;
+    if (typeof backendFlag === "boolean") return backendFlag;
+
+    // 2) Fallback: derive from today's runs (prefer explicit run flag if present)
+    const today = new Date();
+    const y = today.getFullYear();
+    const mo = today.getMonth();
+    const da = today.getDate();
+
+    return (runs ?? []).some((r: any) => {
+      const d = new Date(r.created_at);
+      const isToday =
+        d.getFullYear() === y && d.getMonth() === mo && d.getDate() === da;
+      if (!isToday) return false;
+
+      // Prefer explicit API flag if available
+      if (typeof r.cost_is_approximate === "boolean")
+        return r.cost_is_approximate;
+
+      // Last-resort inference (old behavior)
+      const hasTokens = Number(r.tokens_total ?? 0) > 0;
+      const missingCost =
+        r.cost_estimate_usd === null ||
+        typeof r.cost_estimate_usd === "undefined";
+      return hasTokens && missingCost;
+    });
+  }, [stats, runs]);
+
   const budgetRatio = useMemo(() => {
     const b = Number(editingBudget ?? 0);
     if (!(b > 0)) return 0;
@@ -305,7 +335,15 @@ export default function AgentDetailPage() {
               />
               <div className="text-sm opacity-70">
                 Today:{" "}
-                <span className="font-medium">{fmtUsd(spentTodayUsd)}</span>
+                <span className="font-medium">{fmtUsd(spentTodayUsd)}</span>{" "}
+                {spentTodayIsApprox ? (
+                  <span
+                    className="ml-1 inline-flex items-center rounded-full border border-border px-1.5 py-0.5 text-[10px] opacity-80"
+                    title="~ indicates some runs are missing stored cost; spend is best-effort."
+                  >
+                    ~
+                  </span>
+                ) : null}
               </div>
             </div>
             <div className="mt-3 h-2 rounded-full bg-muted overflow-hidden">
