@@ -244,7 +244,6 @@ class AgentStatsItem(BaseModel):
     cost_total_usd: float
     avg_latency_ms: float
     p95_latency_ms: float
-    p95_latency_ms: float
 
 
 class AgentStatsBatchResponse(BaseModel):

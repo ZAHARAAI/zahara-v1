@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone  # noqa: F401
 from typing import Any, AsyncGenerator, Dict, List, Optional
 from uuid import uuid4
 
@@ -18,6 +18,7 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import func  # noqa: F401
 from sqlalchemy.orm import Session
 
 from ..database import SessionLocal, get_db
@@ -79,6 +80,7 @@ class RunListItem(BaseModel):
     latency_ms: Optional[int] = None
     tokens_total: Optional[int] = None
     cost_estimate_usd: Optional[float] = None
+    cost_is_approximate: Optional[bool] = None
     created_at: str
 
 
@@ -106,6 +108,7 @@ class RunDetail(BaseModel):
     tokens_out: Optional[int] = None
     tokens_total: Optional[int] = None
     cost_estimate_usd: Optional[float] = None
+    cost_is_approximate: Optional[bool] = None
     error_message: Optional[str] = None
     input: Optional[str] = None
     created_at: str
@@ -157,6 +160,9 @@ def _run_to_list_item(run: RunModel) -> RunListItem:
         latency_ms=run.latency_ms,
         tokens_total=run.tokens_total,
         cost_estimate_usd=run.cost_estimate_usd,
+        cost_is_approximate=bool(getattr(run, "cost_is_approximate", False))
+        if run.cost_estimate_usd is not None
+        else True,
         created_at=_dt_to_iso_z(run.created_at),
     )
 
@@ -178,6 +184,9 @@ def _run_to_detail(run: RunModel) -> RunDetail:
         tokens_out=run.tokens_out,
         tokens_total=run.tokens_total,
         cost_estimate_usd=run.cost_estimate_usd,
+        cost_is_approximate=bool(getattr(run, "cost_is_approximate", False))
+        if run.cost_estimate_usd is not None
+        else True,
         error_message=run.error_message,
         input=run.input,
         created_at=_dt_to_iso_z(run.created_at),

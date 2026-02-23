@@ -12,7 +12,7 @@ Conventions:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -127,3 +127,43 @@ def estimate_cost_usd(model: Optional[str], usage: Dict[str, Any]) -> Optional[f
         return (float(total_tokens) / 1000.0) * blended
 
     return None
+
+
+DEFAULT_FALLBACK_MODEL = "gpt-4o-mini"
+
+
+def estimate_cost_usd_with_fallback(
+    model: Optional[str],
+    usage: Dict[str, Any],
+    *,
+    fallback_model: str = DEFAULT_FALLBACK_MODEL,
+) -> Tuple[Optional[float], bool]:
+    """
+    Estimate cost and indicate whether the estimate is approximate.
+
+    - If model exists in the pricing table -> (cost, False)
+    - If unknown model but tokens exist -> estimate using fallback_model pricing -> (cost, True)
+    - If insufficient data -> (None, True)
+    """
+    cost = estimate_cost_usd(model, usage)
+    if cost is not None:
+        return cost, False
+
+    # Unknown model: best-effort fallback using a known pricing entry.
+    if not usage:
+        return None, True
+
+    prompt_tokens = usage.get("prompt_tokens")
+    completion_tokens = usage.get("completion_tokens")
+    total_tokens = usage.get("total_tokens")
+
+    # If we don't have any token info, we can't even approximate.
+    if not any(
+        isinstance(x, (int, float))
+        for x in (prompt_tokens, completion_tokens, total_tokens)
+    ):
+        return None, True
+
+    # Use fallback model pricing.
+    approx = estimate_cost_usd(fallback_model, usage)
+    return approx, True

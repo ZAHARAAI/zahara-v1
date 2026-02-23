@@ -18,34 +18,11 @@ from ..models.run import Run as RunModel
 from ..models.run_event import RunEvent as RunEventModel
 from ..security.provider_keys_crypto import decrypt_secret
 from ..services.daily_usage import upsert_daily_usage
+from ..services.pricing import estimate_cost_usd_with_fallback
 
 logger = logging.getLogger("zahara.api.run_executor")
 
 ROUTER_BASE_URL = os.getenv("LLM_ROUTER_URL")
-
-
-def _estimate_cost_usd(model: Optional[str], usage: Dict[str, Any]) -> Optional[float]:
-    if not usage:
-        return None
-
-    # Simple price map (best-effort; update if you have exact rates elsewhere)
-    # values are USD per 1M tokens
-    price_map = {
-        "gpt-4o": (5.0, 15.0),  # in, out
-        "gpt-4o-mini": (0.15, 0.60),
-    }
-    if not model:
-        return None
-
-    key = model
-    if key not in price_map:
-        # fallback: don't guess unknown model pricing
-        return None
-
-    in_rate, out_rate = price_map[key]
-    pt = usage.get("prompt_tokens") or 0
-    ct = usage.get("completion_tokens") or 0
-    return (pt / 1_000_000) * in_rate + (ct / 1_000_000) * out_rate
 
 
 def _approx_tokens(text: str) -> int:
@@ -397,9 +374,9 @@ def execute_run_via_router(run_id: str) -> None:
         run.tokens_in = usage_final.get("prompt_tokens")
         run.tokens_out = usage_final.get("completion_tokens")
         run.tokens_total = usage_final.get("total_tokens")
-        run.cost_estimate_usd = (
-            _estimate_cost_usd(model, usage_final) if usage_final else None
-        )
+        cost_usd, is_approx = estimate_cost_usd_with_fallback(model, usage_final or {})
+        run.cost_estimate_usd = cost_usd
+        run.cost_is_approximate = bool(is_approx)
 
         db.add(run)
         db.commit()

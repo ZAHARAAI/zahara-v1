@@ -21,7 +21,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..models.run import Run as RunModel
-from .pricing import estimate_cost_usd
+from .pricing import estimate_cost_usd, estimate_cost_usd_with_fallback  # noqa: F401
 
 
 def utc_today_start(now: Optional[datetime] = None) -> datetime:
