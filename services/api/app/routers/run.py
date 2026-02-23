@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from datetime import datetime, timedelta, timezone  # noqa: F401
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional
 from uuid import uuid4
 
@@ -18,7 +18,6 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import func  # noqa: F401
 from sqlalchemy.orm import Session
 
 from ..database import SessionLocal, get_db
@@ -147,6 +146,7 @@ class RunExportResponse(BaseModel):
     events: List[RunEventDTO]
     agent: Optional[Dict[str, Any]] = None
     spec: Optional[Dict[str, Any]] = None
+    cost: Optional[Dict[str, Any]] = None
 
 
 def _run_to_list_item(run: RunModel) -> RunListItem:
@@ -486,6 +486,10 @@ def export_run(
         events=[_event_to_dto(e) for e in events],
         agent=agent_payload,
         spec=spec_payload,
+        cost={
+            "estimate_usd": run.cost_estimate_usd,
+            "is_approximate": run.cost_is_approximate,
+        },
     )
 
 

@@ -1,6 +1,6 @@
 """add cost_is_approximate to runs
 
-Revision ID: 004_add_cost_is_approximate
+Revision ID: 004
 Revises: 003
 Create Date: 2026-02-23 15:08:29
 
