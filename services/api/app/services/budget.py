@@ -141,29 +141,12 @@ def get_spend_today_by_agent_ids(
     agent_ids: Optional[Iterable[str]] = None,
     now: Optional[datetime] = None,
 ) -> Tuple[Dict[str, float], Dict[str, bool]]:
-    """Return per-agent spend for today as (spent_map, approx_map).
-
-    This is used by Job7 agent stats pages to show budget progress without N+1.
-
-    Primary path: use Run.cost_estimate_usd when present.
-    Fallback path: for rows where cost_estimate_usd is NULL, estimate from tokens
-    via services.pricing.
-
-    Notes:
-    - Best-effort: we cap the fetched rows to keep the query safe for beta.
-    - Operates in UTC day boundaries.
-    """
-
     start, end = utc_today_range(now)
 
     q = (
         db.query(
             RunModel.agent_id,
-            RunModel.cost_estimate_usd,
-            RunModel.model,
-            RunModel.tokens_in,
-            RunModel.tokens_out,
-            RunModel.tokens_total,
+            func.coalesce(func.sum(RunModel.cost_estimate_usd), 0.0),
         )
         .filter(
             RunModel.user_id == user_id,
@@ -171,63 +154,16 @@ def get_spend_today_by_agent_ids(
             RunModel.created_at < end,
             RunModel.agent_id.isnot(None),
         )
-        .limit(2000)
+        .group_by(RunModel.agent_id)
     )
 
-    if agent_ids is not None:
-        ids = list(agent_ids)
-        if ids:
-            q = q.filter(RunModel.agent_id.in_(ids))
-        else:
-            return {}, {}
-
-    spent_map: Dict[str, float] = {}
-    approx_map: Dict[str, bool] = {}
+    if agent_ids:
+        q = q.filter(RunModel.agent_id.in_(list(agent_ids)))
 
     rows = q.all()
-    for aid, cost, model, t_in, t_out, t_total in rows:
-        if not aid:
-            continue
 
-        spent_map.setdefault(aid, 0.0)
-        approx_map.setdefault(aid, False)
-
-        if cost is not None:
-            try:
-                spent_map[aid] += float(cost)
-            except Exception:
-                # ignore malformed cost
-                pass
-            continue
-
-        # fallback estimate
-        if not model:
-            continue
-
-        usage: Dict[str, Any] = {}
-        if isinstance(t_in, int) and isinstance(t_out, int):
-            usage["prompt_tokens"] = t_in
-            usage["completion_tokens"] = t_out
-            usage["total_tokens"] = t_in + t_out
-        elif isinstance(t_total, int):
-            usage["total_tokens"] = t_total
-
-        if not usage:
-            continue
-
-        try:
-            est = estimate_cost_usd(str(model), usage)
-        except Exception:
-            est = None
-
-        if est is not None:
-            spent_map[aid] += float(est)
-            approx_map[aid] = True
-
-    # clamp negatives just in case
-    for k, v in list(spent_map.items()):
-        if v < 0:
-            spent_map[k] = 0.0
+    spent_map = {str(aid): float(cost or 0.0) for aid, cost in rows}
+    approx_map = {str(aid): False for aid in spent_map.keys()}
 
     return spent_map, approx_map
 
