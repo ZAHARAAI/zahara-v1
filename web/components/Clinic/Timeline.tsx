@@ -3,6 +3,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   Ban,
@@ -23,6 +24,7 @@ import { Select } from "@/components/ui/Select";
 import {
   deleteRun,
   getRunDetail,
+  getAgent,
   listRuns,
   startAgentRun,
   streamRun,
@@ -190,6 +192,45 @@ export default function Timeline() {
   const runUI = useRunUIStore();
   const clinicStopRef = useRef<null | (() => void)>(null);
 
+  // URL drill-down support: /clinic?runId=...
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Capture initial runId from URL (once), so we can auto-select it when loading runs.
+  const initialRunIdRef = useRef<string | null>(null);
+  if (initialRunIdRef.current === null) {
+    initialRunIdRef.current = searchParams.get("runId");
+  }
+
+  const agentIdFromUrl = searchParams.get("agentId") ?? "";
+
+  const [agentFilterLabel, setAgentFilterLabel] = useState<string>("");
+
+  // Resolve agent name for the filter badge (best-effort)
+  useEffect(() => {
+    let alive = true;
+
+    async function loadAgentLabel() {
+      if (!agentIdFromUrl) {
+        setAgentFilterLabel("");
+        return;
+      }
+      try {
+        const res = await getAgent(agentIdFromUrl);
+        const name = res?.agent?.name ?? "";
+        if (alive) setAgentFilterLabel(name || "");
+      } catch {
+        if (alive) setAgentFilterLabel("");
+      }
+    }
+
+    void loadAgentLabel();
+    return () => {
+      alive = false;
+    };
+  }, [agentIdFromUrl]);
+
   const [retrying, setRetrying] = useState(false);
 
   // Used for auto-scrolling to terminal event
@@ -203,9 +244,30 @@ export default function Timeline() {
   }, []);
 
   useEffect(() => {
-    void loadRuns();
+    void loadRuns(
+      initialRunIdRef.current ?? undefined,
+      agentIdFromUrl || undefined,
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+  }, [statusFilter, agentIdFromUrl]);
+
+  // If the URL changes (e.g. user pasted a link), react to it.
+  useEffect(() => {
+    const rid = searchParams.get("runId");
+    if (rid && rid !== selectedRunId) {
+      setSelectedRunId(rid);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  function setRunAndSyncUrl(id: string) {
+    setSelectedRunId(id);
+
+    // Keep other query params intact, just update runId.
+    const sp = new URLSearchParams(searchParams.toString());
+    sp.set("runId", id);
+    router.replace(`${pathname}?${sp.toString()}`);
+  }
 
   useEffect(() => {
     if (!selectedRunId) return;
@@ -255,13 +317,15 @@ export default function Timeline() {
     return true;
   }, [detail]);
 
-  async function loadRuns(selectId?: string) {
+  async function loadRuns(selectId?: string, agentId?: string) {
     try {
       setLoadingRuns(true);
       const res = await listRuns({
-        limit: 50,
+        // Slightly higher so deep links (agents → clinic) are more likely to be included.
+        limit: 200,
         offset: 0,
         status: statusFilter || "",
+        agent_id: agentId,
       });
       const items = res.items ?? [];
       setRuns(items);
@@ -269,7 +333,7 @@ export default function Timeline() {
       const nextSelected =
         selectId ?? selectedRunId ?? (items.length > 0 ? items[0].id : null);
 
-      if (nextSelected) setSelectedRunId(nextSelected);
+      if (nextSelected) setRunAndSyncUrl(nextSelected);
     } catch (err: any) {
       console.error("Failed to load runs", err);
       toast.error(err?.message ?? "Failed to load runs");
@@ -312,7 +376,7 @@ export default function Timeline() {
         {
           autoCloseMs: 1200, // clinic default
           fadeMs: 180,
-        }
+        },
       );
 
       // refresh runs and select the new run
@@ -338,7 +402,7 @@ export default function Timeline() {
           rest_items.length > 0
             ? rest_items[isLastItem ? idx - 1 : idx].id
             : null;
-        if (nextSelected) setSelectedRunId(nextSelected);
+        if (nextSelected) setRunAndSyncUrl(nextSelected);
       }
     } catch (err: any) {
       // console.error("Failed to delete run ", err);
@@ -364,9 +428,37 @@ export default function Timeline() {
           </div>
 
           <div className="p-3 border-b border-border flex items-center justify-between gap-2">
-            <span className="text-[11px] text-muted_fg">
-              Total: {runs.length}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted_fg">
+                Total: {runs.length}
+              </span>
+
+              {agentIdFromUrl ? (
+                <div className="flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-1 text-[11px] text-muted_fg">
+                  <span className="truncate max-w-[180px]">
+                    Filtered: Agent {agentFilterLabel || agentIdFromUrl}
+                  </span>
+                  <button
+                    type="button"
+                    className="ml-1 rounded-full px-1 hover:bg-background"
+                    onClick={() => {
+                      const params = new URLSearchParams(
+                        searchParams.toString(),
+                      );
+                      params.delete("agentId");
+                      // keep runId if present (deep-link), remove empty query
+                      const qs = params.toString();
+                      router.replace(qs ? `${pathname}?${qs}` : pathname);
+                    }}
+                    aria-label="Clear agent filter"
+                    title="Clear filter"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
             <Select
               value={statusFilter}
               onChange={(v) => setStatusFilter(v)}
@@ -392,7 +484,7 @@ export default function Timeline() {
                     >
                       <button
                         type="button"
-                        onClick={() => setSelectedRunId(run.id)}
+                        onClick={() => setRunAndSyncUrl(run.id)}
                         className={`w-full text-left px-3 py-2 text-[12px] flex flex-col gap-1 hover:bg-muted ${
                           active ? "bg-muted" : ""
                         }`}
@@ -403,7 +495,7 @@ export default function Timeline() {
                           {/* Status chip with tiny icon */}
                           <span
                             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide border ${statusChipClass(
-                              run.status
+                              run.status,
                             )}`}
                           >
                             <StatusChipIcon status={run.status} />
@@ -451,7 +543,7 @@ export default function Timeline() {
               {/* Run detail header border colored by status */}
               <section
                 className={`rounded-xl border bg-panel p-3 ${detailHeaderBorderClass(
-                  detail.run.status
+                  detail.run.status,
                 )}`}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -536,7 +628,7 @@ export default function Timeline() {
                           key={e.id}
                           ref={isLastTerminal ? terminalEventElRef : null}
                           className={`rounded-md px-3 py-2 border ${eventPillClass(
-                            e.type
+                            e.type,
                           )}`}
                         >
                           <div className="flex items-center justify-between gap-2">

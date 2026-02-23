@@ -19,10 +19,17 @@ export async function GET(req: Request, { params }: Params) {
   }
 
   const base = mustEnv("NEXT_PUBLIC_API_BASE_URL").replace(/\/$/, "");
-  const upstream = `${base}/runs/${encodeURIComponent(runId)}/events`;
+  const url = new URL(req.url);
+  // Allow forwarding optional reconnect params like ?after_event_id=123
+  const upstreamUrl = new URL(
+    `${base}/runs/${encodeURIComponent(runId)}/events`,
+  );
+  url.searchParams.forEach((v, k) => upstreamUrl.searchParams.set(k, v));
+  const upstream = upstreamUrl.toString();
 
   // Optional: forward request-id for traceability (if your backend/router supports it)
   const incomingRid = req.headers.get("x-request-id");
+  const lastEventId = req.headers.get("last-event-id");
   const headers: Record<string, string> = {
     "x-jwt-token": token,
     Accept: "text/event-stream",
@@ -30,6 +37,8 @@ export async function GET(req: Request, { params }: Params) {
     Connection: "keep-alive",
   };
   if (incomingRid) headers["X-Request-Id"] = incomingRid;
+  // SSE resume header
+  if (lastEventId) headers["Last-Event-ID"] = lastEventId;
 
   const res = await fetch(upstream, {
     method: "GET",

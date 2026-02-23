@@ -6,6 +6,7 @@ import {
   Key,
   LayoutDashboard,
   Settings,
+  Users,
   Workflow,
 } from "lucide-react";
 import Link from "next/link";
@@ -40,6 +41,8 @@ export default function LeftNav() {
       <div className="px-2 pb-2 text-xs uppercase tracking-wide opacity-70">
         ZAHARA AI
       </div>
+      <NavItem href="/overview" label="Overview" Icon={LayoutDashboard} />
+      <NavItem href="/agents" label="Agents" Icon={Users} />
       <NavItem href="/flow" label="Flow" Icon={Workflow} />
       <NavItem href="/vibe" label="Vibe" Icon={LayoutDashboard} />
       <NavItem href="/pro" label="Pro" Icon={Code2} />
