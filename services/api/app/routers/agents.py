@@ -26,6 +26,10 @@ from ..models.run import Run as RunModel
 from ..models.run_event import RunEvent as RunEventModel
 from ..models.user import User
 from ..services.audit import log_audit_event
+from ..services.budget import (
+    evaluate_agent_budget,
+    get_spend_today_by_agent_ids,
+)
 from ..services.run_executor import execute_run_via_router
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -62,38 +66,6 @@ def _new_spec_id() -> str:
     return "as_" + uuid4().hex[:16]
 
 
-def _day_floor_utc(dt: datetime) -> datetime:
-    d = dt.astimezone(timezone.utc).date()
-    return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
-
-
-def _utc_today_start() -> datetime:
-    return _day_floor_utc(datetime.now(timezone.utc))
-
-
-def _get_agent_spend_today_usd(db: Session, *, user_id: int, agent_id: str) -> float:
-    """
-    Best-effort daily spend aggregation (UTC day):
-    sum runs.cost_estimate_usd for today for this user+agent.
-    """
-    start = _utc_today_start()
-
-    total = (
-        db.query(func.coalesce(func.sum(RunModel.cost_estimate_usd), 0.0))
-        .filter(
-            RunModel.user_id == user_id,
-            RunModel.agent_id == agent_id,
-            RunModel.created_at >= start,
-        )
-        .scalar()
-    )
-
-    try:
-        return float(total or 0.0)
-    except Exception:
-        return 0.0
-
-
 # ---------------------------
 # Job7 period helpers
 # ---------------------------
@@ -122,6 +94,17 @@ def _period_start(period: Period) -> Optional[datetime]:
         return None
     days = 7 if period == "7d" else 30
     return now - timedelta(days=days)
+
+
+def _day_floor_utc(dt: datetime) -> datetime:
+    """
+    Floor a datetime to the start of its day in UTC (00:00:00Z).
+    Accepts naive datetimes (assumed UTC) or tz-aware datetimes.
+    """
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    dt_utc = dt.astimezone(timezone.utc)
+    return datetime(dt_utc.year, dt_utc.month, dt_utc.day, tzinfo=timezone.utc)
 
 
 def _date_range_days(period: Period) -> List[datetime]:
@@ -206,6 +189,7 @@ class RunResponse(BaseModel):
     ok: bool = True
     run_id: str
     request_id: str
+    budget: Optional[Dict[str, Any]] = None
 
 
 class AgentKillResponse(BaseModel):
@@ -252,12 +236,14 @@ class AgentStatsItem(BaseModel):
 
     # Job7 agents page needs this for budget progress
     spent_today_usd: float = 0.0
+    spent_today_is_approximate: bool = False
 
     runs: int
     success_rate: float
     tokens_total: int
     cost_total_usd: float
     avg_latency_ms: float
+    p95_latency_ms: float
     p95_latency_ms: float
 
 
@@ -362,23 +348,6 @@ def stats_batch(
         .subquery()
     )
 
-    # Subquery 3: today's spend (UTC day)
-    today_start = _utc_today_start()
-    agg_today = (
-        db.query(
-            RunModel.agent_id.label("agent_id"),
-            func.coalesce(func.sum(RunModel.cost_estimate_usd), 0.0).label(
-                "spent_today_usd"
-            ),
-        )
-        .filter(
-            RunModel.user_id == current_user.id,
-            RunModel.created_at >= today_start,
-        )
-        .group_by(RunModel.agent_id)
-        .subquery()
-    )
-
     rows = (
         db.query(
             AgentModel.id.label("agent_id"),
@@ -386,7 +355,6 @@ def stats_batch(
             AgentModel.slug,
             getattr(AgentModel, "status", None),
             getattr(AgentModel, "budget_daily_usd", None),
-            func.coalesce(agg_today.c.spent_today_usd, 0.0).label("spent_today_usd"),
             func.coalesce(agg_main.c.runs, 0).label("runs"),
             func.coalesce(agg_main.c.success, 0).label("success"),
             func.coalesce(agg_main.c.tokens_total, 0).label("tokens_total"),
@@ -396,10 +364,14 @@ def stats_batch(
         )
         .outerjoin(agg_main, agg_main.c.agent_id == AgentModel.id)
         .outerjoin(agg_latency, agg_latency.c.agent_id == AgentModel.id)
-        .outerjoin(agg_today, agg_today.c.agent_id == AgentModel.id)
         .filter(AgentModel.user_id == current_user.id)
         .order_by(AgentModel.created_at.desc())
         .all()
+    )
+
+    agent_ids = [str(r.agent_id) for r in rows if getattr(r, "agent_id", None)]
+    spent_map, approx_map = get_spend_today_by_agent_ids(
+        db, user_id=current_user.id, agent_ids=agent_ids
     )
 
     items: List[AgentStatsItem] = []
@@ -428,7 +400,8 @@ def stats_batch(
                 slug=r.slug,
                 status=status_val,
                 budget_daily_usd=budget_val,
-                spent_today_usd=float(r.spent_today_usd or 0.0),
+                spent_today_usd=float(spent_map.get(str(r.agent_id), 0.0)),
+                spent_today_is_approximate=bool(approx_map.get(str(r.agent_id), False)),
                 runs=runs,
                 success_rate=success_rate,
                 tokens_total=int(r.tokens_total or 0),
@@ -938,40 +911,44 @@ def start_agent_run(
             },
         )
 
-    # Job7: best-effort daily budget enforcement
-    budget = getattr(agent, "budget_daily_usd", None)
-    if budget is not None:
-        try:
-            budget_val = float(budget)
-        except Exception:
-            budget_val = None
-
-        if budget_val is not None and budget_val >= 0:
-            spent = _get_agent_spend_today_usd(
-                db, user_id=current_user.id, agent_id=agent.id
-            )
-            if spent >= budget_val:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail={
-                        "ok": False,
-                        "error": {
-                            "code": "BUDGET_EXCEEDED",
-                            "message": "Daily budget exceeded for this agent.",
-                            "meta": {
-                                "budget_daily_usd": budget_val,
-                                "spent_today_usd": spent,
-                            },
-                        },
-                    },
-                )
+    # Job7: best-effort daily budget enforcement + metadata
+    budget_meta = None
+    meta, exceeded = evaluate_agent_budget(
+        db,
+        user_id=current_user.id,
+        agent_id=agent.id,
+        budget_daily_usd=getattr(agent, "budget_daily_usd", None),
+    )
+    if meta is not None:
+        budget_meta = meta.as_dict()
+    if exceeded:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "ok": False,
+                "error": {
+                    "code": "BUDGET_EXCEEDED",
+                    "message": "Daily budget exceeded for this agent.",
+                    "meta": budget_meta or {},
+                },
+            },
+        )
 
     run_id = _new_run_id()
     request_id = str(uuid4())
 
+    # Track the exact spec version used for this run (for deterministic retry/replay).
+    spec_row = (
+        db.query(AgentSpecModel)
+        .filter(AgentSpecModel.agent_id == agent.id)
+        .order_by(AgentSpecModel.version.desc())
+        .first()
+    )
+
     run = RunModel(
         id=run_id,
         agent_id=agent.id,
+        agent_spec_id=spec_row.id if spec_row else None,
         user_id=current_user.id,
         request_id=request_id,
         status="pending",
@@ -1011,7 +988,9 @@ def start_agent_run(
 
     background_tasks.add_task(execute_run_via_router, run.id)
 
-    return RunResponse(ok=True, run_id=run.id, request_id=request_id)
+    return RunResponse(
+        ok=True, run_id=run.id, request_id=request_id, budget=budget_meta
+    )
 
 
 # ---------------------------

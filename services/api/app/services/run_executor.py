@@ -152,12 +152,20 @@ def execute_run_via_router(run_id: str) -> None:
             )
             return
 
-        spec = (
-            db.query(AgentSpecModel)
-            .filter(AgentSpecModel.agent_id == agent.id)
-            .order_by(AgentSpecModel.created_at.desc())
-            .first()
-        )
+        # Prefer the exact spec tracked on the run for deterministic retries/replays.
+        if getattr(run, "agent_spec_id", None):
+            spec = (
+                db.query(AgentSpecModel)
+                .filter(AgentSpecModel.id == run.agent_spec_id)
+                .first()
+            )
+        else:
+            spec = (
+                db.query(AgentSpecModel)
+                .filter(AgentSpecModel.agent_id == agent.id)
+                .order_by(AgentSpecModel.version.desc())
+                .first()
+            )
         if not spec:
             run.status = "error"
             run.error_message = "Agent spec not found."

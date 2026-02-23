@@ -7,16 +7,29 @@ from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import SessionLocal, get_db
 from ..middleware.auth import get_current_user
+from ..models.agent import Agent as AgentModel
+from ..models.agent_spec import AgentSpec as AgentSpecModel
 from ..models.run import Run as RunModel
 from ..models.run_event import RunEvent as RunEventModel
 from ..models.user import User
+from ..services.audit import log_audit_event
+from ..services.budget import evaluate_agent_budget
+from ..services.run_executor import execute_run_via_router
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -80,6 +93,8 @@ class RunListResponse(BaseModel):
 class RunDetail(BaseModel):
     id: str
     agent_id: Optional[str] = None
+    agent_spec_id: Optional[str] = None
+    retry_of_run_id: Optional[str] = None
     user_id: Optional[int] = None
     request_id: Optional[str] = None
     status: str
@@ -117,6 +132,20 @@ class RunDeleteResponse(BaseModel):
     deleted_events: int = 0
 
 
+class RunRetryResponse(BaseModel):
+    ok: bool = True
+    new_run_id: str
+    retry_of: str
+
+
+class RunExportResponse(BaseModel):
+    ok: bool = True
+    run: RunDetail
+    events: List[RunEventDTO]
+    agent: Optional[Dict[str, Any]] = None
+    spec: Optional[Dict[str, Any]] = None
+
+
 def _run_to_list_item(run: RunModel) -> RunListItem:
     return RunListItem(
         id=run.id,
@@ -136,6 +165,8 @@ def _run_to_detail(run: RunModel) -> RunDetail:
     return RunDetail(
         id=run.id,
         agent_id=run.agent_id,
+        agent_spec_id=getattr(run, "agent_spec_id", None),
+        retry_of_run_id=getattr(run, "retry_of_run_id", None),
         user_id=run.user_id,
         request_id=run.request_id,
         status=run.status,
@@ -253,6 +284,199 @@ def get_run_detail(
 
     return RunDetailResponse(
         ok=True, run=_run_to_detail(run), events=[_event_to_dto(e) for e in events]
+    )
+
+
+@router.post("/{run_id}/retry", response_model=RunRetryResponse)
+def retry_run(
+    run_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> RunRetryResponse:
+    """Create a new run that retries an existing run using the same AgentSpec version."""
+
+    old = (
+        db.query(RunModel)
+        .filter(RunModel.id == run_id, RunModel.user_id == current_user.id)
+        .first()
+    )
+    if not old:
+        raise HTTPException(status_code=404, detail="run_not_found")
+    if not old.agent_id:
+        raise HTTPException(status_code=400, detail="run_missing_agent")
+
+    agent = (
+        db.query(AgentModel)
+        .filter(AgentModel.id == old.agent_id, AgentModel.user_id == current_user.id)
+        .first()
+    )
+    if not agent:
+        raise HTTPException(status_code=404, detail="agent_not_found")
+
+    if getattr(agent, "status", "active") != "active":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "ok": False,
+                "error": {
+                    "code": "AGENT_NOT_ACTIVE",
+                    "message": f"Agent is {agent.status}. Activate it to run.",
+                },
+            },
+        )
+
+    # Ensure we retry with the same spec version
+    agent_spec_id = getattr(old, "agent_spec_id", None)
+    if agent_spec_id:
+        spec = (
+            db.query(AgentSpecModel).filter(AgentSpecModel.id == agent_spec_id).first()
+        )
+        if not spec:
+            agent_spec_id = None
+
+    # If old run does not have a spec tracked yet, fall back to latest version.
+    if not agent_spec_id:
+        spec = (
+            db.query(AgentSpecModel)
+            .filter(AgentSpecModel.agent_id == agent.id)
+            .order_by(AgentSpecModel.version.desc())
+            .first()
+        )
+        agent_spec_id = spec.id if spec else None
+
+    # Best-effort daily budget enforcement
+    _meta, exceeded = evaluate_agent_budget(
+        db,
+        user_id=current_user.id,
+        agent_id=agent.id,
+        budget_daily_usd=getattr(agent, "budget_daily_usd", None),
+    )
+    if exceeded:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "ok": False,
+                "error": {
+                    "code": "BUDGET_EXCEEDED",
+                    "message": "Daily budget exceeded for this agent.",
+                    "meta": _meta.as_dict() if _meta is not None else {},
+                },
+            },
+        )
+
+    new_run_id = _new_run_id()
+    request_id = str(uuid4())
+
+    new_run = RunModel(
+        id=new_run_id,
+        agent_id=agent.id,
+        agent_spec_id=agent_spec_id,
+        retry_of_run_id=old.id,
+        user_id=current_user.id,
+        request_id=request_id,
+        status="pending",
+        source="clinic",
+        input=old.input,
+        config=old.config,
+    )
+    db.add(new_run)
+    db.commit()
+    db.refresh(new_run)
+
+    db.add(
+        RunEventModel(
+            run_id=new_run.id,
+            type="system",
+            payload={
+                "event": "run_created",
+                "request_id": request_id,
+                "retry_of": old.id,
+            },
+        )
+    )
+    db.commit()
+
+    # Audit
+    try:
+        log_audit_event(
+            db,
+            user_id=current_user.id,
+            event_type="run.retried",
+            entity_type="run",
+            entity_id=new_run.id,
+            payload={"retry_of": old.id, "agent_id": agent.id},
+        )
+    except Exception:
+        db.rollback()
+
+    background_tasks.add_task(execute_run_via_router, new_run.id)
+
+    return RunRetryResponse(ok=True, new_run_id=new_run.id, retry_of=old.id)
+
+
+@router.get("/{run_id}/export", response_model=RunExportResponse)
+def export_run(
+    run_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> RunExportResponse:
+    run = (
+        db.query(RunModel)
+        .filter(RunModel.id == run_id, RunModel.user_id == current_user.id)
+        .first()
+    )
+    if not run:
+        raise HTTPException(status_code=404, detail="run_not_found")
+
+    events = (
+        db.query(RunEventModel)
+        .filter(RunEventModel.run_id == run_id)
+        .order_by(RunEventModel.created_at.asc())
+        .limit(10000)
+        .all()
+    )
+
+    agent_payload: Optional[Dict[str, Any]] = None
+    spec_payload: Optional[Dict[str, Any]] = None
+
+    if run.agent_id:
+        agent = (
+            db.query(AgentModel)
+            .filter(
+                AgentModel.id == run.agent_id, AgentModel.user_id == current_user.id
+            )
+            .first()
+        )
+        if agent:
+            agent_payload = {
+                "id": agent.id,
+                "name": agent.name,
+                "slug": getattr(agent, "slug", None),
+                "status": getattr(agent, "status", None),
+                "budget_daily_usd": float(agent.budget_daily_usd)
+                if getattr(agent, "budget_daily_usd", None) is not None
+                else None,
+            }
+
+    spec_id = getattr(run, "agent_spec_id", None)
+    if spec_id:
+        spec = db.query(AgentSpecModel).filter(AgentSpecModel.id == spec_id).first()
+        if spec:
+            spec_payload = {
+                "id": spec.id,
+                "agent_id": spec.agent_id,
+                "version": spec.version,
+                "content": spec.content,
+                "created_at": _dt_to_iso_z(spec.created_at),
+            }
+
+    return RunExportResponse(
+        ok=True,
+        run=_run_to_detail(run),
+        events=[_event_to_dto(e) for e in events],
+        agent=agent_payload,
+        spec=spec_payload,
     )
 
 

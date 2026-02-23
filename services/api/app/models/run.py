@@ -24,6 +24,23 @@ class Run(Base):
         nullable=True,
         index=True,
     )
+
+    # Track the exact AgentSpec version used for this run.
+    # This enables deterministic retries/replays.
+    agent_spec_id = Column(
+        String,
+        ForeignKey("agent_specs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    # Lineage: if this run is a retry of a previous run
+    retry_of_run_id = Column(
+        String,
+        ForeignKey("runs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     user_id = Column(
         Integer,
         ForeignKey("users.id", ondelete="CASCADE"),
