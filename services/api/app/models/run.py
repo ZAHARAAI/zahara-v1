@@ -1,5 +1,6 @@
 from sqlalchemy import (
     JSON,
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -74,6 +75,8 @@ class Run(Base):
 
     # Optional full config used to launch the run
     config = Column(JSON, nullable=True)
+
+    cost_is_approximate = Column(Boolean, nullable=False, server_default="false")
 
     # Timestamps
     created_at = Column(

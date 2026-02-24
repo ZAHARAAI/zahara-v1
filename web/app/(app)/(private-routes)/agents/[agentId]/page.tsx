@@ -276,6 +276,12 @@ export default function AgentDetailPage() {
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Link
+            className="h-10 rounded-xl border border-border bg-panel px-3 text-sm flex justify-center items-center hover:bg-muted "
+            href={`/flow?agentId=${agentId}`}
+          >
+            Open in Flow
+          </Link>
           <select
             className="h-10 rounded-xl border border-border bg-panel px-3 text-sm"
             value={period}

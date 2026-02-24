@@ -193,9 +193,9 @@ export default function OverviewPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-border bg-panel p-4">
+        <div className="rounded-2xl border border-border bg-panel p-4 pr-0">
           <div className="text-sm font-medium">Recent runs</div>
-          <div className="mt-3 space-y-2">
+          <div className="mt-3 space-y-2 h-90 overflow-y-auto pr-2">
             {recentRuns.length === 0 ? (
               <div className="text-sm opacity-60">No runs yet</div>
             ) : (

@@ -488,7 +488,7 @@ def export_run(
         spec=spec_payload,
         cost={
             "estimate_usd": run.cost_estimate_usd,
-            "is_approximate": run.cost_is_approximate,
+            "is_approximate": getattr(run, "cost_is_approximate", False),
         },
     )
 

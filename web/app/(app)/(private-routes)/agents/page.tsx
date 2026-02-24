@@ -12,6 +12,7 @@ import {
   type Agent,
   type AgentStatsItem,
 } from "@/services/api";
+import { Button } from "@/components/ui/Button";
 
 function fmtUsd(n: number) {
   if (!Number.isFinite(n)) return "—";
@@ -148,7 +149,7 @@ export default function AgentsPage() {
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Agents</h1>
@@ -188,182 +189,221 @@ export default function AgentsPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-border bg-panel overflow-hidden">
-        <div className="grid grid-cols-12 gap-2 px-4 py-3 text-xs uppercase tracking-wide opacity-70 border-b border-border">
-          <div className="col-span-3">Agent</div>
-          <div className="col-span-2">Status</div>
-          <div className="col-span-2">Daily budget</div>
-          <div className="col-span-1">Today</div>
-          <div className="col-span-1">Runs</div>
-          <div className="col-span-1">Success</div>
-          <div className="col-span-1">Cost</div>
-          <div className="col-span-1 text-right">Actions</div>
-        </div>
+      <div className="rounded-2xl border border-border bg-panel w-[calc(100dvw-250px)] h-[calc(100dvh-110px)] overflow-auto">
+        <table className="w-fit">
+          <thead className="border-b border-border">
+            <tr className="text-xs uppercase tracking-wide opacity-70">
+              <th className="px-4 py-3 text-left font-medium">Agent</th>
+              <th className="px-4 py-3 text-left font-medium">Status</th>
+              <th className="px-4 py-3 text-left font-medium">Daily budget</th>
+              <th className="px-4 py-3 text-left font-medium">Today</th>
+              <th className="px-4 py-3 text-left font-medium">Runs</th>
+              <th className="px-4 py-3 text-left font-medium">Success</th>
+              <th className="px-4 py-3 text-left font-medium">Cost</th>
+              <th className="px-4 py-3 text-right font-medium">Actions</th>
+            </tr>
+          </thead>
 
-        {loading ? (
-          <div className="p-6 text-sm opacity-70">Loading…</div>
-        ) : filtered.length === 0 ? (
-          <div className="p-6 text-sm opacity-70">No agents found.</div>
-        ) : (
-          <div className="divide-y divide-border">
-            {filtered.map((r) => {
-              const budget = r.budget_daily_usd ?? 0;
-              const spent = r.spent_today_usd ?? 0;
-              const ratio =
-                budget > 0 ? Math.max(0, Math.min(1, spent / budget)) : 0;
+          <tbody className="divide-y divide-border">
+            {loading ? (
+              <tr>
+                <td className="px-4 py-6 text-sm opacity-70" colSpan={8}>
+                  Loading…
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
+              <tr>
+                <td className="px-4 py-6 text-sm opacity-70" colSpan={8}>
+                  No agents found.
+                </td>
+              </tr>
+            ) : (
+              filtered.map((r) => {
+                const budget = r.budget_daily_usd ?? 0;
+                const spent = r.spent_today_usd ?? 0;
+                const ratio =
+                  budget > 0 ? Math.max(0, Math.min(1, spent / budget)) : 0;
 
-              return (
-                <div
-                  key={r.agent_id}
-                  className="grid grid-cols-12 gap-2 px-4 py-3 items-center"
-                >
-                  <div className="col-span-3">
-                    <Link
-                      href={`/agents/${encodeURIComponent(r.agent_id)}`}
-                      className="font-medium hover:underline"
-                      title="Open agent details"
-                    >
-                      {r.name}
-                    </Link>
-                    <div className="text-xs opacity-70">{r.slug}</div>
-                  </div>
-
-                  <div className="col-span-2">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ring-1 ring-border ${
-                          (r.status ?? "active") === "active"
-                            ? "opacity-90"
-                            : "opacity-70"
-                        }`}
-                        title="Agent lifecycle status"
+                return (
+                  <tr key={r.agent_id}>
+                    {/* Agent */}
+                    <td className="px-4 py-3 bg-muted">
+                      <Link
+                        href={`/agents/${encodeURIComponent(r.agent_id)}`}
+                        className="font-medium uppercase hover:underline"
+                        title="Open agent details"
                       >
-                        {r.status ?? "active"}
-                      </span>
-
-                      <select
-                        className="h-9 rounded-xl border border-border bg-panel px-2 text-sm"
-                        value={(r.status ?? "active") as any}
-                        onChange={(e) => {
-                          const v = e.target.value as any;
-                          setRows((prev) =>
-                            prev.map((x) =>
-                              x.agent_id === r.agent_id
-                                ? { ...x, status: v }
-                                : x,
-                            ),
-                          );
-                        }}
-                      >
-                        <option value="active">active</option>
-                        <option value="paused">paused</option>
-                        <option value="retired">retired</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="col-span-2">
-                    <div className="flex items-center gap-2">
-                      <input
-                        className="h-9 w-28 rounded-xl border border-border bg-panel px-2 text-sm"
-                        type="number"
-                        min={0}
-                        step={0.5}
-                        value={r.budget_daily_usd ?? 0}
-                        onChange={(e) => {
-                          const v = Number(e.target.value);
-                          setRows((prev) =>
-                            prev.map((x) =>
-                              x.agent_id === r.agent_id
-                                ? { ...x, budget_daily_usd: v }
-                                : x,
-                            ),
-                          );
-                        }}
-                      />
-                      <div className="text-xs opacity-70">USD/day</div>
-                    </div>
-                    <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className="h-full bg-foreground/60"
-                        style={{ width: `${Math.round(ratio * 100)}%` }}
-                        title={`${fmtUsd(spent)} / ${fmtUsd(budget)}`}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="col-span-1 text-sm">
-                    <div className="flex items-center gap-1">
-                      <span>{fmtUsd(spent)}</span>
-                      {r.spent_today_is_approximate ? (
-                        <span
-                          className="rounded-full border border-border px-1.5 py-0.5 text-[10px] opacity-80"
-                          title="Today spend includes estimated costs for runs without stored cost"
-                        >
-                          ~
+                        {r.name}
+                      </Link>
+                      <div className="text-xs opacity-70">{r.slug}</div>
+                      <div className="text-xs opacity-70 text-nowrap ">
+                        <span className="mr-4">
+                          Avg latency: {ms(r.avg_latency_ms)}
                         </span>
-                      ) : null}
-                    </div>
-                    <div className="text-xs opacity-70">
-                      {budget > 0 ? `${Math.round(ratio * 100)}%` : "—"}
-                    </div>
-                  </div>
+                        <span className="mr-4">
+                          P95: {ms(r.p95_latency_ms)}
+                        </span>
+                        <span>Tokens: {r.tokens_total.toLocaleString()}</span>
+                      </div>
+                    </td>
 
-                  <div className="col-span-1 text-sm">{r.runs}</div>
+                    {/* Status */}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ring-1 ring-border ${
+                            (r.status ?? "active") === "active"
+                              ? "opacity-90"
+                              : "opacity-70"
+                          }`}
+                          title="Agent lifecycle status"
+                        >
+                          {r.status ?? "active"}
+                        </span>
 
-                  <div className="col-span-1 text-sm">
-                    {pct(r.success_rate)}
-                  </div>
+                        <select
+                          className="h-9 rounded-xl border border-border bg-panel px-2 text-sm"
+                          value={(r.status ?? "active") as any}
+                          onChange={(e) => {
+                            const v = e.target.value as any;
+                            setRows((prev) =>
+                              prev.map((x) =>
+                                x.agent_id === r.agent_id
+                                  ? { ...x, status: v }
+                                  : x,
+                              ),
+                            );
+                          }}
+                        >
+                          <option value="active">active</option>
+                          <option value="paused">paused</option>
+                          <option value="retired">retired</option>
+                        </select>
+                      </div>
+                    </td>
 
-                  <div className="col-span-1 text-sm">
-                    {fmtUsd(r.cost_total_usd)}
-                  </div>
+                    {/* Daily budget */}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <input
+                          className="h-9 w-28 rounded-xl border border-border bg-panel px-2 text-sm"
+                          type="number"
+                          min={0}
+                          step={0.5}
+                          value={r.budget_daily_usd ?? 0}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            setRows((prev) =>
+                              prev.map((x) =>
+                                x.agent_id === r.agent_id
+                                  ? { ...x, budget_daily_usd: v }
+                                  : x,
+                              ),
+                            );
+                          }}
+                        />
+                        <div className="text-xs opacity-70">USD/day</div>
+                      </div>
 
-                  <div className="col-span-1 flex justify-end gap-2">
-                    <Link
-                      href={`/clinic?agentId=${encodeURIComponent(r.agent_id)}`}
-                      className="h-9 inline-flex items-center rounded-xl border border-border px-3 text-sm hover:bg-muted"
-                      title="Open this agent's runs in Clinic"
-                    >
-                      Clinic
-                    </Link>
-                    <button
-                      className="h-9 rounded-xl border border-border px-3 text-sm hover:bg-muted disabled:opacity-50"
-                      disabled={!!saving[r.agent_id]}
-                      onClick={() =>
-                        saveAgent(r.agent_id, {
-                          status: r.status as any,
-                          budget_daily_usd: r.budget_daily_usd ?? 0,
-                        })
-                      }
-                      title="Save status + budget"
-                    >
-                      {saving[r.agent_id] ? "Saving…" : "Save"}
-                    </button>
+                      <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full bg-foreground/60"
+                          style={{ width: `${Math.round(ratio * 100)}%` }}
+                          title={`${fmtUsd(spent)} / ${fmtUsd(budget)}`}
+                        />
+                      </div>
+                    </td>
 
-                    <button
-                      className="h-9 rounded-xl border border-border px-3 text-sm hover:bg-muted disabled:opacity-50"
-                      disabled={!!killing[r.agent_id]}
-                      onClick={() => kill(r.agent_id)}
-                      title="Pause agent and cancel running runs"
-                    >
-                      {killing[r.agent_id] ? "Killing…" : "Kill"}
-                    </button>
-                  </div>
+                    {/* Today */}
+                    <td className="px-4 py-3 text-sm">
+                      <div className="flex items-center gap-1">
+                        <span>{fmtUsd(spent)}</span>
+                        {r.spent_today_is_approximate ? (
+                          <span
+                            className="rounded-full border border-border px-1.5 py-0.5 text-[10px] opacity-80"
+                            title="Today spend includes estimated costs for runs without stored cost"
+                          >
+                            ~
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="text-xs opacity-70">
+                        {budget > 0 ? `${Math.round(ratio * 100)}%` : "0%"}
+                      </div>
+                    </td>
 
-                  <div className="col-span-12 -mt-1 text-xs opacity-70">
-                    <span className="mr-4">
-                      Avg latency: {ms(r.avg_latency_ms)}
-                    </span>
-                    <span className="mr-4">P95: {ms(r.p95_latency_ms)}</span>
-                    <span>Tokens: {r.tokens_total.toLocaleString()}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                    {/* Runs */}
+                    <td className="px-4 py-3 text-sm">{r.runs}</td>
+
+                    {/* Success */}
+                    <td className="px-4 py-3 text-sm">{pct(r.success_rate)}</td>
+
+                    {/* Cost */}
+                    <td className="px-4 py-3 text-sm">
+                      {fmtUsd(r.cost_total_usd)}
+                    </td>
+
+                    {/* Actions */}
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-2">
+                        <Link
+                          href={`/clinic?agentId=${encodeURIComponent(r.agent_id)}`}
+                          className="h-9 inline-flex items-center rounded-xl border border-border px-3 text-sm hover:bg-muted"
+                          title="Open this agent's runs in Clinic"
+                        >
+                          Clinic
+                        </Link>
+
+                        <Button
+                          disabled={!!saving[r.agent_id]}
+                          onClick={() =>
+                            saveAgent(r.agent_id, {
+                              status: r.status as any,
+                              budget_daily_usd: r.budget_daily_usd ?? 0,
+                            })
+                          }
+                          title="Save status + budget"
+                        >
+                          {saving[r.agent_id] ? "Saving…" : "Save"}
+                        </Button>
+
+                        <button
+                          className="h-9 rounded-xl border border-border bg-red-500 px-3 font-semibold text-sm hover:bg-red-200 disabled:opacity-50 text-white hover:text-red-500"
+                          disabled={!!killing[r.agent_id]}
+                          onClick={() => kill(r.agent_id)}
+                          title="Pause agent and cancel running runs"
+                        >
+                          {killing[r.agent_id] ? "Killing…" : "Kill"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
+}
+
+{
+  /* detail row */
+}
+{
+  /* <tr key={`${r.agent_id}-detail`}>
+                      <td
+                        className="px-4 pb-3 pt-0 text-xs opacity-70"
+                        colSpan={8}
+                      >
+                        <span className="mr-4">
+                          Avg latency: {ms(r.avg_latency_ms)}
+                        </span>
+                        <span className="mr-4">
+                          P95: {ms(r.p95_latency_ms)}
+                        </span>
+                        <span>Tokens: {r.tokens_total.toLocaleString()}</span>
+                      </td>
+                    </tr> */
 }
