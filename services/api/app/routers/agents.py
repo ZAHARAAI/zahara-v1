@@ -902,14 +902,17 @@ def start_agent_run(
         )
 
     # Job7: lifecycle enforcement
-    if getattr(agent, "status", "active") != "active":
+    # Use `or "active"` to treat NULL status (agents created before migration 002)
+    # as "active" — prevents spurious 409s on legacy agents.
+    agent_status = getattr(agent, "status", None) or "active"
+    if agent_status != "active":
         raise HTTPException(
             status_code=409,
             detail={
                 "ok": False,
                 "error": {
                     "code": "AGENT_NOT_ACTIVE",
-                    "message": f"Agent is {agent.status}. Activate it to run.",
+                    "message": f"Agent is {agent_status}. Activate it to run.",
                 },
             },
         )

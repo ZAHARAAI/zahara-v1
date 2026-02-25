@@ -11,7 +11,7 @@ export const api = async (
   init: RequestInit = {},
 ): Promise<{ json?: any; error?: string }> => {
   const token = await getAccessToken();
-  if (!token) throw new Error("NO ACCESS TOKEN FOUND");
+  if (!token) return { error: "NO ACCESS TOKEN FOUND" };
 
   let last: string = "";
   for (let attempt = 0; attempt <= Retry.max; attempt++) {
@@ -33,13 +33,13 @@ export const api = async (
           const body = await res.json();
           console.log(body);
           if (body?.error) errorMsg = body.error;
-          else if (typeof body?.detail?.error?.message)
+          else if (body?.detail?.error?.message === "string")
             errorMsg = body.detail.error.message;
           else if (typeof body?.detail === "string") errorMsg = body.detail;
         } catch {
           // ignore parse errors — keep statusText
         }
-        return { error: errorMsg };
+        throw new Error(errorMsg);
       }
 
       const json = await res.json();
@@ -48,17 +48,16 @@ export const api = async (
       last = (e as Error).message;
       // Don't retry on client errors (4xx) — only on network/5xx failures
       const isClientError =
-        last !== "NO ACCESS TOKEN FOUND" &&
-        (last === "Bad Request" ||
-          last === "Not Found" ||
-          last === "Unauthorized" ||
-          last === "Forbidden" ||
-          last === "Conflict" ||
-          // already parsed body messages from 4xx
-          last.includes("AGENT_NOT_ACTIVE") ||
-          last.includes("BUDGET_EXCEEDED") ||
-          last.includes("not found") ||
-          last.includes("already exists"));
+        last === "Bad Request" ||
+        last === "Not Found" ||
+        last === "Unauthorized" ||
+        last === "Forbidden" ||
+        last === "Conflict" ||
+        // already parsed body messages from 4xx
+        last.includes("AGENT_NOT_ACTIVE") ||
+        last.includes("BUDGET_EXCEEDED") ||
+        last.includes("not found") ||
+        last.includes("already exists");
       if (isClientError) break; // don't retry 4xx
       if (attempt < Retry.max) {
         await new Promise((r) =>

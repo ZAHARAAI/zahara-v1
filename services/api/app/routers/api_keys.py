@@ -8,6 +8,7 @@ from ..database import get_db
 from ..middleware.auth import get_current_user
 from ..models.user import User
 from ..services.api_key_service import APIKeyService
+from ..services.audit import log_audit_event
 
 router = APIRouter(prefix="/api-keys", tags=["api-keys"])
 
@@ -63,9 +64,26 @@ async def create_api_key(
             can_admin=request.can_admin,
         )
 
+        log_audit_event(
+            db,
+            user_id=current_user.id,
+            event_type="apikey.created",
+            entity_type="api_key",
+            entity_id=str(api_key_record.id),
+            payload={
+                "name": api_key_record.name,
+                "key_prefix": api_key_record.key_prefix,
+                "can_read": api_key_record.can_read,
+                "can_write": api_key_record.can_write,
+                "can_admin": api_key_record.can_admin,
+            },
+        )
+
         return CreateAPIKeyResponse(
             api_key_info=APIKeyResponse.from_orm(api_key_record), api_key=plain_key
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -112,6 +130,13 @@ async def deactivate_api_key(
     api_key_service = APIKeyService()
 
     if api_key_service.deactivate_api_key(db, key_id):
+        log_audit_event(
+            db,
+            user_id=current_user.id,
+            event_type="apikey.deactivated",
+            entity_type="api_key",
+            entity_id=str(key_id),
+        )
         return {"message": "API key deactivated successfully"}
     else:
         raise HTTPException(
@@ -129,6 +154,13 @@ async def delete_api_key(
     api_key_service = APIKeyService()
 
     if api_key_service.delete_api_key(db, key_id):
+        log_audit_event(
+            db,
+            user_id=current_user.id,
+            event_type="apikey.deleted",
+            entity_type="api_key",
+            entity_id=str(key_id),
+        )
         return {"message": "API key deleted successfully"}
     else:
         raise HTTPException(
