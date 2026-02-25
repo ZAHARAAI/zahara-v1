@@ -8,6 +8,7 @@ from ..database import get_db
 from ..middleware.auth import get_current_user
 from ..models.user import User
 from ..security.jwt_auth import create_access_token, hash_password, verify_password
+from ..services.audit import log_audit_event
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -113,6 +114,19 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
         db.refresh(u)
 
         token = create_access_token(subject=u.email, user_id=u.id)
+
+        try:
+            log_audit_event(
+                db,
+                user_id=u.id,
+                event_type="user.registered",
+                entity_type="user",
+                entity_id=str(u.id),
+                payload={"username": u.username, "email": u.email},
+            )
+        except Exception:
+            pass
+
         return AuthResponse(ok=True, access_token=token, user=_user_public(u))
 
     except Exception as e:
@@ -140,6 +154,19 @@ def login(body: LoginRequest, db: Session = Depends(get_db)) -> AuthResponse:
         )
 
     token = create_access_token(subject=u.email, user_id=u.id)
+
+    try:
+        log_audit_event(
+            db,
+            user_id=u.id,
+            event_type="user.login",
+            entity_type="user",
+            entity_id=str(u.id),
+            payload={"email": u.email},
+        )
+    except Exception:
+        pass
+
     return AuthResponse(ok=True, access_token=token, user=_user_public(u))
 
 

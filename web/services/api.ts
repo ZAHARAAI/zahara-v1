@@ -43,7 +43,8 @@ export type AgentSpec = {
 export type AgentListItem = Agent;
 
 export async function listAgents(): Promise<AgentListItem[]> {
-  const json = await api(`/agents`);
+  const { json, error } = await api(`/agents`);
+  if (error) throw new Error(error);
   const data = ensureOk(json, "listing agents");
   return data.items ?? data;
 }
@@ -58,16 +59,18 @@ export type CreateAgentRequest = {
 export async function createAgent(
   body: CreateAgentRequest,
 ): Promise<AgentSpec> {
-  const json = await api(`/agents`, {
+  const { json, error } = await api(`/agents`, {
     method: "POST",
     body: JSON.stringify(body),
   });
+  if (error) throw new Error(error);
   const data = ensureOk(json, "creating agent");
   return data;
 }
 
 export async function getAgent(agent_id: string): Promise<AgentSpec> {
-  const json = await api(`/agents/${encodeURIComponent(agent_id)}`);
+  const { json, error } = await api(`/agents/${encodeURIComponent(agent_id)}`);
+  if (error) throw new Error(error);
   const data = ensureOk(json, "getting agent");
   return data;
 }
@@ -78,10 +81,11 @@ export async function patchAgent(
     Pick<Agent, "name" | "slug" | "description" | "status" | "budget_daily_usd">
   >,
 ): Promise<AgentSpec> {
-  const json = await api(`/agents/${encodeURIComponent(agent_id)}`, {
+  const { json, error } = await api(`/agents/${encodeURIComponent(agent_id)}`, {
     method: "PATCH",
     body: JSON.stringify(body),
   });
+  if (error) throw new Error(error);
   const data = ensureOk(json, "patching agent");
   return data;
 }
@@ -90,10 +94,14 @@ export async function saveAgentSpec(
   agent_id: string,
   spec: Record<string, any>,
 ): Promise<AgentSpec> {
-  const json = await api(`/agents/${encodeURIComponent(agent_id)}/spec`, {
-    method: "POST",
-    body: JSON.stringify({ spec }),
-  });
+  const { json, error } = await api(
+    `/agents/${encodeURIComponent(agent_id)}/spec`,
+    {
+      method: "POST",
+      body: JSON.stringify({ spec }),
+    },
+  );
+  if (error) throw new Error(error);
   const data = ensureOk(json, "saving spec");
   return data;
 }
@@ -154,9 +162,10 @@ export async function upsertAgentFromFlow(
 export async function deleteAgent(
   agent_id: string,
 ): Promise<{ ok: boolean; deleted: boolean }> {
-  const json = await api(`/agents/${encodeURIComponent(agent_id)}`, {
+  const { json, error } = await api(`/agents/${encodeURIComponent(agent_id)}`, {
     method: "DELETE",
   });
+  if (error) throw new Error(error);
   const data = ensureOk(json, "deleting agent");
   return data;
 }
@@ -215,14 +224,18 @@ export async function startAgentRun(
   agent_id: string,
   body: StartRunRequest,
 ): Promise<StartRunResponse> {
-  const json = await api(`/agents/${encodeURIComponent(agent_id)}/run`, {
-    method: "POST",
-    body: JSON.stringify({
-      input: body.input,
-      source: body.source ?? "vibe",
-      config: body.config ?? {},
-    }),
-  });
+  const { json, error } = await api(
+    `/agents/${encodeURIComponent(agent_id)}/run`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        input: body.input,
+        source: body.source ?? "vibe",
+        config: body.config ?? {},
+      }),
+    },
+  );
+  if (error) throw new Error(error);
 
   const data = ensureOk(json, `starting run for agent ${agent_id}`);
   return data;
@@ -367,7 +380,8 @@ export async function listRuns(params?: {
   if (params?.agent_id) sp.set("agent_id", params.agent_id);
   if (params?.status) sp.set("status", params.status);
 
-  const json = await api(`/runs?${sp.toString()}`);
+  const { json, error } = await api(`/runs?${sp.toString()}`);
+  if (error) throw new Error(error);
   const data = ensureOk(json, "listing runs");
   return data;
 }
@@ -406,20 +420,28 @@ export type RunEventDTO = {
 export async function getRunDetail(
   run_id: string,
 ): Promise<{ ok: boolean; run: RunDetail; events: RunEventDTO[] }> {
-  const json = await api(`/runs/${encodeURIComponent(run_id)}`);
+  const { json, error } = await api(`/runs/${encodeURIComponent(run_id)}`);
+  if (error) throw new Error(error);
   const data = ensureOk(json, `loading run ${run_id}`);
   return data;
 }
 
 export async function retryRun(run_id: string): Promise<RetryRunResponse> {
-  const json = await api(`/runs/${encodeURIComponent(run_id)}/retry`, {
-    method: "POST",
-  });
+  const { json, error } = await api(
+    `/runs/${encodeURIComponent(run_id)}/retry`,
+    {
+      method: "POST",
+    },
+  );
+  if (error) throw new Error(error);
   return ensureOk(json, "retrying run");
 }
 
 export async function exportRunAsJson(run_id: string): Promise<any> {
-  const json = await api(`/runs/${encodeURIComponent(run_id)}/export`);
+  const { json, error } = await api(
+    `/runs/${encodeURIComponent(run_id)}/export`,
+  );
+  if (error) throw new Error(error);
   return ensureOk(json, "exporting run");
 }
 
@@ -430,9 +452,13 @@ export type RunCancelResponse = {
 };
 
 export async function cancelRun(run_id: string): Promise<RunCancelResponse> {
-  const json = await api(`/runs/${encodeURIComponent(run_id)}/cancel`, {
-    method: "POST",
-  });
+  const { json, error } = await api(
+    `/runs/${encodeURIComponent(run_id)}/cancel`,
+    {
+      method: "POST",
+    },
+  );
+  if (error) throw new Error(error);
   return ensureOk(json, "cancelling run");
 }
 
@@ -443,9 +469,10 @@ type DeleteRunResponse = {
 };
 
 export async function deleteRun(run_id: string): Promise<DeleteRunResponse> {
-  const json = await api(`/runs/${encodeURIComponent(run_id)}`, {
+  const { json, error } = await api(`/runs/${encodeURIComponent(run_id)}`, {
     method: "DELETE",
   });
+  if (error) throw new Error(error);
   return ensureOk(json, "deleting run");
 }
 
@@ -470,7 +497,8 @@ type ProviderKeyListResponse = {
 };
 
 export async function listProviderKeys(): Promise<ProviderKey[]> {
-  const json = await api("/provider_keys");
+  const { json, error } = await api("/provider_keys");
+  if (error) throw new Error(error);
   const data: ProviderKeyListResponse = ensureOk(json, "listing provider keys");
   return data.items ?? [];
 }
@@ -480,21 +508,26 @@ export async function createProviderKey(body: {
   label: string;
   key: string;
 }): Promise<ProviderKey> {
-  const json: { ok: boolean; provider_key: ProviderKey; masked_key: string } =
-    await api("/provider_keys", {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
+  type res = { ok: boolean; provider_key: ProviderKey; masked_key: string };
+  const { json, error } = await api("/provider_keys", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (error) throw new Error(error);
 
-  return json.provider_key;
+  return (json as res).provider_key;
 }
 
 export async function deleteProviderKey(
   keyId: string,
 ): Promise<{ ok: boolean; deleted: boolean }> {
-  const json = await api(`/provider_keys/${encodeURIComponent(keyId)}`, {
-    method: "DELETE",
-  });
+  const { json, error } = await api(
+    `/provider_keys/${encodeURIComponent(keyId)}`,
+    {
+      method: "DELETE",
+    },
+  );
+  if (error) throw new Error(error);
   const data = ensureOk(json, "deleting provider key");
   return data;
 }
@@ -506,9 +539,13 @@ export async function testProviderKey(keyId: string): Promise<{
   message?: string | null;
   last_tested_at?: string | null;
 }> {
-  const json = await api(`/provider_keys/${encodeURIComponent(keyId)}/test`, {
-    method: "POST",
-  });
+  const { json, error } = await api(
+    `/provider_keys/${encodeURIComponent(keyId)}/test`,
+    {
+      method: "POST",
+    },
+  );
+  if (error) throw new Error(error);
   const data = ensureOk(json, "testing provider key");
   return data;
 }
@@ -523,10 +560,11 @@ export async function testRawProviderKey(body: {
   status: string;
   message?: string | null;
 }> {
-  const json = await api(`/provider_keys/test`, {
+  const { json, error } = await api(`/provider_keys/test`, {
     method: "POST",
     body: JSON.stringify(body),
   });
+  if (error) throw new Error(error);
   const data = ensureOk(json, "testing raw provider key");
   return data;
 }
@@ -560,13 +598,15 @@ export type SaveFileResponse = {
 };
 
 export async function listFiles(): Promise<IdeFileEntry[]> {
-  const json = await api(`/files`);
+  const { json, error } = await api(`/files`);
+  if (error) throw new Error(error);
   const data: ListFilesResponse = ensureOk(json, "listing files");
   return data.files ?? [];
 }
 
 export async function readFile(path: string): Promise<IdeFile> {
-  const json = await api(`/files/${encodeURIComponent(path)}`);
+  const { json, error } = await api(`/files/${encodeURIComponent(path)}`);
+  if (error) throw new Error(error);
   const data = ensureOk(json, `reading file ${path}`);
   return data;
 }
@@ -576,13 +616,14 @@ export async function saveFile(
   content: string,
   sha?: string | null,
 ): Promise<SaveFileResponse> {
-  const json = await api(`/files/${encodeURIComponent(path)}`, {
+  const { json, error } = await api(`/files/${encodeURIComponent(path)}`, {
     method: "PUT",
     body: JSON.stringify({
       content,
       sha: sha ?? undefined,
     }),
   });
+  if (error) throw new Error(error);
   const data = ensureOk(json, `saving file ${path}`);
   return data;
 }
@@ -601,11 +642,13 @@ export type McpConnector = {
 };
 
 export async function listConnectors(): Promise<McpConnector[]> {
-  const json = await api(`/mcp/connectors`);
+  const { json, error } = await api(`/mcp/connectors`);
+  if (error) throw new Error(error);
   const data: { ok: boolean; connectors: McpConnector[] } = ensureOk(
     json,
     "listing connectors",
   );
+
   return data.connectors;
 }
 
@@ -613,13 +656,14 @@ export async function patchConnector(
   connector_id: string,
   body: Partial<McpConnector>,
 ): Promise<{ ok: boolean; id: string; enabled: boolean }> {
-  const json = await api(
+  const { json, error } = await api(
     `/mcp/connectors/${encodeURIComponent(connector_id)}`,
     {
       method: "PATCH",
       body: JSON.stringify(body),
     },
   );
+  if (error) throw new Error(error);
   return ensureOk(json, `patching connector ${connector_id}`);
 }
 
@@ -629,10 +673,11 @@ export async function testConnector(body: { connector_id: string }): Promise<{
   latency_ms: number;
   logs: string[];
 }> {
-  const json = await api(`/mcp/test`, {
+  const { json, error } = await api(`/mcp/test`, {
     method: "POST",
     body: JSON.stringify(body),
   });
+  if (error) throw new Error(error);
   return ensureOk(json, "testing connector");
 }
 
@@ -659,7 +704,10 @@ export type AgentStatsItem = {
 export async function getAgentsStats(
   period: "7d" | "30d" | "all" = "7d",
 ): Promise<AgentStatsItem[]> {
-  const json = await api(`/agents/stats?period=${encodeURIComponent(period)}`);
+  const { json, error } = await api(
+    `/agents/stats?period=${encodeURIComponent(period)}`,
+  );
+  if (error) throw new Error(error);
   const data = ensureOk(json, "loading agent stats");
   return data.items ?? [];
 }
@@ -682,11 +730,12 @@ export async function getAgentStatsDetail(
   agent_id: string,
   period: "7d" | "30d" | "all" = "7d",
 ): Promise<AgentStatsDetail> {
-  const json = await api(
+  const { json, error } = await api(
     `/agents/${encodeURIComponent(agent_id)}/stats?period=${encodeURIComponent(
       period,
     )}`,
   );
+  if (error) throw new Error(error);
   return ensureOk(json, "loading agent stats detail");
 }
 
@@ -696,9 +745,13 @@ export async function killAgent(agent_id: string): Promise<{
   status: "paused" | string;
   cancelled_runs?: number;
 }> {
-  const json = await api(`/agents/${encodeURIComponent(agent_id)}/kill`, {
-    method: "PATCH",
-  });
+  const { json, error } = await api(
+    `/agents/${encodeURIComponent(agent_id)}/kill`,
+    {
+      method: "PATCH",
+    },
+  );
+  if (error) throw new Error(error);
   const data = ensureOk(json, "killing agent");
   return data;
 }
@@ -727,9 +780,10 @@ export type AgentStatsSummary = {
 export async function getAgentsStatsSummary(
   period: "7d" | "30d" | "all" = "7d",
 ): Promise<AgentStatsSummary> {
-  const json = await api(
+  const { json, error } = await api(
     `/agents/stats/summary?period=${encodeURIComponent(period)}`,
   );
+  if (error) throw new Error(error);
   return ensureOk(json, "loading stats summary");
 }
 
@@ -766,7 +820,8 @@ export async function listAudit(params?: {
   if (params?.from) sp.set("from", params.from);
   if (params?.to) sp.set("to", params.to);
 
-  const json = await api(`/audit?${sp.toString()}`);
+  const { json, error } = await api(`/audit?${sp.toString()}`);
+  if (error) throw new Error(error);
   const data = ensureOk(json, "listing audit logs");
   return {
     items: data.items ?? [],

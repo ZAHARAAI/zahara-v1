@@ -512,6 +512,20 @@ def cancel_run(
         return RunCancelResponse(ok=True, run_id=run.id, status=run.status)
 
     _cancel_run_row(db, run, message="Cancelled by user")
+
+    # Audit: run cancelled by user
+    try:
+        log_audit_event(
+            db,
+            user_id=current_user.id,
+            event_type="run.cancelled",
+            entity_type="run",
+            entity_id=run.id,
+            payload={"agent_id": run.agent_id, "reason": "user_request"},
+        )
+    except Exception:
+        pass
+
     return RunCancelResponse(ok=True, run_id=run.id, status=run.status)
 
 

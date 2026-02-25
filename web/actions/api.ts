@@ -6,11 +6,14 @@ import { getAccessToken } from "@/lib/auth-cookies";
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL as string;
 const Retry = { max: 2, backoffMs: 400 };
 
-export const api = async (path: string, init: RequestInit = {}) => {
+export const api = async (
+  path: string,
+  init: RequestInit = {},
+): Promise<{ json?: any; error?: string }> => {
   const token = await getAccessToken();
   if (!token) throw new Error("NO ACCESS TOKEN FOUND");
 
-  let last: any;
+  let last: string = "";
   for (let attempt = 0; attempt <= Retry.max; attempt++) {
     try {
       const res = await fetch(`${BASE}${path}`, {
@@ -22,14 +25,41 @@ export const api = async (path: string, init: RequestInit = {}) => {
         body: init.body,
         cache: "no-store",
       });
-      // console.log(res);
-      if (!res.ok) throw new Error(res.statusText);
+
+      if (!res.ok) {
+        // Try to extract a meaningful error message from the response body
+        let errorMsg = res.statusText;
+        try {
+          const body = await res.json();
+          console.log(body);
+          if (body?.error) errorMsg = body.error;
+          else if (typeof body?.detail?.error?.message)
+            errorMsg = body.detail.error.message;
+          else if (typeof body?.detail === "string") errorMsg = body.detail;
+        } catch {
+          // ignore parse errors — keep statusText
+        }
+        return { error: errorMsg };
+      }
 
       const json = await res.json();
-      // console.log(json);
-      return json;
+      return { json };
     } catch (e) {
       last = (e as Error).message;
+      // Don't retry on client errors (4xx) — only on network/5xx failures
+      const isClientError =
+        last !== "NO ACCESS TOKEN FOUND" &&
+        (last === "Bad Request" ||
+          last === "Not Found" ||
+          last === "Unauthorized" ||
+          last === "Forbidden" ||
+          last === "Conflict" ||
+          // already parsed body messages from 4xx
+          last.includes("AGENT_NOT_ACTIVE") ||
+          last.includes("BUDGET_EXCEEDED") ||
+          last.includes("not found") ||
+          last.includes("already exists"));
+      if (isClientError) break; // don't retry 4xx
       if (attempt < Retry.max) {
         await new Promise((r) =>
           setTimeout(r, Retry.backoffMs * (attempt + 1)),
@@ -37,6 +67,6 @@ export const api = async (path: string, init: RequestInit = {}) => {
       }
     }
   }
-  console.log(last ?? "Unknown API error");
-  throw new Error(last ?? "Unknown API error");
+  console.log(last || "Unknown API error");
+  return { error: last || "Unknown API error" };
 };

@@ -45,12 +45,18 @@ class AuditListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+    next_cursor: Optional[str] = (
+        None  # cursor-based pagination for frontend "load more"
+    )
 
 
 @router.get("", response_model=AuditListResponse)
 def list_audit(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    cursor: Optional[str] = Query(
+        None, description="Opaque cursor from next_cursor (ISO timestamp)"
+    ),
     event_type: Optional[str] = Query(None, alias="type"),
     entity_type: Optional[str] = Query(None),
     entity_id: Optional[str] = Query(None),
@@ -67,6 +73,14 @@ def list_audit(
         q = q.filter(AuditLogModel.entity_type == entity_type)
     if entity_id:
         q = q.filter(AuditLogModel.entity_id == entity_id)
+
+    if cursor:
+        # cursor is an ISO timestamp — return rows older than this
+        try:
+            cursor_dt = _parse_dt(cursor)
+            q = q.filter(AuditLogModel.created_at < cursor_dt)
+        except Exception:
+            pass  # ignore malformed cursor, fall back to offset
 
     if from_ts:
         dt = _parse_dt(from_ts)
@@ -92,6 +106,17 @@ def list_audit(
             )
         )
 
+    # Build next_cursor: if we got a full page, cursor = oldest item's timestamp
+    next_cursor: Optional[str] = None
+    if len(rows) == limit:
+        oldest = rows[-1].created_at
+        next_cursor = oldest.isoformat().replace("+00:00", "Z")
+
     return AuditListResponse(
-        ok=True, items=items, total=total, limit=limit, offset=offset
+        ok=True,
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
+        next_cursor=next_cursor,
     )

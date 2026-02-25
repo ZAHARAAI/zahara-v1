@@ -14,6 +14,7 @@ from ..middleware.auth import get_current_user
 from ..models.provider_key import ProviderKey as ProviderKeyModel
 from ..models.user import User
 from ..security.provider_keys_crypto import decrypt_secret, encrypt_secret, mask_secret
+from ..services.audit import log_audit_event
 
 router = APIRouter(prefix="/provider_keys", tags=["provider_keys"])
 
@@ -213,6 +214,19 @@ def create_provider_key(
     db.commit()
     db.refresh(pk)
 
+    # Audit: log key creation — NEVER log the raw key or encrypted form
+    try:
+        log_audit_event(
+            db,
+            user_id=current_user.id,
+            event_type="provider_key.created",
+            entity_type="provider_key",
+            entity_id=pk.id,
+            payload={"provider": provider, "label": label},
+        )
+    except Exception:
+        pass
+
     return ProviderKeyCreateResponse(
         ok=True,
         provider_key=_to_item(pk),
@@ -288,8 +302,24 @@ def delete_provider_key(
             },
         )
 
+    provider = pk.provider  # capture before delete
+
     db.delete(pk)
     db.commit()
+
+    # Audit: log key deletion — NEVER log key values
+    try:
+        log_audit_event(
+            db,
+            user_id=current_user.id,
+            event_type="provider_key.deleted",
+            entity_type="provider_key",
+            entity_id=key_id,
+            payload={"provider": provider},
+        )
+    except Exception:
+        pass
+
     return {"ok": True, "deleted": True}
 
 

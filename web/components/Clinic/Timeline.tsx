@@ -325,7 +325,7 @@ export default function Timeline() {
       setLoadingRuns(true);
       const res = await listRuns({
         // Slightly higher so deep links (agents → clinic) are more likely to be included.
-        limit: 200,
+        limit: 50,
         offset: 0,
         status: statusFilter || "",
         agent_id: agentId,
