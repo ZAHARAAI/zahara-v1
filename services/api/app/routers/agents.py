@@ -352,8 +352,8 @@ def stats_batch(
             AgentModel.id.label("agent_id"),
             AgentModel.name,
             AgentModel.slug,
-            getattr(AgentModel, "status", None),
-            getattr(AgentModel, "budget_daily_usd", None),
+            AgentModel.status.label("status"),
+            AgentModel.budget_daily_usd.label("budget_daily_usd"),
             func.coalesce(agg_main.c.runs, 0).label("runs"),
             func.coalesce(agg_main.c.success, 0).label("success"),
             func.coalesce(agg_main.c.tokens_total, 0).label("tokens_total"),
@@ -764,7 +764,11 @@ def update_agent(
                     },
                 },
             )
-        agent.budget_daily_usd = body.budget_daily_usd
+        # Treat 0 as "no cap" (null). A budget of exactly $0 is meaningless
+        # and confusing — the UI shows 0 as the empty/default state.
+        agent.budget_daily_usd = (
+            body.budget_daily_usd if body.budget_daily_usd > 0 else None
+        )
 
     db.add(agent)
     db.commit()

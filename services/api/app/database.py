@@ -26,6 +26,9 @@ def get_redis():
 
 # Qdrant Connection
 def get_qdrant():
-    return QdrantClient(
-        url=settings.qdrant_url, api_key=settings.qdrant_api_key.get_secret_value()
+    api_key = (
+        settings.qdrant_api_key.get_secret_value()
+        if settings.qdrant_api_key is not None
+        else None
     )
+    return QdrantClient(url=settings.qdrant_url, api_key=api_key)

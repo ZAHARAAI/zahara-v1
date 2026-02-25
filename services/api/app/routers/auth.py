@@ -129,10 +129,12 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
 
         return AuthResponse(ok=True, access_token=token, user=_user_public(u))
 
+    except HTTPException:
+        raise  # let 4xx/already-formatted errors pass through unchanged
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"ok": False, "error": e},
+            detail={"ok": False, "error": str(e)},
         )
 
 
