@@ -355,8 +355,8 @@ def execute_run_via_router(run_id: str) -> None:
         run.status = "success"
         run.error_message = None
         run.latency_ms = (
-            int((time.time() - run.started_at.timestamp()) * 1000)
-            if getattr(run, "started_at", None)
+            int((time.time() - run.created_at.timestamp()) * 1000)
+            if getattr(run, "created_at", None)
             else None
         )
 
