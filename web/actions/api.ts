@@ -45,6 +45,7 @@ export const api = async (
       }
 
       const json = await res.json();
+      // console.log({ json });
       return { json };
     } catch (e) {
       last = (e as Error).message;
