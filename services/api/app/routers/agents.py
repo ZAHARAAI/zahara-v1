@@ -13,6 +13,7 @@ from fastapi import (
     Query,
     status,
 )
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
@@ -884,119 +885,139 @@ def start_agent_run(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> RunResponse:
-    agent: AgentModel | None = (
-        db.query(AgentModel)
-        .filter(
-            AgentModel.id == agent_id,
-            AgentModel.user_id == current_user.id,
-        )
-        .first()
-    )
-    if not agent:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "ok": False,
-                "error": {"code": "NOT_FOUND", "message": "Agent not found"},
-            },
-        )
-
-    # Job7: lifecycle enforcement
-    # Use `or "active"` to treat NULL status (agents created before migration 002)
-    # as "active" — prevents spurious 409s on legacy agents.
-    agent_status = getattr(agent, "status", None) or "active"
-    if agent_status != "active":
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "ok": False,
-                "error": {
-                    "code": "AGENT_NOT_ACTIVE",
-                    "message": f"Agent is {agent_status}. Activate it to run.",
-                },
-            },
-        )
-
-    # Job7: best-effort daily budget enforcement + metadata
-    budget_meta = None
-    meta, exceeded = evaluate_agent_budget(
-        db,
-        user_id=current_user.id,
-        agent_id=agent.id,
-        budget_daily_usd=getattr(agent, "budget_daily_usd", None),
-    )
-    if meta is not None:
-        budget_meta = meta.as_dict()
-    if exceeded:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "ok": False,
-                "error": {
-                    "code": "BUDGET_EXCEEDED",
-                    "message": "Daily budget exceeded for this agent.",
-                    "meta": budget_meta or {},
-                },
-            },
-        )
-
-    run_id = _new_run_id()
-    request_id = str(uuid4())
-
-    # Track the exact spec version used for this run (for deterministic retry/replay).
-    spec_row = (
-        db.query(AgentSpecModel)
-        .filter(AgentSpecModel.agent_id == agent.id)
-        .order_by(AgentSpecModel.version.desc())
-        .first()
-    )
-
-    run = RunModel(
-        id=run_id,
-        agent_id=agent.id,
-        agent_spec_id=spec_row.id if spec_row else None,
-        user_id=current_user.id,
-        request_id=request_id,
-        status="pending",
-        source=body.source,
-        input=body.input,
-        config=body.config,
-    )
-    db.add(run)
-    db.commit()
-    db.refresh(run)
-
-    db.add(
-        RunEventModel(
-            run_id=run.id,
-            type="system",
-            payload={"event": "run_created", "request_id": request_id},
-        )
-    )
-    db.commit()
-
-    # Audit: run started
     try:
-        log_audit_event(
+        agent: AgentModel | None = (
+            db.query(AgentModel)
+            .filter(
+                AgentModel.id == agent_id,
+                AgentModel.user_id == current_user.id,
+            )
+            .first()
+        )
+        if not agent:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "ok": False,
+                    "error": {"code": "NOT_FOUND", "message": "Agent not found"},
+                },
+            )
+
+        # Job7: lifecycle enforcement
+        # Use `or "active"` to treat NULL status (agents created before migration 002)
+        # as "active" — prevents spurious 409s on legacy agents.
+        agent_status = getattr(agent, "status", None) or "active"
+        if agent_status != "active":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "AGENT_NOT_ACTIVE",
+                        "message": f"Agent is {agent_status}. Activate it to run.",
+                    },
+                },
+            )
+
+        # Job7: best-effort daily budget enforcement + metadata
+        budget_meta = None
+        meta, exceeded = evaluate_agent_budget(
             db,
             user_id=current_user.id,
-            event_type="run.started",
-            entity_type="run",
-            entity_id=run.id,
-            payload={
-                "agent_id": agent.id,
-                "source": body.source,
-                "request_id": request_id,
-            },
+            agent_id=agent.id,
+            budget_daily_usd=getattr(agent, "budget_daily_usd", None),
         )
-    except Exception:
+        if meta is not None:
+            budget_meta = meta.as_dict()
+        if exceeded:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "BUDGET_EXCEEDED",
+                        "message": "Daily budget exceeded for this agent.",
+                        "meta": budget_meta or {},
+                    },
+                },
+            )
+
+        run_id = _new_run_id()
+        request_id = str(uuid4())
+
+        # Track the exact spec version used for this run (for deterministic retry/replay).
+        spec_row = (
+            db.query(AgentSpecModel)
+            .filter(AgentSpecModel.agent_id == agent.id)
+            .order_by(AgentSpecModel.version.desc())
+            .first()
+        )
+
+        run = RunModel(
+            id=run_id,
+            agent_id=agent.id,
+            agent_spec_id=spec_row.id if spec_row else None,
+            user_id=current_user.id,
+            request_id=request_id,
+            status="pending",
+            source=body.source,
+            input=body.input,
+            config=body.config,
+        )
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+
+        db.add(
+            RunEventModel(
+                run_id=run.id,
+                type="system",
+                payload={"event": "run_created", "request_id": request_id},
+            )
+        )
+        db.commit()
+
+        # Audit: run started
+        try:
+            log_audit_event(
+                db,
+                user_id=current_user.id,
+                event_type="run.started",
+                entity_type="run",
+                entity_id=run.id,
+                payload={
+                    "agent_id": agent.id,
+                    "source": body.source,
+                    "request_id": request_id,
+                },
+            )
+        except Exception:
+            db.rollback()
+
+        background_tasks.add_task(execute_run_via_router, run.id)
+
+        return RunResponse(
+            ok=True, run_id=run.id, request_id=request_id, budget=budget_meta
+        )
+
+    # Let HTTPExceptions pass through untouched
+    except HTTPException as http_exc:
+        raise http_exc
+
+    # Catch unexpected internal errors
+    except Exception as e:
         db.rollback()
 
-    background_tasks.add_task(execute_run_via_router, run.id)
-
-    return RunResponse(
-        ok=True, run_id=run.id, request_id=request_id, budget=budget_meta
-    )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": {
+                    "type": e.__class__.__name__,
+                    "message": str(e),
+                },
+            },
+        )
 
 
 # ---------------------------

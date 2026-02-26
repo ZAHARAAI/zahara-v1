@@ -16,7 +16,7 @@ from fastapi import (
     Request,
     status,
 )
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -303,128 +303,151 @@ def retry_run(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> RunRetryResponse:
-    """Create a new run that retries an existing run using the same AgentSpec version."""
+    try:
+        """Create a new run that retries an existing run using the same AgentSpec version."""
 
-    old = (
-        db.query(RunModel)
-        .filter(RunModel.id == run_id, RunModel.user_id == current_user.id)
-        .first()
-    )
-    if not old:
-        raise HTTPException(status_code=404, detail="run_not_found")
-    if not old.agent_id:
-        raise HTTPException(status_code=400, detail="run_missing_agent")
-
-    agent = (
-        db.query(AgentModel)
-        .filter(AgentModel.id == old.agent_id, AgentModel.user_id == current_user.id)
-        .first()
-    )
-    if not agent:
-        raise HTTPException(status_code=404, detail="agent_not_found")
-
-    # Use `or "active"` to treat NULL status (agents created before migration 002)
-    # as "active" — prevents spurious 409s on legacy agents.
-    agent_status = getattr(agent, "status", None) or "active"
-    if agent_status != "active":
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "ok": False,
-                "error": {
-                    "code": "AGENT_NOT_ACTIVE",
-                    "message": f"Agent is {agent_status}. Activate it to run.",
-                },
-            },
-        )
-
-    # Ensure we retry with the same spec version
-    agent_spec_id = getattr(old, "agent_spec_id", None)
-    if agent_spec_id:
-        spec = (
-            db.query(AgentSpecModel).filter(AgentSpecModel.id == agent_spec_id).first()
-        )
-        if not spec:
-            agent_spec_id = None
-
-    # If old run does not have a spec tracked yet, fall back to latest version.
-    if not agent_spec_id:
-        spec = (
-            db.query(AgentSpecModel)
-            .filter(AgentSpecModel.agent_id == agent.id)
-            .order_by(AgentSpecModel.version.desc())
+        old = (
+            db.query(RunModel)
+            .filter(RunModel.id == run_id, RunModel.user_id == current_user.id)
             .first()
         )
-        agent_spec_id = spec.id if spec else None
+        if not old:
+            raise HTTPException(status_code=404, detail="run_not_found")
+        if not old.agent_id:
+            raise HTTPException(status_code=400, detail="run_missing_agent")
 
-    # Best-effort daily budget enforcement
-    _meta, exceeded = evaluate_agent_budget(
-        db,
-        user_id=current_user.id,
-        agent_id=agent.id,
-        budget_daily_usd=getattr(agent, "budget_daily_usd", None),
-    )
-    if exceeded:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
+        agent = (
+            db.query(AgentModel)
+            .filter(
+                AgentModel.id == old.agent_id, AgentModel.user_id == current_user.id
+            )
+            .first()
+        )
+        if not agent:
+            raise HTTPException(status_code=404, detail="agent_not_found")
+
+        # Use `or "active"` to treat NULL status (agents created before migration 002)
+        # as "active" — prevents spurious 409s on legacy agents.
+        agent_status = getattr(agent, "status", None) or "active"
+        if agent_status != "active":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "AGENT_NOT_ACTIVE",
+                        "message": f"Agent is {agent_status}. Activate it to run.",
+                    },
+                },
+            )
+
+        # Ensure we retry with the same spec version
+        agent_spec_id = getattr(old, "agent_spec_id", None)
+        if agent_spec_id:
+            spec = (
+                db.query(AgentSpecModel)
+                .filter(AgentSpecModel.id == agent_spec_id)
+                .first()
+            )
+            if not spec:
+                agent_spec_id = None
+
+        # If old run does not have a spec tracked yet, fall back to latest version.
+        if not agent_spec_id:
+            spec = (
+                db.query(AgentSpecModel)
+                .filter(AgentSpecModel.agent_id == agent.id)
+                .order_by(AgentSpecModel.version.desc())
+                .first()
+            )
+            agent_spec_id = spec.id if spec else None
+
+        # Best-effort daily budget enforcement
+        _meta, exceeded = evaluate_agent_budget(
+            db,
+            user_id=current_user.id,
+            agent_id=agent.id,
+            budget_daily_usd=getattr(agent, "budget_daily_usd", None),
+        )
+        if exceeded:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "BUDGET_EXCEEDED",
+                        "message": "Daily budget exceeded for this agent.",
+                        "meta": _meta.as_dict() if _meta is not None else {},
+                    },
+                },
+            )
+
+        new_run_id = _new_run_id()
+        request_id = str(uuid4())
+
+        new_run = RunModel(
+            id=new_run_id,
+            agent_id=agent.id,
+            agent_spec_id=agent_spec_id,
+            retry_of_run_id=old.id,
+            user_id=current_user.id,
+            request_id=request_id,
+            status="pending",
+            source="clinic",
+            input=old.input,
+            config=old.config,
+        )
+        db.add(new_run)
+        db.commit()
+        db.refresh(new_run)
+
+        db.add(
+            RunEventModel(
+                run_id=new_run.id,
+                type="system",
+                payload={
+                    "event": "run_created",
+                    "request_id": request_id,
+                    "retry_of": old.id,
+                },
+            )
+        )
+        db.commit()
+
+        # Audit
+        try:
+            log_audit_event(
+                db,
+                user_id=current_user.id,
+                event_type="run.retried",
+                entity_type="run",
+                entity_id=new_run.id,
+                payload={"retry_of": old.id, "agent_id": agent.id},
+            )
+        except Exception:
+            db.rollback()
+
+        background_tasks.add_task(execute_run_via_router, new_run.id)
+
+        return RunRetryResponse(ok=True, new_run_id=new_run.id, retry_of=old.id)
+    # Let HTTPExceptions pass through untouched
+    except HTTPException as http_exc:
+        raise http_exc
+
+    # Catch unexpected internal errors
+    except Exception as e:
+        db.rollback()
+
+        return JSONResponse(
+            status_code=500,
+            content={
                 "ok": False,
                 "error": {
-                    "code": "BUDGET_EXCEEDED",
-                    "message": "Daily budget exceeded for this agent.",
-                    "meta": _meta.as_dict() if _meta is not None else {},
+                    "type": e.__class__.__name__,
+                    "message": str(e),
                 },
             },
         )
-
-    new_run_id = _new_run_id()
-    request_id = str(uuid4())
-
-    new_run = RunModel(
-        id=new_run_id,
-        agent_id=agent.id,
-        agent_spec_id=agent_spec_id,
-        retry_of_run_id=old.id,
-        user_id=current_user.id,
-        request_id=request_id,
-        status="pending",
-        source="clinic",
-        input=old.input,
-        config=old.config,
-    )
-    db.add(new_run)
-    db.commit()
-    db.refresh(new_run)
-
-    db.add(
-        RunEventModel(
-            run_id=new_run.id,
-            type="system",
-            payload={
-                "event": "run_created",
-                "request_id": request_id,
-                "retry_of": old.id,
-            },
-        )
-    )
-    db.commit()
-
-    # Audit
-    try:
-        log_audit_event(
-            db,
-            user_id=current_user.id,
-            event_type="run.retried",
-            entity_type="run",
-            entity_id=new_run.id,
-            payload={"retry_of": old.id, "agent_id": agent.id},
-        )
-    except Exception:
-        db.rollback()
-
-    background_tasks.add_task(execute_run_via_router, new_run.id)
-
-    return RunRetryResponse(ok=True, new_run_id=new_run.id, retry_of=old.id)
 
 
 @router.get("/{run_id}/export", response_model=RunExportResponse)
