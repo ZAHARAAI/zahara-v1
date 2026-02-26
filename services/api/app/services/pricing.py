@@ -33,63 +33,163 @@ def _per_1m_to_per_1k(price_per_1m: float) -> float:
 # Sources:
 # - OpenAI model pricing pages / pricing docs
 # - Claude pricing docs (platform.claude.com)
+# - Groq pricing docs
+# - Google AI / Vertex AI pricing docs
 #
 # IMPORTANT:
 # If you add new models to the UI/specs, add them here too.
 MODEL_PRICING_USD_PER_1K: Dict[str, ModelPricing] = {
     # -------------------------
-    # OpenAI (router default + UI defaults + agents.yaml mappings)
+    # OpenAI
     # -------------------------
-    # Router DEFAULT_MODEL in services/router/app/main.py
     # gpt-4o-mini: $0.15 / 1M input, $0.60 / 1M output
     "gpt-4o-mini": ModelPricing(
         prompt_per_1k=_per_1m_to_per_1k(0.15),
         completion_per_1k=_per_1m_to_per_1k(0.60),
     ),
-    # Frontend DEFAULT_GRAPH in web/hooks/useFlowStore.ts
+    # gpt-4o: $2.50 / 1M input, $10.00 / 1M output
+    "gpt-4o": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(2.50),
+        completion_per_1k=_per_1m_to_per_1k(10.00),
+    ),
+    # gpt-4.1: $2.00 / 1M input, $8.00 / 1M output
+    "gpt-4.1": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(2.00),
+        completion_per_1k=_per_1m_to_per_1k(8.00),
+    ),
     # gpt-4.1-mini: $0.40 / 1M input, $1.60 / 1M output
     "gpt-4.1-mini": ModelPricing(
         prompt_per_1k=_per_1m_to_per_1k(0.40),
         completion_per_1k=_per_1m_to_per_1k(1.60),
     ),
-    # agents.yaml: openai mappings
-    # gpt-3.5-turbo (commonly priced like gpt-3.5-turbo-0125): $0.25 / 1M input, $0.75 / 1M output
-    "gpt-3.5-turbo": ModelPricing(
-        prompt_per_1k=_per_1m_to_per_1k(0.25),
-        completion_per_1k=_per_1m_to_per_1k(0.75),
+    # gpt-4.1-nano: $0.10 / 1M input, $0.40 / 1M output
+    "gpt-4.1-nano": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(0.10),
+        completion_per_1k=_per_1m_to_per_1k(0.40),
     ),
-    # agents.yaml: gpt-4-turbo: $5.00 / 1M input, $15.00 / 1M output
+    # gpt-4-turbo: $5.00 / 1M input, $15.00 / 1M output
     "gpt-4-turbo": ModelPricing(
         prompt_per_1k=_per_1m_to_per_1k(5.00),
         completion_per_1k=_per_1m_to_per_1k(15.00),
     ),
-    # agents.yaml: "gpt-4" is an alias; map to the common GPT-4 tier used in OpenAI docs (e.g. gpt-4-0613)
-    # $15.00 / 1M input, $30.00 / 1M output
+    # gpt-4: $15.00 / 1M input, $30.00 / 1M output
     "gpt-4": ModelPricing(
         prompt_per_1k=_per_1m_to_per_1k(15.00),
         completion_per_1k=_per_1m_to_per_1k(30.00),
     ),
-    # -------------------------
-    # Anthropic (agents.yaml mappings)
-    # -------------------------
-    # agents.yaml: Claude 3 Haiku (claude-3-haiku-20240307)
-    # Claude docs list Haiku 3 pricing: $0.25 / MTok input, $1.25 / MTok output
-    "claude-3-haiku-20240307": ModelPricing(
+    # gpt-3.5-turbo: $0.25 / 1M input, $0.75 / 1M output
+    "gpt-3.5-turbo": ModelPricing(
         prompt_per_1k=_per_1m_to_per_1k(0.25),
-        completion_per_1k=_per_1m_to_per_1k(1.25),
+        completion_per_1k=_per_1m_to_per_1k(0.75),
     ),
-    # agents.yaml: Claude 3 Sonnet (claude-3-sonnet-20240229)
-    # Widely referenced Sonnet pricing: $3.00 / MTok input, $15.00 / MTok output
+    # o1: $15.00 / 1M input, $60.00 / 1M output
+    "o1": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(15.00),
+        completion_per_1k=_per_1m_to_per_1k(60.00),
+    ),
+    # o1-mini: $3.00 / 1M input, $12.00 / 1M output
+    "o1-mini": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(3.00),
+        completion_per_1k=_per_1m_to_per_1k(12.00),
+    ),
+    # o3-mini: $1.10 / 1M input, $4.40 / 1M output
+    "o3-mini": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(1.10),
+        completion_per_1k=_per_1m_to_per_1k(4.40),
+    ),
+    # -------------------------
+    # Anthropic
+    # -------------------------
+    # claude-3-5-sonnet (latest): $3.00 / MTok input, $15.00 / MTok output
+    "claude-3-5-sonnet-20241022": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(3.00),
+        completion_per_1k=_per_1m_to_per_1k(15.00),
+    ),
+    "claude-3-5-sonnet-20240620": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(3.00),
+        completion_per_1k=_per_1m_to_per_1k(15.00),
+    ),
+    # claude-3-5-haiku: $0.80 / MTok input, $4.00 / MTok output
+    "claude-3-5-haiku-20241022": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(0.80),
+        completion_per_1k=_per_1m_to_per_1k(4.00),
+    ),
+    # claude-3-opus: $15.00 / MTok input, $75.00 / MTok output
+    "claude-3-opus-20240229": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(15.00),
+        completion_per_1k=_per_1m_to_per_1k(75.00),
+    ),
+    # claude-3-sonnet: $3.00 / MTok input, $15.00 / MTok output
     "claude-3-sonnet-20240229": ModelPricing(
         prompt_per_1k=_per_1m_to_per_1k(3.00),
         completion_per_1k=_per_1m_to_per_1k(15.00),
     ),
+    # claude-3-haiku: $0.25 / MTok input, $1.25 / MTok output
+    "claude-3-haiku-20240307": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(0.25),
+        completion_per_1k=_per_1m_to_per_1k(1.25),
+    ),
     # -------------------------
-    # Local models referenced by agents.yaml (treat as $0)
+    # Google Gemini
+    # -------------------------
+    # gemini-1.5-pro: $1.25 / 1M input (≤128k), $5.00 / 1M output
+    "gemini-1.5-pro": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(1.25),
+        completion_per_1k=_per_1m_to_per_1k(5.00),
+    ),
+    "gemini-1.5-pro-latest": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(1.25),
+        completion_per_1k=_per_1m_to_per_1k(5.00),
+    ),
+    # gemini-1.5-flash: $0.075 / 1M input (≤128k), $0.30 / 1M output
+    "gemini-1.5-flash": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(0.075),
+        completion_per_1k=_per_1m_to_per_1k(0.30),
+    ),
+    "gemini-1.5-flash-latest": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(0.075),
+        completion_per_1k=_per_1m_to_per_1k(0.30),
+    ),
+    # gemini-2.0-flash: $0.10 / 1M input, $0.40 / 1M output
+    "gemini-2.0-flash": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(0.10),
+        completion_per_1k=_per_1m_to_per_1k(0.40),
+    ),
+    "gemini-2.0-flash-exp": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(0.10),
+        completion_per_1k=_per_1m_to_per_1k(0.40),
+    ),
+    # -------------------------
+    # Groq (inference-as-a-service; prices as of early 2026)
+    # -------------------------
+    # llama-3.3-70b-versatile: $0.59 / 1M input, $0.79 / 1M output
+    "llama-3.3-70b-versatile": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(0.59),
+        completion_per_1k=_per_1m_to_per_1k(0.79),
+    ),
+    # llama-3.1-8b-instant: $0.05 / 1M input, $0.08 / 1M output
+    "llama-3.1-8b-instant": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(0.05),
+        completion_per_1k=_per_1m_to_per_1k(0.08),
+    ),
+    # llama-3.1-70b-versatile: $0.59 / 1M input, $0.79 / 1M output
+    "llama-3.1-70b-versatile": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(0.59),
+        completion_per_1k=_per_1m_to_per_1k(0.79),
+    ),
+    # mixtral-8x7b: $0.24 / 1M input, $0.24 / 1M output
+    "mixtral-8x7b-32768": ModelPricing(
+        prompt_per_1k=_per_1m_to_per_1k(0.24),
+        completion_per_1k=_per_1m_to_per_1k(0.24),
+    ),
+    # -------------------------
+    # Local / self-hosted models (treat as $0)
     # -------------------------
     "tinyllama": ModelPricing(prompt_per_1k=0.0, completion_per_1k=0.0),
     "phi3:mini": ModelPricing(prompt_per_1k=0.0, completion_per_1k=0.0),
     "llama2": ModelPricing(prompt_per_1k=0.0, completion_per_1k=0.0),
+    "llama3": ModelPricing(prompt_per_1k=0.0, completion_per_1k=0.0),
+    "mistral": ModelPricing(prompt_per_1k=0.0, completion_per_1k=0.0),
 }
 
 

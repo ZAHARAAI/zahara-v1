@@ -418,26 +418,55 @@ export default function AgentDetailPage() {
                 data={chartData}
                 margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
               >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                <YAxis yAxisId="left" tick={{ fontSize: 12 }} />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="var(--color-border)"
+                />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 12, fill: "var(--color-fg-secondary)" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  yAxisId="left"
+                  tick={{ fontSize: 12, fill: "var(--color-fg-secondary)" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
                 <YAxis
                   yAxisId="right"
                   orientation="right"
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 12, fill: "var(--color-fg-secondary)" }}
+                  axisLine={false}
+                  tickLine={false}
                 />
-                <Tooltip />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--color-panel)",
+                    border: "1px solid var(--color-border)",
+                    borderRadius: "12px",
+                    fontSize: "12px",
+                  }}
+                />
                 <Line
                   yAxisId="left"
                   type="monotone"
                   dataKey="runs"
+                  stroke="var(--color-accent)"
+                  strokeWidth={2}
                   dot={false}
+                  activeDot={{ r: 4 }}
                 />
                 <Line
                   yAxisId="right"
                   type="monotone"
                   dataKey="cost_usd"
+                  stroke="var(--color-fg-secondary)"
+                  strokeWidth={2}
+                  strokeDasharray="4 2"
                   dot={false}
+                  activeDot={{ r: 4 }}
                 />
               </LineChart>
             </ResponsiveContainer>

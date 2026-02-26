@@ -10,11 +10,26 @@ import { listAudit, type AuditLogItem } from "@/services/api";
 
 const typeOptions: [string, string][] = [
   ["", "All types"],
+  // Agent lifecycle
+  ["agent.created", "agent.created"],
+  ["agent.updated", "agent.updated"],
+  ["agent.deleted", "agent.deleted"],
+  ["agent.spec_created", "agent.spec_created"],
+  ["agent.killed", "agent.killed"],
+  // Runs
   ["run.started", "run.started"],
   ["run.retried", "run.retried"],
-  ["agent.status_changed", "agent.status_changed"],
-  ["agent.killed", "agent.killed"],
+  ["run.cancelled", "run.cancelled"],
+  // Auth
+  ["user.login", "user.login"],
+  ["user.registered", "user.registered"],
+  // Provider keys
   ["provider_key.created", "provider_key.created"],
+  ["provider_key.deleted", "provider_key.deleted"],
+  // API keys
+  ["apikey.created", "apikey.created"],
+  ["apikey.deactivated", "apikey.deactivated"],
+  ["apikey.deleted", "apikey.deleted"],
 ];
 
 const entityTypeOptions: [string, string][] = [
@@ -22,6 +37,8 @@ const entityTypeOptions: [string, string][] = [
   ["run", "run"],
   ["agent", "agent"],
   ["provider_key", "provider_key"],
+  ["api_key", "api_key"],
+  ["user", "user"],
 ];
 
 export default function AuditPage() {

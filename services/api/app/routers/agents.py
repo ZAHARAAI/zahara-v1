@@ -29,6 +29,7 @@ from ..models.user import User
 from ..services.audit import log_audit_event
 from ..services.budget import (
     evaluate_agent_budget,
+    get_agent_spend_today_usd,
     get_spend_today_by_agent_ids,
 )
 from ..services.run_executor import execute_run_via_router
@@ -263,6 +264,10 @@ class AgentStatsDetailResponse(BaseModel):
     cost_total_usd: float
     avg_latency_ms: float
     p95_latency_ms: float
+
+    # Today's spend for budget progress bar on the agent detail page
+    spent_today_usd: float = 0.0
+    spent_today_is_approximate: bool = False
 
 
 # ---------------------------
@@ -1253,6 +1258,10 @@ def stats_single_agent(
 
     success_rate = (success / runs) if runs > 0 else 0.0
 
+    spent_today_usd, spent_today_is_approximate = get_agent_spend_today_usd(
+        db, user_id=current_user.id, agent_id=agent_id
+    )
+
     return AgentStatsDetailResponse(
         ok=True,
         agent_id=agent_id,
@@ -1263,4 +1272,6 @@ def stats_single_agent(
         cost_total_usd=cost_total_usd,
         avg_latency_ms=avg_latency_ms,
         p95_latency_ms=p95_latency_ms,
+        spent_today_usd=spent_today_usd,
+        spent_today_is_approximate=spent_today_is_approximate,
     )

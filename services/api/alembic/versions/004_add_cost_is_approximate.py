@@ -26,8 +26,9 @@ def upgrade() -> None:
             server_default=sa.false(),
         ),
     )
-    # Drop server default to keep schema clean
-    op.alter_column("runs", "cost_is_approximate", server_default=None)
+    # NOTE: server_default is intentionally kept so that raw SQL inserts
+    # (e.g. seed scripts, direct psql) never hit a NOT NULL violation.
+    # The ORM model also sets default=False at the Python level.
 
 
 def downgrade() -> None:

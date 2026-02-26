@@ -143,6 +143,9 @@ def get_spend_today_by_agent_ids(
 ) -> Tuple[Dict[str, float], Dict[str, bool]]:
     start, end = utc_today_range(now)
 
+    ids_list = list(agent_ids) if agent_ids else None
+
+    # Primary: sum stored cost_estimate_usd per agent
     q = (
         db.query(
             RunModel.agent_id,
@@ -157,13 +160,54 @@ def get_spend_today_by_agent_ids(
         .group_by(RunModel.agent_id)
     )
 
-    if agent_ids:
-        q = q.filter(RunModel.agent_id.in_(list(agent_ids)))
+    if ids_list:
+        q = q.filter(RunModel.agent_id.in_(ids_list))
 
     rows = q.all()
 
     spent_map = {str(aid): float(cost or 0.0) for aid, cost in rows}
+    # Default to not-approximate; we'll correct below for agents with missing costs
     approx_map = {str(aid): False for aid in spent_map.keys()}
+
+    # Detect agents that have at least one run with NULL cost_estimate_usd today.
+    # If cost_is_approximate is True on any run, the batch spend figure is also approximate.
+    missing_q = (
+        db.query(RunModel.agent_id)
+        .filter(
+            RunModel.user_id == user_id,
+            RunModel.created_at >= start,
+            RunModel.created_at < end,
+            RunModel.agent_id.isnot(None),
+            RunModel.cost_estimate_usd.is_(None),
+        )
+        .distinct()
+    )
+    if ids_list:
+        missing_q = missing_q.filter(RunModel.agent_id.in_(ids_list))
+
+    for (aid,) in missing_q.all():
+        key = str(aid)
+        approx_map[key] = True
+        # Estimate cost for missing runs and add to spend map
+        missing_runs = (
+            db.query(RunModel)
+            .filter(
+                RunModel.user_id == user_id,
+                RunModel.agent_id == aid,
+                RunModel.created_at >= start,
+                RunModel.created_at < end,
+                RunModel.cost_estimate_usd.is_(None),
+            )
+            .limit(200)
+            .all()
+        )
+        extra = 0.0
+        for r in missing_runs:
+            est = _estimate_run_cost_usd(r)
+            if est is not None:
+                extra += float(est)
+        if extra > 0:
+            spent_map[key] = spent_map.get(key, 0.0) + extra
 
     return spent_map, approx_map
 
