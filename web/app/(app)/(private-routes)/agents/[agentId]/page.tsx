@@ -27,6 +27,7 @@ import {
   type RunListItem,
   type AuditLogItem,
 } from "@/services/api";
+import { toPlainDecimal } from "@/lib/utilities";
 
 function fmtUsd(n: number) {
   if (!Number.isFinite(n)) return "—";
@@ -172,13 +173,21 @@ export default function AgentDetailPage() {
   }, [runs, period]);
 
   const spentTodayUsd = useMemo(() => {
+    // 1) Prefer backend accurate value — it sums ALL today's runs server-side,
+    //    including runs beyond the 200-run client fetch limit, and adds
+    //    best-effort estimates for runs missing stored cost.
+    if (typeof stats?.spent_today_usd === "number")
+      return toPlainDecimal(stats.spent_today_usd);
+
+    // 2) Fallback: derive from client-side run list (capped at 200 fetched runs).
+    //    Used when the backend hasn't returned the field yet (e.g. loading state).
     const today = new Date();
     const key = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
       today.getDate(),
     ).padStart(2, "0")}`;
     const pt = chartData.find((x) => x.date === key);
-    return pt?.cost_usd ?? 0;
-  }, [chartData]);
+    return toPlainDecimal(pt?.cost_usd ?? 0);
+  }, [stats, chartData]);
 
   const spentTodayIsApprox = useMemo(() => {
     // 1) Prefer backend truth (ultimate correctness)
@@ -213,7 +222,7 @@ export default function AgentDetailPage() {
   const budgetRatio = useMemo(() => {
     const b = Number(editingBudget ?? 0);
     if (!(b > 0)) return 0;
-    return Math.max(0, Math.min(1, spentTodayUsd / b));
+    return Math.max(0, Math.min(1, Number(spentTodayUsd) / b));
   }, [spentTodayUsd, editingBudget]);
 
   async function save() {
@@ -341,7 +350,9 @@ export default function AgentDetailPage() {
               />
               <div className="text-sm opacity-70">
                 Today:{" "}
-                <span className="font-medium">{fmtUsd(spentTodayUsd)}</span>{" "}
+                <span className="font-medium">
+                  {fmtUsd(Number(spentTodayUsd))}
+                </span>{" "}
                 {spentTodayIsApprox ? (
                   <span
                     className="ml-1 inline-flex items-center rounded-full border border-border px-1.5 py-0.5 text-[10px] opacity-80"
@@ -356,7 +367,7 @@ export default function AgentDetailPage() {
               <div
                 className="h-full bg-foreground/60"
                 style={{ width: `${Math.round(budgetRatio * 100)}%` }}
-                title={`${fmtUsd(spentTodayUsd)} / ${fmtUsd(editingBudget)}`}
+                title={`${fmtUsd(Number(spentTodayUsd))} / ${fmtUsd(editingBudget)}`}
               />
             </div>
           </div>

@@ -21,6 +21,7 @@ import {
   type RunListItem,
   type AuditLogItem,
 } from "@/services/api";
+import { toPlainDecimal } from "@/lib/utilities";
 
 function fmtUsd(n: number) {
   if (Number.isNaN(n)) return "—";
@@ -99,11 +100,11 @@ export default function OverviewPage() {
     return pts.map((p) => ({
       date: p.date,
       runs: p.runs,
-      cost_usd: p.cost_usd,
+      cost_usd: toPlainDecimal(p.cost_usd),
       tokens_total: p.tokens_total,
     }));
   }, [summary]);
-
+  console.log({ chartData });
   const kpis = useMemo(() => {
     const s = summary;
     if (!s)
