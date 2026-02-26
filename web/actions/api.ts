@@ -32,8 +32,10 @@ export const api = async (
         try {
           const body = await res.json();
           console.log(body);
-          if (body?.error) errorMsg = body.error;
-          else if (body?.detail?.error?.message === "string")
+          if (typeof body?.error === "string") errorMsg = body.error;
+          else if (typeof body?.error?.message === "string")
+            errorMsg = body.error.message;
+          else if (typeof body?.detail?.error?.message === "string")
             errorMsg = body.detail.error.message;
           else if (typeof body?.detail === "string") errorMsg = body.detail;
         } catch {

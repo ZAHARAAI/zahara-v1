@@ -66,7 +66,9 @@ class Run(Base):
     tokens_out = Column(Integer, nullable=True)
     tokens_total = Column(Integer, nullable=True)
     cost_estimate_usd = Column(Float, nullable=True)
-    cost_is_approximate = Column(Boolean, nullable=False, server_default="false")
+    cost_is_approximate = Column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     error_message = Column(Text, nullable=True)
 
     # Persist the user's primary input for auditing/replay.
