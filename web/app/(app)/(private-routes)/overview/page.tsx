@@ -169,31 +169,31 @@ export default function OverviewPage() {
               >
                 <CartesianGrid
                   strokeDasharray="3 3"
-                  stroke="var(--color-border)"
+                  stroke="hsl(var(--border))"
                 />
                 <XAxis
                   dataKey="date"
-                  tick={{ fontSize: 12, fill: "var(--color-fg-secondary)" }}
+                  tick={{ fontSize: 12, fill: "hsl(var(--fg-secondary))" }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
                   yAxisId="left"
-                  tick={{ fontSize: 12, fill: "var(--color-fg-secondary)" }}
+                  tick={{ fontSize: 12, fill: "hsl(var(--fg-secondary))" }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
                   yAxisId="right"
                   orientation="right"
-                  tick={{ fontSize: 12, fill: "var(--color-fg-secondary)" }}
+                  tick={{ fontSize: 12, fill: "hsl(var(--fg-secondary))" }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <Tooltip
                   contentStyle={{
-                    background: "var(--color-panel)",
-                    border: "1px solid var(--color-border)",
+                    background: "hsl(var(--panel))",
+                    border: "1px solid hsl(var(--border))",
                     borderRadius: "12px",
                     fontSize: "12px",
                   }}
@@ -202,7 +202,7 @@ export default function OverviewPage() {
                   yAxisId="left"
                   type="monotone"
                   dataKey="runs"
-                  stroke="var(--color-accent)"
+                  stroke="hsl(var(--accent))"
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4 }}
@@ -211,7 +211,7 @@ export default function OverviewPage() {
                   yAxisId="right"
                   type="monotone"
                   dataKey="cost_usd"
-                  stroke="var(--color-fg-secondary)"
+                  stroke="hsl(var(--fg-secondary))"
                   strokeWidth={2}
                   strokeDasharray="4 2"
                   dot={false}
