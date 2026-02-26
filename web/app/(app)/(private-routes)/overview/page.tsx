@@ -104,7 +104,7 @@ export default function OverviewPage() {
       tokens_total: p.tokens_total,
     }));
   }, [summary]);
-  console.log({ chartData });
+  
   const kpis = useMemo(() => {
     const s = summary;
     if (!s)

@@ -10,8 +10,8 @@ export const api = async (
   path: string,
   init: RequestInit = {},
 ): Promise<{ json?: any; error?: string }> => {
-  const token = await getAccessToken();
-  if (!token) return { error: "NO ACCESS TOKEN FOUND" };
+  // const token = await getAccessToken();
+  // if (!token) return { error: "NO ACCESS TOKEN FOUND" };
 
   let last: string = "";
   for (let attempt = 0; attempt <= Retry.max; attempt++) {
@@ -20,7 +20,7 @@ export const api = async (
         method: init.method ?? "GET",
         headers: {
           "Content-Type": "application/json",
-          "x-jwt-token": token,
+          // "x-jwt-token": token,
         },
         body: init.body,
         cache: "no-store",

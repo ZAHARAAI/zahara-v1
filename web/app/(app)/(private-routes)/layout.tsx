@@ -8,8 +8,8 @@ export default async function PrivateRoutesLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const token = await getAccessToken();
-  if (!token) redirect("/login");
+  // const token = await getAccessToken();
+  // if (!token) redirect("/login");
   return (
     <div className="flex h-dvh bg-bg text-fg min-w-[1200px]">
       <LeftNav />

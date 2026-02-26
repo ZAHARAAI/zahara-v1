@@ -13,10 +13,10 @@ type Params = { params: Promise<{ runId: string }> };
 
 export async function GET(req: Request, { params }: Params) {
   const { runId } = await params;
-  const token = await getAccessToken();
-  if (!token) {
-    return new Response("unauthorized", { status: 401 });
-  }
+  // const token = await getAccessToken();
+  // if (!token) {
+  //   return new Response("unauthorized", { status: 401 });
+  // }
 
   const base = mustEnv("NEXT_PUBLIC_API_BASE_URL").replace(/\/$/, "");
   const url = new URL(req.url);
@@ -31,7 +31,7 @@ export async function GET(req: Request, { params }: Params) {
   const incomingRid = req.headers.get("x-request-id");
   const lastEventId = req.headers.get("last-event-id");
   const headers: Record<string, string> = {
-    "x-jwt-token": token,
+    // "x-jwt-token": token,
     Accept: "text/event-stream",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",

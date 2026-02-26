@@ -1,100 +1,10 @@
-"use client";
+import FlowPage from "@/components/Flow/Flow";
+import { Suspense } from "react";
 
-import Canvas from "@/components/Flow/Canvas";
-import Inspector from "@/components/Flow/Inspector";
-import Toolbar from "@/components/Flow/Toolbar";
-import LeftPanel from "@/components/Flow/LeftPanel";
-import { Suspense, useEffect, useRef, useState, useTransition } from "react";
-import { Button } from "@/components/ui/Button";
-import { useSearchParams } from "next/navigation";
-import { useFlowStore } from "@/hooks/useFlowStore";
-import { getAgent } from "@/services/api";
-import { toast } from "sonner";
-import { Loader2Icon } from "lucide-react";
-
-export default function FlowPage() {
-  const searchParams = useSearchParams();
-  const agent_id = searchParams.get("agentId");
-  const [showInspector, setShowInspector] = useState(true);
-  const [leftCollapsed, setLeftCollapsed] = useState(false);
-  const hydratedRef = useRef<string | null>(null);
-  const [loading, startTransition] = useTransition();
-
-  const { meta, setFlowMeta, setFlowName, setGraph, setRunInput } =
-    useFlowStore();
-
-  useEffect(() => {
-    const loadAgent = async (id: string) => {
-      if (hydratedRef.current === id) return;
-      hydratedRef.current = id;
-      try {
-        const { agent, spec, spec_version } = await getAgent(id);
-        setFlowName(agent.name ?? "Untitled Flow Agent");
-        setFlowMeta?.({
-          ...meta,
-          agentId: agent.id,
-          agentVersion: spec_version,
-          description: agent.description,
-        });
-
-        if (spec?.mode === "flow" && spec?.graph?.nodes && spec?.graph?.edges) {
-          setGraph(spec.graph.nodes, spec.graph.edges);
-        }
-      } catch (err) {
-        toast.error((err as Error)?.message ?? "Failed to load agent");
-      }
-    };
-
-    startTransition(async () => {
-      if (agent_id && agent_id !== meta?.agentId) {
-        await loadAgent(agent_id);
-      } else {
-        const lastAgentId = localStorage.getItem("zahara.flow.lastAgentId");
-        if (lastAgentId && lastAgentId !== meta?.agentId) {
-          await loadAgent(lastAgentId);
-        }
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, agent_id]);
-
-  useEffect(() => {
-    const lastUserInput = localStorage.getItem("zahara.flow.lastRunInput");
-    if (lastUserInput?.trim()) setRunInput(lastUserInput);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+export default function Flow() {
   return (
-    <div className="relative h-[calc(100vh-4rem)]">
-      <Suspense fallback={<div className="p-4 text-sm">Loading flow…</div>}>
-        <Toolbar />
-      </Suspense>
-
-      <div className="mt-3 flex items-center justify-end gap-2">
-        <Button variant="ghost" onClick={() => setShowInspector((v) => !v)}>
-          {showInspector ? "Hide Inspector" : "Show Inspector"}
-        </Button>
-      </div>
-
-      <div className="mt-3 flex gap-3 h-[calc(100%-4rem)]">
-        <LeftPanel
-          collapsed={leftCollapsed}
-          onToggle={() => setLeftCollapsed((v) => !v)}
-        />
-
-        <div className="flex-1 border border-border rounded-2xl overflow-hidden">
-          <Canvas />
-        </div>
-
-        {showInspector && (
-          <div className="w-[320px] border border-border rounded-2xl overflow-hidden">
-            <Inspector />
-          </div>
-        )}
-      </div>
-      {loading && (
-        <Loader2Icon className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-7 h-7 animate-spin" />
-      )}
-    </div>
+    <Suspense fallback={<></>}>
+      <FlowPage />
+    </Suspense>
   );
 }

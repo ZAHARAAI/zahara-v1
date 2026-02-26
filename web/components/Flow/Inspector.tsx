@@ -242,7 +242,11 @@ export default function Inspector() {
 
       <div className="flex-1 overflow-auto p-3 space-y-3">
         {!selected ? (
-          <div className="text-sm opacity-70">Select a node to edit.</div>
+          tab !== "logs" ? (
+            <div className="text-sm opacity-70">Select a node to edit.</div>
+          ) : (
+            ""
+          )
         ) : (
           <>
             {tab === "config" && (
@@ -543,6 +547,43 @@ export default function Inspector() {
               </div>
             )}
           </>
+        )}
+
+        {!selected && tab === "logs" && (
+          <div className="space-y-2">
+            {formattedLogs.length === 0 ? (
+              <div className="text-xs opacity-70">
+                Run logs will appear here during execution.
+              </div>
+            ) : (
+              <div className="max-h-[360px] overflow-auto rounded-xl border border-border bg-card p-2">
+                {formattedLogs.map((line, i) => (
+                  <div
+                    key={i}
+                    className={`text-xs py-2 border-b border-border last:border-b-0 ${
+                      line.type === "error" ? "text-red-200" : ""
+                    } ${
+                      line.type === "ping" ? "text-blue-200 opacity-70" : ""
+                    } ${
+                      line.type === "done" ? "text-green-500 opacity-70" : ""
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="opacity-70 font-mono text-[11px] uppercase">
+                        {line.type}
+                      </div>
+                      {line.ts ? (
+                        <div className="opacity-60 text-[10px]">{line.ts}</div>
+                      ) : null}
+                    </div>
+                    <pre className="mt-1 whitespace-pre-wrap wrap-break-word text-[11px] leading-relaxed">
+                      {line.message}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
 

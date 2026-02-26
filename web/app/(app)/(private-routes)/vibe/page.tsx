@@ -87,7 +87,7 @@ function statusBadge(status?: string | null) {
   if (s === "active")
     return (
       <span
-        className={`${base} bg-emerald-500/10 border-emerald-500/30 text-emerald-200`}
+        className={`${base} bg-emerald-500/10 border-emerald-500/30 dark:text-emerald-200 text-emerald-600`}
       >
         active
       </span>
@@ -95,7 +95,7 @@ function statusBadge(status?: string | null) {
   if (s === "paused")
     return (
       <span
-        className={`${base} bg-yellow-500/10 border-yellow-500/30 text-yellow-200`}
+        className={`${base} bg-yellow-500/10 border-yellow-500/30 dark:text-yellow-200 text-yellow-600`}
       >
         paused
       </span>
@@ -447,7 +447,7 @@ export default function VibePage() {
                 return (
                   <li
                     key={agent.id}
-                    className={`flex flex-col gap-2 px-3 py-2 hover:bg-muted ${
+                    className={`group flex flex-col gap-2 px-3 py-2 hover:bg-muted ${
                       active ? "bg-muted" : ""
                     }`}
                   >
@@ -542,7 +542,7 @@ export default function VibePage() {
                             className={`h-5 w-5 ${
                               agentStatus !== "active"
                                 ? "text-muted_fg"
-                                : "text-yellow-200 hover:text-yellow-100"
+                                : "text-yellow-500 dark:text-yellow-200 hover:text-yellow-100"
                             }`}
                           />
                         </button>
@@ -551,7 +551,7 @@ export default function VibePage() {
                           onClick={() => {
                             handleDeleteAgent(agent.id, idx);
                           }}
-                          className="p-1 rounded-md hover:bg-muted"
+                          className="p-1 mt-10 rounded-md hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
                           title="Delete agent"
                         >
                           <Trash2Icon className="h-5 w-5 text-red-300 hover:text-red-400" />

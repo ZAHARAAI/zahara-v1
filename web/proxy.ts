@@ -17,11 +17,13 @@ function isPublicPath(pathname: string) {
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  if (pathname === "/") {
+  if (pathname === "/" || pathname === "/login" || pathname === "/register") {
     const url = req.nextUrl.clone();
-    url.pathname = "/flow";
+    url.pathname = "/overview";
     return NextResponse.redirect(url);
   }
+
+  return NextResponse.next();
 
   if (isPublicPath(pathname)) return NextResponse.next();
 
