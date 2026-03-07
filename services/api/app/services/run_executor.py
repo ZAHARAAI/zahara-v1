@@ -15,7 +15,7 @@ from ..models.agent import Agent as AgentModel
 from ..models.agent_spec import AgentSpec as AgentSpecModel
 from ..models.provider_key import ProviderKey as ProviderKeyModel
 from ..models.run import Run as RunModel
-from ..models.run_event import RunEvent as RunEventModel
+from ..models.run_event import RunEvent as RunEventModel, append_run_event
 from ..security.provider_keys_crypto import decrypt_secret
 from ..services.daily_usage import upsert_daily_usage
 from ..services.pricing import estimate_cost_usd_with_fallback
@@ -64,7 +64,7 @@ def _get_provider_key(db: Session, user_id: int, provider: str) -> Optional[str]
 
 
 def _add_event(db: Session, run_id: str, type_: str, payload: Dict[str, Any]) -> None:
-    db.add(RunEventModel(run_id=run_id, type=type_, payload=payload))
+    append_run_event(db, run_id=run_id, type=type_, payload=payload)
     db.commit()
 
 
