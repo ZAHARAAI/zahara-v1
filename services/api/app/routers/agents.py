@@ -24,7 +24,7 @@ from ..middleware.run_rate_limit import enforce_run_start_rate_limit
 from ..models.agent import Agent as AgentModel
 from ..models.agent_spec import AgentSpec as AgentSpecModel
 from ..models.run import Run as RunModel
-from ..models.run_event import RunEvent as RunEventModel
+from ..models.run_event import RunEvent as RunEventModel, append_run_event
 from ..models.user import User
 from ..services.audit import log_audit_event
 from ..services.budget import (
@@ -973,12 +973,11 @@ def start_agent_run(
         db.commit()
         db.refresh(run)
 
-        db.add(
-            RunEventModel(
-                run_id=run.id,
-                type="system",
-                payload={"event": "run_created", "request_id": request_id},
-            )
+        append_run_event(
+            db,
+            run_id=run.id,
+            type="system",
+            payload={"event": "run_created", "request_id": request_id},
         )
         db.commit()
 
@@ -1071,15 +1070,14 @@ def kill_agent(
         r.error_message = "Cancelled by agent kill"
         db.add(r)
 
-        db.add(
-            RunEventModel(
-                run_id=r.id,
-                type="cancelled",
-                payload={
-                    "message": "Cancelled by agent kill",
-                    "request_id": r.request_id,
-                },
-            )
+        append_run_event(
+            db,
+            run_id=r.id,
+            type="cancelled",
+            payload={
+                "message": "Cancelled by agent kill",
+                "request_id": r.request_id,
+            },
         )
 
         cancelled += 1

@@ -34,7 +34,7 @@ services:
     image: ${IMAGE_PREFIX:-zahara-ai}/router:latest
     container_name: zahara-router
     ports:
-      - "7000:7000"
+      - "7001:7000"
     environment:
       - API_BASE_URL=http://api:8000
     depends_on:

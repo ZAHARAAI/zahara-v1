@@ -25,7 +25,7 @@ from ..middleware.auth import get_current_user
 from ..models.agent import Agent as AgentModel
 from ..models.agent_spec import AgentSpec as AgentSpecModel
 from ..models.run import Run as RunModel
-from ..models.run_event import RunEvent as RunEventModel
+from ..models.run_event import RunEvent as RunEventModel, append_run_event
 from ..models.user import User
 from ..services.audit import log_audit_event
 from ..services.budget import evaluate_agent_budget
@@ -207,8 +207,7 @@ def _event_to_dto(ev: RunEventModel) -> RunEventDTO:
 def _create_event(
     db: Session, run_id: str, type_: str, payload: Dict[str, Any]
 ) -> None:
-    ev = RunEventModel(run_id=run_id, type=type_, payload=payload)
-    db.add(ev)
+    append_run_event(db, run_id=run_id, type=type_, payload=payload)
     db.commit()
 
 
@@ -401,16 +400,15 @@ def retry_run(
         db.commit()
         db.refresh(new_run)
 
-        db.add(
-            RunEventModel(
-                run_id=new_run.id,
-                type="system",
-                payload={
-                    "event": "run_created",
-                    "request_id": request_id,
-                    "retry_of": old.id,
-                },
-            )
+        append_run_event(
+            db,
+            run_id=new_run.id,
+            type="system",
+            payload={
+                "event": "run_created",
+                "request_id": request_id,
+                "retry_of": old.id,
+            },
         )
         db.commit()
 
@@ -596,11 +594,22 @@ def stream_run_events(
     after_event_id: int = Query(
         0,
         ge=0,
-        description="Start streaming after this event id (helps resume on reconnect)",
+        description="DEPRECATED: use cursor instead. Kept for backwards compat.",
+    ),
+    cursor: int = Query(
+        0,
+        ge=0,
+        description="Resume from this seq (events with seq > cursor are returned).",
     ),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
+    """Stream run events via SSE.
+
+    Reconnect-safe: pass Last-Event-ID header or ?cursor=seq to resume.
+    Heartbeat sent every 15-30s as an SSE comment to keep connection alive.
+    Delivery semantics: at-least-once (client de-dupes by seq).
+    """
     run = (
         db.query(RunModel)
         .filter(RunModel.id == run_id, RunModel.user_id == current_user.id)
@@ -610,31 +619,55 @@ def stream_run_events(
         raise HTTPException(status_code=404, detail="run_not_found")
 
     async def event_generator() -> AsyncGenerator[bytes, None]:
-        # Support standard SSE resume header.
+        # Determine resume point from (in priority order):
+        # 1. Last-Event-ID header (standard SSE reconnect)
+        # 2. ?cursor= query param
+        # 3. ?after_event_id= (legacy/backwards compat -- uses global id)
         header_last = 0
         try:
-            if request is not None:
-                header_last = int(request.headers.get("last-event-id", "0") or 0)
-        except Exception:
+            raw = request.headers.get("last-event-id", "0") or "0"
+            header_last = int(raw)
+        except (ValueError, TypeError):
             header_last = 0
 
-        last_id = max(after_event_id or 0, header_last or 0)
+        # seq-based resume (preferred)
+        resume_seq = max(cursor or 0, header_last or 0)
+
+        # Legacy id-based resume: if caller passed after_event_id but not cursor,
+        # resolve it to a seq so the rest of the loop is seq-only.
+        if resume_seq == 0 and after_event_id > 0:
+            with SessionLocal() as s:
+                ev = (
+                    s.query(RunEventModel)
+                    .filter(
+                        RunEventModel.run_id == run_id,
+                        RunEventModel.id == after_event_id,
+                    )
+                    .first()
+                )
+                if ev and ev.seq:
+                    resume_seq = ev.seq
+
+        last_seq = resume_seq
         last_heartbeat = time.time()
 
         while True:
-            # IMPORTANT: Do not keep a DB session open across yields.
             with SessionLocal() as s:
                 new_events = (
                     s.query(RunEventModel)
-                    .filter(RunEventModel.run_id == run_id, RunEventModel.id > last_id)
-                    .order_by(RunEventModel.id.asc())
+                    .filter(
+                        RunEventModel.run_id == run_id,
+                        RunEventModel.seq > last_seq,
+                    )
+                    .order_by(RunEventModel.seq.asc())
                     .limit(200)
                     .all()
                 )
 
                 for ev in new_events:
-                    last_id = ev.id
+                    last_seq = ev.seq
                     data = {
+                        "seq": ev.seq,
                         "type": ev.type,
                         "ts": _dt_to_iso_z(ev.created_at),
                         "created_at": _dt_to_iso_z(ev.created_at),
@@ -647,19 +680,18 @@ def stream_run_events(
                     if framed:
                         yield (
                             f"event: {ev.type}\n"
-                            f"id: {ev.id}\n"
+                            f"id: {ev.seq}\n"
                             f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
                         ).encode("utf-8")
                     else:
                         yield (
-                            f"id: {ev.id}\n"
+                            f"id: {ev.seq}\n"
                             f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
                         ).encode("utf-8")
 
                     if ev.type in {"done", "error", "cancelled"}:
                         return
 
-                # If no new events and run is terminal, stop streaming.
                 if not new_events:
                     r = (
                         s.query(RunModel)
@@ -674,24 +706,38 @@ def stream_run_events(
             now = time.time()
             if now - last_heartbeat >= HEARTBEAT_INTERVAL_SECONDS:
                 last_heartbeat = now
-                hb = {
-                    "type": "heartbeat",
-                    "ts": _dt_to_iso_z(datetime.now(timezone.utc)),
-                    "created_at": _dt_to_iso_z(datetime.now(timezone.utc)),
-                    "request_id": run.request_id,
-                    "payload": {"request_id": run.request_id},
-                    "message": "heartbeat",
-                }
-                if framed:
-                    yield (
-                        f"event: heartbeat\n"
-                        f"data: {json.dumps(hb, ensure_ascii=False)}\n\n"
-                    ).encode("utf-8")
-                else:
-                    yield f"data: {json.dumps(hb, ensure_ascii=False)}\n\n".encode(
-                        "utf-8"
-                    )
+                yield f": heartbeat {_dt_to_iso_z(datetime.now(timezone.utc))}\n\n".encode(
+                    "utf-8"
+                )
 
             await asyncio.sleep(0.5)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/{run_id}/stream")
+def stream_run_sse(
+    run_id: str,
+    request: Request,
+    framed: bool = Query(False),
+    cursor: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Alias endpoint matching Job 9 spec: GET /runs/{id}/stream."""
+    return stream_run_events(
+        run_id=run_id,
+        request=request,
+        framed=framed,
+        after_event_id=0,
+        cursor=cursor,
+        current_user=current_user,
+        db=db,
+    )
