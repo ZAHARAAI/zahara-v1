@@ -1098,6 +1098,8 @@ def kill_agent(
         r.error_message = "Cancelled by agent kill"
         db.add(r)
 
+        # Get next seq for this run
+        max_seq_val = db.query(func.max(RunEventModel.seq)).filter(RunEventModel.run_id == r.id).scalar()
         db.add(
             RunEventModel(
                 run_id=r.id,
@@ -1106,6 +1108,7 @@ def kill_agent(
                     "message": "Cancelled by agent kill",
                     "request_id": r.request_id,
                 },
+                seq=(max_seq_val or 0) + 1,
             )
         )
 
