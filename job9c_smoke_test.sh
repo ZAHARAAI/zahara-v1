@@ -27,11 +27,11 @@ echo ""
 
 # Helper functions
 test_pass() {
-    echo -e "${GREEN}✓ PASS${NC}: $1"
+    echo -e "${GREEN}PASS${NC}: $1"
 }
 
 test_fail() {
-    echo -e "${RED}✗ FAIL${NC}: $1"
+    echo -e "${RED}FAIL${NC}: $1"
     exit 1
 }
 
@@ -248,7 +248,7 @@ fi
 # ============================================================================
 echo ""
 echo "============================================"
-echo -e "${GREEN}All smoke tests passed! ✓${NC}"
+echo -e "${GREEN}All smoke tests passed!${NC}"
 echo "============================================"
 echo "Summary:"
 echo "- Authentication (signup/login): OK"
