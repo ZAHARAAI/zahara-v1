@@ -133,6 +133,10 @@ class AgentCreate(BaseModel):
     slug: Optional[str] = None
     description: Optional[str] = None
     spec: Dict[str, Any] = Field(default_factory=dict)
+    budget_daily_usd: Optional[float] = None
+    tool_allowlist: Optional[List[str]] = None  # List of allowed tool names, None = all allowed
+    max_steps_per_run: Optional[int] = None  # Max steps per run, None = unlimited
+    max_duration_seconds_per_run: Optional[int] = None  # Max duration per run, None = unlimited
 
 
 class AgentUpdate(BaseModel):
@@ -142,6 +146,11 @@ class AgentUpdate(BaseModel):
     # Job7: allow lifecycle + budget updates from UI
     status: Optional[str] = None  # active | paused | retired
     budget_daily_usd: Optional[float] = None  # None means no cap
+
+    # Job9C Day 6: Tool allowlist and runaway protection
+    tool_allowlist: Optional[List[str]] = None  # List of allowed tool names, None = all allowed
+    max_steps_per_run: Optional[int] = None  # Max steps per run, None = unlimited
+    max_duration_seconds_per_run: Optional[int] = None  # Max duration per run, None = unlimited
 
 
 class AgentSpecCreate(BaseModel):
@@ -158,6 +167,11 @@ class AgentItem(BaseModel):
     # Job7
     status: Optional[str] = None
     budget_daily_usd: Optional[float] = None
+
+    # Job9C Day 6
+    tool_allowlist: Optional[List[str]] = None
+    max_steps_per_run: Optional[int] = None
+    max_duration_seconds_per_run: Optional[int] = None
 
     created_at: str
     updated_at: str
@@ -287,6 +301,9 @@ def _to_agent_item(model: AgentModel) -> AgentItem:
         budget_daily_usd=float(getattr(model, "budget_daily_usd", 0) or 0)
         if getattr(model, "budget_daily_usd", None) is not None
         else None,
+        tool_allowlist=getattr(model, "tool_allowlist", None),
+        max_steps_per_run=getattr(model, "max_steps_per_run", None),
+        max_duration_seconds_per_run=getattr(model, "max_duration_seconds_per_run", None),
         created_at=_dt_to_iso_z(model.created_at),
         updated_at=_dt_to_iso_z(model.updated_at),
     )
@@ -633,6 +650,10 @@ def create_agent(
             name=name,
             slug=_slugify(slug),
             description=body.description.strip() if body.description else None,
+            budget_daily_usd=body.budget_daily_usd if body.budget_daily_usd and body.budget_daily_usd > 0 else None,
+            tool_allowlist=body.tool_allowlist,
+            max_steps_per_run=body.max_steps_per_run,
+            max_duration_seconds_per_run=body.max_duration_seconds_per_run,
         )
         db.add(agent)
         db.commit()
@@ -776,6 +797,38 @@ def update_agent(
         agent.budget_daily_usd = (
             body.budget_daily_usd if body.budget_daily_usd > 0 else None
         )
+
+    # Job9C Day 6: Tool allowlist and runaway protection updates
+    if body.tool_allowlist is not None:
+        agent.tool_allowlist = body.tool_allowlist
+
+    if body.max_steps_per_run is not None:
+        if body.max_steps_per_run < 1:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "INVALID",
+                        "message": "max_steps_per_run must be >= 1",
+                    },
+                },
+            )
+        agent.max_steps_per_run = body.max_steps_per_run
+
+    if body.max_duration_seconds_per_run is not None:
+        if body.max_duration_seconds_per_run < 1:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "INVALID",
+                        "message": "max_duration_seconds_per_run must be >= 1",
+                    },
+                },
+            )
+        agent.max_duration_seconds_per_run = body.max_duration_seconds_per_run
 
     db.add(agent)
     db.commit()

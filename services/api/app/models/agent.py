@@ -3,6 +3,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
@@ -30,6 +31,9 @@ class Agent(Base):
         String(16), nullable=False, default="active", server_default="active"
     )
     budget_daily_usd = Column(Numeric(10, 2), nullable=True)
+    tool_allowlist = Column(JSON, nullable=True)  # list of allowed tool names, None = all allowed
+    max_steps_per_run = Column(Integer, nullable=True)  # max steps per run, None = unlimited
+    max_duration_seconds_per_run = Column(Integer, nullable=True)  # max duration per run, None = unlimited
 
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
