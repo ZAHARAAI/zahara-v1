@@ -208,3 +208,5 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+JOB9C_SSE_MICROTEST_REPORT*
