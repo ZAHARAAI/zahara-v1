@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import httpx
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import SessionLocal
@@ -87,6 +88,78 @@ def _coerce_line_to_str(raw_line: Any) -> str:
         return raw_line
     # extremely defensive fallback
     return str(raw_line)
+
+
+def _extract_tool_names(tool_calls_data: Any) -> list[str]:
+    """Extract tool names from tool_calls event payload."""
+    if not isinstance(tool_calls_data, list):
+        return []
+    
+    tool_names = []
+    for tool_call in tool_calls_data:
+        if isinstance(tool_call, dict):
+            # Standard OpenAI format: {"id": "...", "type": "function", "function": {"name": "..."}}
+            if tool_call.get("type") == "function":
+                func_info = tool_call.get("function")
+                if isinstance(func_info, dict) and "name" in func_info:
+                    tool_names.append(func_info["name"])
+            # Alternative format: {"name": "..."}
+            elif "name" in tool_call:
+                tool_names.append(tool_call["name"])
+    return tool_names
+
+
+def _check_tool_allowlist(
+    agent: AgentModel, tool_names: list[str]
+) -> tuple[bool, Optional[str]]:
+    """
+    Check if all tool names are in the agent's allowlist.
+    Returns (is_allowed, error_message).
+    If agent has no allowlist, all tools are allowed.
+    """
+    allowlist = getattr(agent, "tool_allowlist", None)
+    if allowlist is None:
+        # No allowlist means all tools allowed
+        return True, None
+    
+    if not isinstance(allowlist, list) or not allowlist:
+        # Empty allowlist means no tools allowed
+        if tool_names:
+            return False, f"Agent has empty tool allowlist but tried to use tools: {', '.join(tool_names)}"
+        return True, None
+    
+    # Check each tool against allowlist
+    disallowed = [t for t in tool_names if t not in allowlist]
+    if disallowed:
+        return False, f"Tools not allowed: {', '.join(disallowed)}. Allowed: {', '.join(allowlist)}"
+    
+    return True, None
+
+
+def _check_runaway_protection(
+    agent: AgentModel, run: RunModel, current_time: datetime
+) -> tuple[bool, Optional[str]]:
+    """
+    Check if run has exceeded max_steps or max_duration limits.
+    Returns (is_within_limits, error_message).
+    """
+    # Check max_steps
+    max_steps = getattr(agent, "max_steps_per_run", None)
+    if max_steps and max_steps > 0:
+        # Count events that represent steps (e.g., tool_calls, tokens)
+        # For simplicity, we count all token events as steps
+        step_count = 0
+        # This would be calculated by counting events during execution
+        # For now, we defer this to be calculated inline during event processing
+    
+    # Check max_duration
+    max_duration = getattr(agent, "max_duration_seconds_per_run", None)
+    if max_duration and max_duration > 0:
+        elapsed = (current_time - run.created_at).total_seconds()
+        if elapsed > max_duration:
+            return False, f"Run exceeded max duration: {elapsed:.1f}s > {max_duration}s"
+    
+    return True, None
 
 
 def execute_run_via_router(run_id: str) -> None:
@@ -234,6 +307,8 @@ def execute_run_via_router(run_id: str) -> None:
         usage_final: Optional[Dict[str, Any]] = None
         full_text = ""
         chunk_count = 0
+        step_count = 0
+        run_start_time = datetime.now(timezone.utc)
 
         with httpx.Client(timeout=None) as client:
             with client.stream(
@@ -267,6 +342,47 @@ def execute_run_via_router(run_id: str) -> None:
                             )
                             return
 
+                        # Job9C Day 6: Runaway protection check
+                        current_time = datetime.now(timezone.utc)
+                        within_limits, runaway_error = _check_runaway_protection(
+                            agent, run, current_time
+                        )
+                        if not within_limits:
+                            run.status = "error"
+                            run.error_message = f"Run cancelled due to runaway protection: {runaway_error}"
+                            db.add(run)
+                            db.commit()
+                            _add_event(
+                                db,
+                                run.id,
+                                "error",
+                                {
+                                    "message": run.error_message,
+                                    "request_id": run.request_id,
+                                },
+                            )
+                            return
+
+                        # Check max_steps limit
+                        max_steps = getattr(agent, "max_steps_per_run", None)
+                        if max_steps and max_steps > 0 and step_count > max_steps:
+                            run.status = "error"
+                            run.error_message = (
+                                f"Run exceeded max steps: {step_count} > {max_steps}"
+                            )
+                            db.add(run)
+                            db.commit()
+                            _add_event(
+                                db,
+                                run.id,
+                                "error",
+                                {
+                                    "message": run.error_message,
+                                    "request_id": run.request_id,
+                                },
+                            )
+                            return
+
                     line = _coerce_line_to_str(raw_line)
                     data_str = _parse_sse_data_line(line)
                     if data_str is None:
@@ -295,7 +411,27 @@ def execute_run_via_router(run_id: str) -> None:
                     function_call = delta.get("function_call")
                     role = delta.get("role")
 
+                    # Job9C Day 6: Tool allowlist enforcement
                     if tool_calls:
+                        tool_names = _extract_tool_names(tool_calls)
+                        allowed, error_msg = _check_tool_allowlist(agent, tool_names)
+                        if not allowed:
+                            run.status = "error"
+                            run.error_message = f"Tool allowlist violation: {error_msg}"
+                            db.add(run)
+                            db.commit()
+                            _add_event(
+                                db,
+                                run.id,
+                                "error",
+                                {
+                                    "message": run.error_message,
+                                    "request_id": run.request_id,
+                                },
+                            )
+                            return
+
+                        step_count += 1
                         _add_event(
                             db,
                             run.id,
@@ -306,6 +442,7 @@ def execute_run_via_router(run_id: str) -> None:
                             },
                         )
                     if function_call:
+                        step_count += 1
                         _add_event(
                             db,
                             run.id,
