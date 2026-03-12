@@ -64,7 +64,8 @@ def _get_provider_key(db: Session, user_id: int, provider: str) -> Optional[str]
 
 
 def _add_event(db: Session, run_id: str, type_: str, payload: Dict[str, Any]) -> None:
-    db.add(RunEventModel(run_id=run_id, type=type_, payload=payload))
+    max_seq = db.query(func.max(RunEventModel.seq)).filter(RunEventModel.run_id == run_id).scalar()
+    db.add(RunEventModel(run_id=run_id, type=type_, payload=payload, seq=(max_seq or 0) + 1))
     db.commit()
 
 

@@ -996,11 +996,15 @@ def start_agent_run(
         db.commit()
         db.refresh(run)
 
+        # Get next seq for this run
+        max_seq = db.query(func.max(RunEventModel.seq)).filter(RunEventModel.run_id == run.id).scalar()
+        seq = (max_seq or 0) + 1
         db.add(
             RunEventModel(
                 run_id=run.id,
                 type="system",
                 payload={"event": "run_created", "request_id": request_id},
+                seq=seq,
             )
         )
         db.commit()

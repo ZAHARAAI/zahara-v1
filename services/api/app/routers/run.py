@@ -204,10 +204,21 @@ def _event_to_dto(ev: RunEventModel) -> RunEventDTO:
     )
 
 
+def _get_next_seq(db: Session, run_id: str) -> int:
+    """Get the next seq number for a run (for monotonic ordering)."""
+    max_seq = (
+        db.query(func.max(RunEventModel.seq))
+        .filter(RunEventModel.run_id == run_id)
+        .scalar()
+    )
+    return (max_seq or 0) + 1
+
+
 def _create_event(
     db: Session, run_id: str, type_: str, payload: Dict[str, Any]
 ) -> None:
-    ev = RunEventModel(run_id=run_id, type=type_, payload=payload)
+    seq = _get_next_seq(db, run_id)
+    ev = RunEventModel(run_id=run_id, type=type_, payload=payload, seq=seq)
     db.add(ev)
     db.commit()
 
@@ -401,6 +412,7 @@ def retry_run(
         db.commit()
         db.refresh(new_run)
 
+        seq = _get_next_seq(db, new_run.id)
         db.add(
             RunEventModel(
                 run_id=new_run.id,
@@ -410,6 +422,7 @@ def retry_run(
                     "request_id": request_id,
                     "retry_of": old.id,
                 },
+                seq=seq,
             )
         )
         db.commit()
@@ -723,4 +736,11 @@ def stream_run_events(
 
             await asyncio.sleep(0.5)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+        },
+    )

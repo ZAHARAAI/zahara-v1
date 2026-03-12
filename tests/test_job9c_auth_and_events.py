@@ -61,18 +61,27 @@ def _set_sqlite_pragma(dbapi_conn, _):
 
 TestingSession = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# JSONB -> JSON shim for SQLite
+# JSONB -> JSON shim for SQLite using TypeDecorator
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON, TypeDecorator
 
 
-from sqlalchemy import literal
+class SafeJSONB(TypeDecorator):
+    """Handle JSONB for both PostgreSQL and SQLite"""
+    impl = JSONB
+    cache_ok = True
 
-@patch("sqlalchemy.func.percentile_cont", lambda *a, **kw: literal(0.0))
-@sa_event.listens_for(JSONB, "compiler_setup", propagate=True)
-def _jsonb_to_json(element, compiler, **kw):
-    if compiler.dialect.name == "sqlite":
-        return "JSON"
-    return element
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "sqlite":
+            return dialect.type_descriptor(JSON())
+        return dialect.type_descriptor(JSONB())
+
+
+# Replace all JSONB columns with SafeJSONB
+for table in Base.metadata.tables.values():
+    for col in table.columns:
+        if isinstance(col.type, JSONB):
+            col.type = SafeJSONB()
 
 
 # Strip PG-specific server defaults

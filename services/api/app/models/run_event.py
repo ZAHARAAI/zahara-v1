@@ -41,6 +41,10 @@ class RunEvent(Base):
     # a dict payload.
     payload = Column(JSON, nullable=True)
 
+    # Per-run monotonic sequence number for SSE reconnect/replay
+    # Set by migration backfill, computed by app on insert
+    seq = Column(Integer, nullable=False)
+
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

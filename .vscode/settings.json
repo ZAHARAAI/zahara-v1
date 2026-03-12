@@ -13,4 +13,10 @@
     "reactflow",
     "ZAHARA"
   ],
+  "chat.tools.terminal.autoApprove": {
+    "/^python -m pytest tests/test_job9c_sse_streaming\\.py -v 2>&1 \\| tail -30$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
+  },
 }
