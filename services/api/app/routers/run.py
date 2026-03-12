@@ -588,7 +588,35 @@ def delete_run(
         )
 
 
-@router.get("/{run_id}/events")
+@router.get("/{run_id}/events", response_model=RunDetailResponse)
+def list_run_events(
+    run_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> RunDetailResponse:
+    """GET /runs/{run_id}/events - Returns all run events as a JSON list, sorted by sequence."""
+    run = (
+        db.query(RunModel)
+        .filter(RunModel.id == run_id, RunModel.user_id == current_user.id)
+        .first()
+    )
+    if not run:
+        raise HTTPException(status_code=404, detail="run_not_found")
+
+    events = (
+        db.query(RunEventModel)
+        .filter(RunEventModel.run_id == run_id)
+        .order_by(RunEventModel.id.asc())
+        .limit(5000)
+        .all()
+    )
+
+    return RunDetailResponse(
+        ok=True, run=_run_to_detail(run), events=[_event_to_dto(e) for e in events]
+    )
+
+
+@router.get("/{run_id}/stream")
 def stream_run_events(
     run_id: str,
     request: Request,
@@ -601,6 +629,7 @@ def stream_run_events(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
+    """GET /runs/{run_id}/stream - SSE streaming with heartbeat and Last-Event-ID reconnect support."""
     run = (
         db.query(RunModel)
         .filter(RunModel.id == run_id, RunModel.user_id == current_user.id)

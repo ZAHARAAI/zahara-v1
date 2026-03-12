@@ -11,6 +11,7 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Request,
     status,
 )
 from fastapi.responses import JSONResponse
@@ -887,10 +888,31 @@ def start_agent_run(
     agent_id: str,
     body: RunRequest,
     background_tasks: BackgroundTasks,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> RunResponse:
     try:
+        # Idempotency-Key support: check if run with this key already exists
+        idempotency_key = request.headers.get("Idempotency-Key") if request else None
+        
+        if idempotency_key:
+            # Check if run with this idempotency key already exists for this user
+            existing_run = (
+                db.query(RunModel)
+                .filter(
+                    RunModel.user_id == current_user.id,
+                    RunModel.request_id == idempotency_key,
+                )
+                .first()
+            )
+            if existing_run:
+                return RunResponse(
+                    ok=True,
+                    run_id=existing_run.id,
+                    request_id=existing_run.request_id,
+                )
+        
         agent: AgentModel | None = (
             db.query(AgentModel)
             .filter(
@@ -948,7 +970,8 @@ def start_agent_run(
             )
 
         run_id = _new_run_id()
-        request_id = str(uuid4())
+        # Use Idempotency-Key as request_id if provided, otherwise generate UUID
+        request_id = idempotency_key if idempotency_key else str(uuid4())
 
         # Track the exact spec version used for this run (for deterministic retry/replay).
         spec_row = (
