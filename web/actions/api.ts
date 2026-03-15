@@ -45,7 +45,6 @@ export const api = async (
       }
 
       const json = await res.json();
-      // console.log({ json });
       return { json };
     } catch (e) {
       last = (e as Error).message;
@@ -60,7 +59,8 @@ export const api = async (
         last.includes("AGENT_NOT_ACTIVE") ||
         last.includes("BUDGET_EXCEEDED") ||
         last.includes("not found") ||
-        last.includes("already exists");
+        last.includes("already exists") ||
+        last.includes("already_seeded");
       if (isClientError) break; // don't retry 4xx
       if (attempt < Retry.max) {
         await new Promise((r) =>

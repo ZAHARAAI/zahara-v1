@@ -104,7 +104,7 @@ export default function OverviewPage() {
       tokens_total: p.tokens_total,
     }));
   }, [summary]);
-  
+
   const kpis = useMemo(() => {
     const s = summary;
     if (!s)
@@ -225,7 +225,13 @@ export default function OverviewPage() {
 
         <div className="rounded-2xl border border-border bg-panel p-4 pr-0">
           <div className="text-sm font-medium">Recent runs</div>
-          <div className="mt-3 space-y-2 h-90 overflow-y-auto pr-2">
+          <div
+            className="mt-3 space-y-2 h-90 overflow-y-auto pr-2"
+            style={{
+              scrollbarWidth: "thin",
+              scrollbarColor: "hsl(var(--border)) transparent",
+            }}
+          >
             {recentRuns.length === 0 ? (
               <div className="text-sm opacity-60">No runs yet</div>
             ) : (

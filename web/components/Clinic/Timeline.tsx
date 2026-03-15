@@ -224,7 +224,13 @@ function CollapsibleJson({
         <span>{label ?? "payload"}</span>
       </button>
       {open && (
-        <pre className="mt-1 max-h-48 overflow-auto rounded-md bg-black/20 px-3 py-2 text-[10px] text-fg/80 whitespace-pre-wrap break-all leading-relaxed">
+        <pre
+          className="mt-1 max-h-48 overflow-auto rounded-md bg-black/20 px-3 py-2 text-[10px] text-fg/80 whitespace-pre-wrap break-all leading-relaxed"
+          style={{
+            scrollbarWidth: "thin",
+            scrollbarColor: "hsl(var(--border)) transparent",
+          }}
+        >
           {str}
         </pre>
       )}
@@ -734,7 +740,13 @@ export default function Timeline() {
             />
           </div>
 
-          <div className="flex-1 overflow-auto">
+          <div
+            className="flex-1 overflow-y-auto"
+            style={{
+              scrollbarWidth: "thin",
+              scrollbarColor: "hsl(var(--border)) transparent",
+            }}
+          >
             {loadingRuns ? (
               <div className="p-3 text-[11px] text-muted_fg">Loading…</div>
             ) : runs.length === 0 ? (
@@ -829,7 +841,13 @@ export default function Timeline() {
               No detail found.
             </div>
           ) : (
-            <div className="flex-1 overflow-auto p-4 space-y-4">
+            <div
+              className="flex-1 overflow-y-auto p-4 space-y-4"
+              style={{
+                scrollbarWidth: "thin",
+                scrollbarColor: "hsl(var(--border)) transparent",
+              }}
+            >
               {/* Run header card */}
               <section
                 className={`rounded-xl border bg-panel p-4 ${detailHeaderBorderClass(detail.run.status)}`}

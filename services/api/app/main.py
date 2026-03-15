@@ -70,11 +70,16 @@ allowed_origins = (
         "http://localhost:8000",
         "https://zahara-v1-web.fly.dev",
         "https://zahara.ai",
-        "https://job5-ui-sprint.vercel.app",
+        # Job 8 canonical Vercel deployment
+        "https://zahara-v1.vercel.app",
     ]
 )
 
-ALLOWED_ORIGIN_REGEX = r"https://job5-ui-sprint(-[a-z0-9]+)?\.vercel\.app"
+# Covers all Vercel preview deployments for any sprint/job branch.
+# Pattern matches:  zahara-v1-<hash>.vercel.app
+#                   zahara-v1-git-<branch>-<org>.vercel.app
+#                   zahara-<anything>.vercel.app
+ALLOWED_ORIGIN_REGEX = r"https://zahara(-[a-z0-9-]+)?\.vercel\.app"
 
 app.add_middleware(
     CORSMiddleware,
@@ -123,7 +128,7 @@ app.include_router(agents.router)
 app.include_router(api_keys.router)
 app.include_router(audit.router)
 app.include_router(auth.router)
-# app.include_router(dev.router)
+app.include_router(dev.router)
 app.include_router(files.router)
 app.include_router(health.router)
 app.include_router(llm_router.router)

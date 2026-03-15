@@ -157,7 +157,13 @@ export default function AuditPage() {
                   </div>
                 </div>
                 {it.payload ? (
-                  <pre className="mt-2 max-h-60 overflow-auto rounded-xl border border-border bg-panel p-3 text-[11px] text-fg">
+                  <pre
+                    className="mt-2 max-h-60 overflow-auto rounded-xl border border-border bg-panel p-3 text-[11px] text-fg"
+                    style={{
+                      scrollbarWidth: "thin",
+                      scrollbarColor: "hsl(var(--border)) transparent",
+                    }}
+                  >
                     {JSON.stringify(it.payload, null, 2)}
                   </pre>
                 ) : null}

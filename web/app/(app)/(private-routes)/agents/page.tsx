@@ -149,7 +149,7 @@ export default function AgentsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Agents</h1>
@@ -189,7 +189,13 @@ export default function AgentsPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-border bg-panel w-[calc(100dvw-250px)] h-[calc(100dvh-110px)] overflow-auto">
+      <div
+        className="rounded-2xl border border-border bg-panel w-[calc(100dvw-257px)] h-[calc(100dvh-110px)] overflow-auto"
+        style={{
+          scrollbarWidth: "thin",
+          scrollbarColor: "hsl(var(--border)) transparent",
+        }}
+      >
         <table className="w-fit">
           <thead className="border-b border-border">
             <tr className="text-xs uppercase tracking-wide opacity-70">

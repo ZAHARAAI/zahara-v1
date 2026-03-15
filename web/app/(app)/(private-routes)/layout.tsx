@@ -14,7 +14,15 @@ export default async function PrivateRoutesLayout({
     <div className="flex h-dvh bg-bg text-fg min-w-[1200px]">
       <LeftNav />
       <div className="flex-1 flex flex-col">
-        <div className="flex-1 p-4 h-dvh overflow-auto">{children}</div>
+        <div
+          className="flex-1 p-4 overflow-auto"
+          style={{
+            scrollbarWidth: "thin",
+            scrollbarColor: "hsl(var(--border)) transparent",
+          }}
+        >
+          {children}
+        </div>
       </div>
       <RunOverlay />
     </div>
