@@ -1,5 +1,7 @@
 # --- Standard library
+import logging
 import os
+import traceback
 
 # --- Third-party libraries
 import uvicorn
@@ -114,11 +116,26 @@ async def not_found_handler(request: Request, exc):
 
 @app.exception_handler(500)
 async def internal_error_handler(request: Request, exc):
+    logger = logging.getLogger("zahara.api")
+    logger.error(
+        "Unhandled 500 on %s %s:\n%s",
+        request.method,
+        request.url.path,
+        traceback.format_exc(),
+    )
+
+    # If a router already raised an HTTPException with a rich detail dict,
+    # pass that detail through so the client sees the real error.
+    from fastapi import HTTPException as FastHTTPException
+
+    if isinstance(exc, FastHTTPException) and exc.detail:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
     return JSONResponse(
         status_code=500,
         content={
             "error": "Internal server error",
-            "detail": "An unexpected error occurred",
+            "detail": str(exc) if str(exc) else "An unexpected error occurred",
         },
     )
 
@@ -128,7 +145,7 @@ app.include_router(agents.router)
 app.include_router(api_keys.router)
 app.include_router(audit.router)
 app.include_router(auth.router)
-app.include_router(dev.router)
+# app.include_router(dev.router)
 app.include_router(files.router)
 app.include_router(health.router)
 app.include_router(llm_router.router)

@@ -6,12 +6,13 @@ Endpoints
 ---------
 GET  /dev/test          health-check stub
 GET  /dev/health        extended health info
-POST /dev/seed          create demo agents + seeded run history
-DELETE /dev/seed        wipe demo data for the current user
+POST /dev/seed          create demo agents + seeded run history  (TASK-B1, E3)
+DELETE /dev/seed        wipe demo data for the current user      (TASK-E4)
 """
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
@@ -30,6 +31,7 @@ from ..models.run_event import RunEvent as RunEventModel
 from ..models.user import User
 from ..services.audit import log_audit_event
 
+logger = logging.getLogger("zahara.api.dev")
 router = APIRouter(prefix="/dev", tags=["development"])
 
 
@@ -520,36 +522,69 @@ def seed_demo(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> SeedResponse:
-    existing = _get_existing_demo_agents(db, user_id=current_user.id)
+    """
+    TASK-B1 + TASK-E3  —  Create (or re-create) demo agents and run history.
 
-    if existing and not req.force:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="already_seeded",
-        )
-
-    if req.force and existing:
-        _purge_demo_data(db, user_id=current_user.id)
-
-    result = _build_demo_data(db, user_id=current_user.id)
+    force=false  idempotent: if demo data exists, raise 409 with "already_seeded"
+                 so the frontend api.ts converts it to a soft-success.
+    force=true   wipe and re-seed.
+    """
+    import traceback
 
     try:
-        log_audit_event(
-            db,
-            user_id=current_user.id,
-            event_type="demo.seeded",
-            entity_type="user",
-            entity_id=str(current_user.id),
-            payload={
-                "agents_created": result.agents_created,
-                "runs_created": result.runs_created,
-                "force": req.force,
-            },
-        )
-    except Exception:
-        pass
+        existing = _get_existing_demo_agents(db, user_id=current_user.id)
 
-    return result
+        if existing and not req.force:
+            # TASK-E3: 409 path — frontend already handles this
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="already_seeded",
+            )
+
+        if req.force and existing:
+            _purge_demo_data(db, user_id=current_user.id)
+
+        result = _build_demo_data(db, user_id=current_user.id)
+
+        try:
+            log_audit_event(
+                db,
+                user_id=current_user.id,
+                event_type="demo.seeded",
+                entity_type="user",
+                entity_id=str(current_user.id),
+                payload={
+                    "agents_created": result.agents_created,
+                    "runs_created": result.runs_created,
+                    "force": req.force,
+                },
+            )
+        except Exception:
+            pass  # audit failure is never fatal
+
+        return result
+
+    except HTTPException:
+        raise  # let FastAPI handle 409 / 403 etc. normally
+
+    except Exception as exc:
+        # Roll back any partial DB writes so the DB stays clean
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+        tb = traceback.format_exc()
+        logger.error("POST /dev/seed failed:\n%s", tb)
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": type(exc).__name__,
+                "message": str(exc),
+                "traceback": tb.splitlines()[-8:],  # last 8 lines of traceback
+            },
+        ) from exc
 
 
 @router.delete("/seed", response_model=DeleteSeedResponse)

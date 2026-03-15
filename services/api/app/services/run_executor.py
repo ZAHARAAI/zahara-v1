@@ -131,7 +131,12 @@ def _get_provider_key(db: Session, user_id: int, provider: str) -> Optional[str]
         return None
 
 
-def _add_event(db: Session, run_id: str, type_: str, payload: Dict[str, Any]) -> None:
+def _add_event(
+    db: Session,
+    run_id: str,
+    type_: str,
+    payload: Dict[str, Any],
+) -> None:
     db.add(RunEventModel(run_id=run_id, type=type_, payload=payload))
     db.commit()
 
