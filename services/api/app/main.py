@@ -145,7 +145,7 @@ app.include_router(agents.router)
 app.include_router(api_keys.router)
 app.include_router(audit.router)
 app.include_router(auth.router)
-# app.include_router(dev.router)
+app.include_router(dev.router)
 app.include_router(files.router)
 app.include_router(health.router)
 app.include_router(llm_router.router)
@@ -175,8 +175,8 @@ app.include_router(version.router)
 # app.include_router(api_v1)
 
 # Include dev router only if dev pages are enabled
-if os.getenv("ENABLE_DEV_PAGES") == "1":
-    app.include_router(dev.router)
+# if os.getenv("ENABLE_DEV_PAGES") == "1":
+#     app.include_router(dev.router)
 
 # Mount static files
 static_path = os.path.join(os.path.dirname(__file__), "static")

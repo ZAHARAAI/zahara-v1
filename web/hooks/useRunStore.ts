@@ -207,20 +207,46 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
       lastEventAt: Date.now(),
     });
 
-    const startAbort = new AbortController();
-    const timeoutId = setTimeout(() => startAbort.abort(), START_TIMEOUT_MS);
+    // ── Start timeout guard ───────────────────────────────────────────────
+    // NOTE: startAgentRun goes through a Next.js Server Action ("use server"),
+    // so client-side AbortSignals cannot be forwarded to the underlying fetch.
+    // Instead we use a plain setTimeout that directly transitions to error state
+    // if the POST hasn't resolved within START_TIMEOUT_MS.
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      // Only fire if we're still in the "waiting for run_id" phase
+      if (useRunStore.getState().eventsRunId !== null) return;
+      timedOut = true;
+      _submitting = false;
+      const now = new Date().toISOString();
+      useRunStore.setState((s) => ({
+        runStatus: "error",
+        activeRun: null,
+        events: [
+          ...s.events,
+          makeEvent(
+            "err",
+            s._seq,
+            "error",
+            now,
+            "Request timed out — please retry",
+          ),
+        ],
+        _seq: s._seq + 1,
+      }));
+      toast.error("Request timed out — please retry");
+    }, START_TIMEOUT_MS);
 
     try {
-      const res = await startAgentRun(
-        agentId,
-        {
-          input: prompt,
-          source: "vibe",
-          config: { surface: "vibe", stream: true },
-        },
-        { signal: startAbort.signal },
-      );
+      const res = await startAgentRun(agentId, {
+        input: prompt,
+        source: "vibe",
+        config: { surface: "vibe", stream: true },
+      });
       clearTimeout(timeoutId);
+
+      // If timeout already fired while the await was resolving, bail out
+      if (timedOut) return;
 
       const runId = res.run_id;
 
@@ -260,14 +286,13 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
       );
     } catch (err) {
       clearTimeout(timeoutId);
+      if (timedOut) return; // timeout already handled the UI transition
 
-      const isTimeout = (err as Error).name === "AbortError";
       const raw = (err as Error).message ?? "Failed to start run";
       const code = (err as { code?: string }).code;
 
-      const msg = isTimeout
-        ? "Request timed out — please retry"
-        : code === "BUDGET_EXCEEDED"
+      const msg =
+        code === "BUDGET_EXCEEDED"
           ? "Daily budget exceeded"
           : code === "AGENT_NOT_ACTIVE"
             ? "Agent is not active"

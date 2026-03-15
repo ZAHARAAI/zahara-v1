@@ -278,10 +278,14 @@ DEMO_RUNS: List[dict] = [
 def _make_event_adder(db: Session, rid: str, created_at: datetime):
     """
     Returns a stateful _evt() callable that adds RunEvent rows with
-    staggered timestamps, pinning `rid` and `created_at` to the
-    values at the time of factory call (avoids late-binding closure bugs).
+    staggered timestamps and monotonically-incrementing seq numbers,
+    pinning `rid` and `created_at` to the values at the time of factory
+    call (avoids late-binding closure bugs).
+
+    seq must be unique per run_id due to the uq_run_events_run_id_seq
+    constraint — we increment it on every call.
     """
-    state = {"offset_ms": 0}
+    state = {"offset_ms": 0, "seq": 0}
 
     def _evt(type_: str, payload: dict) -> None:
         state["offset_ms"] += 80
@@ -292,8 +296,10 @@ def _make_event_adder(db: Session, rid: str, created_at: datetime):
                 type=type_,
                 payload=payload,
                 created_at=ts,
+                seq=state["seq"],
             )
         )
+        state["seq"] += 1
 
     return _evt
 

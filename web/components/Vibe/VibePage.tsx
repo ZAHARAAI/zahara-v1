@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { DemoPhase, useDemoStore, useSeedVersion } from "@/hooks/useDemoStore";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AgentListSkeleton } from "@/components/ui/SkeletonCard";
-import { Bot } from "lucide-react";
+import { Bot, Loader2Icon } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import VibeChat from "@/components/Vibe/VibeChat";
 
@@ -109,6 +109,7 @@ export default function VibePage() {
   >({});
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [loadingLeft, setLoadingLeft] = useState(false);
+  const [deleteAgentIdx, SetDeleteAgentIdx] = useState<number>(-1);
 
   // Demo store wiring
   const demoPhase = useDemoStore((s) => s.phase);
@@ -174,7 +175,8 @@ export default function VibePage() {
 
   async function handleDeleteAgent(id: string, idx: number) {
     try {
-      deleteAgent(id);
+      SetDeleteAgentIdx(idx);
+      await deleteAgent(id);
       const rest = agents.filter((a) => a.id !== id);
       setAgents(rest);
       setStatsByAgent((prev) => {
@@ -189,8 +191,11 @@ export default function VibePage() {
       }
       const saved = localStorage.getItem("zahara.flow.lastAgentId");
       if (saved === id) localStorage.removeItem("zahara.flow.lastAgentId");
+      toast.info("Deleted");
     } catch (err: any) {
       toast.error(err?.message ?? "Failed to delete agent");
+    } finally {
+      SetDeleteAgentIdx(-1);
     }
   }
 
@@ -349,8 +354,13 @@ export default function VibePage() {
                           onClick={() => void handleDeleteAgent(agent.id, idx)}
                           className="p-1 mt-10 rounded-md hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
                           title="Delete agent"
+                          disabled={deleteAgentIdx > -1}
                         >
-                          <Trash2Icon className="h-5 w-5 text-red-300 hover:text-red-400" />
+                          {deleteAgentIdx > -1 ? (
+                            <Loader2Icon className="h-5 w-5 text-red-400 animate-spin " />
+                          ) : (
+                            <Trash2Icon className="h-5 w-5 text-red-300 hover:text-red-400" />
+                          )}
                         </button>
                       </div>
                     </div>

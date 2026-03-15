@@ -223,7 +223,6 @@ export type RetryRunResponse = {
 export async function startAgentRun(
   agent_id: string,
   body: StartRunRequest,
-  options?: any,
 ): Promise<StartRunResponse> {
   const { json, error } = await api(
     `/agents/${encodeURIComponent(agent_id)}/run`,
