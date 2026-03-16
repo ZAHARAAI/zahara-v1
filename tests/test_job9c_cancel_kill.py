@@ -10,7 +10,9 @@ Covers:
 """
 
 import time
+import uuid
 import requests
+from tests._http_helpers import api_post, api_get, api_patch, api_delete
 import pytest
 
 API_BASE = "http://localhost:8000"
@@ -22,17 +24,18 @@ class TestCancelOperations:
     @pytest.fixture
     def auth_headers(self):
         """Authenticated headers for a test user."""
-        user_email = f"cancel-test-{int(time.time())}@test.zahara.ai"
-        requests.post(
+        uid = uuid.uuid4().hex[:8]
+        user_email = f"cancel-test-{uid}@test.zahara.ai"
+        api_post(
             f"{API_BASE}/auth/signup",
             json={
-                "username": f"user{int(time.time())}",
+                "username": f"user{uid}",
                 "email": user_email,
                 "password": "password123!",
             },
             timeout=5,
         )
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/auth/login",
             json={"email": user_email, "password": "password123!"},
             timeout=5,
@@ -42,10 +45,10 @@ class TestCancelOperations:
     @pytest.fixture
     def agent_id(self, auth_headers):
         """Create an agent for testing."""
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
-            json={"name": "test-agent", "spec": {}},
+            json={"name": f"test-agent-{uuid.uuid4().hex[:8]}", "spec": {}},
             timeout=5,
         )
         return res.json()["agent"]["id"]
@@ -53,7 +56,7 @@ class TestCancelOperations:
     @pytest.fixture
     def run_id(self, auth_headers, agent_id):
         """Create a run for testing."""
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents/{agent_id}/run",
             headers=auth_headers,
             json={"input": "test", "source": "test"},
@@ -67,12 +70,12 @@ class TestCancelOperations:
 
     def test_cancel_requires_auth(self):
         """Cancel endpoint requires authentication."""
-        res = requests.post(f"{API_BASE}/runs/test-id/cancel", timeout=5)
+        res = api_post(f"{API_BASE}/runs/test-id/cancel", timeout=5)
         assert res.status_code == 401
 
     def test_cancel_nonexistent_run_returns_404(self, auth_headers):
         """Cancel on non-existent run returns 404."""
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/runs/nonexistent/cancel",
             headers=auth_headers,
             timeout=5,
@@ -81,7 +84,7 @@ class TestCancelOperations:
 
     def test_cancel_run_succeeds(self, auth_headers, run_id):
         """Cancel on pending run succeeds."""
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/runs/{run_id}/cancel",
             headers=auth_headers,
             timeout=5,
@@ -94,7 +97,7 @@ class TestCancelOperations:
     def test_cancel_already_cancelled_run_is_idempotent(self, auth_headers, run_id):
         """Cancel on already-cancelled run returns same status."""
         # First cancel
-        res1 = requests.post(
+        res1 = api_post(
             f"{API_BASE}/runs/{run_id}/cancel",
             headers=auth_headers,
             timeout=5,
@@ -102,7 +105,7 @@ class TestCancelOperations:
         status1 = res1.json()["status"]
 
         # Second cancel
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/runs/{run_id}/cancel",
             headers=auth_headers,
             timeout=5,
@@ -116,7 +119,7 @@ class TestCancelOperations:
     def test_cancel_terminal_run_is_idempotent(self, auth_headers, agent_id):
         """Cancel on terminal (success/error) run returns current status."""
         # Create run
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents/{agent_id}/run",
             headers=auth_headers,
             json={"input": "test", "source": "test"},
@@ -125,7 +128,7 @@ class TestCancelOperations:
         run_id = res.json()["run_id"]
 
         # Try cancel (run may already complete)  - should still succeed
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/runs/{run_id}/cancel",
             headers=auth_headers,
             timeout=5,
@@ -137,14 +140,14 @@ class TestCancelOperations:
     def test_cancel_creates_event(self, auth_headers, run_id):
         """Cancel operation creates a system event."""
         # Cancel the run
-        requests.post(
+        api_post(
             f"{API_BASE}/runs/{run_id}/cancel",
             headers=auth_headers,
             timeout=5,
         )
 
         # Get events
-        res = requests.get(
+        res = api_get(
             f"{API_BASE}/runs/{run_id}/events",
             headers=auth_headers,
             timeout=5,
@@ -160,32 +163,34 @@ class TestCancelOperations:
     def test_cancel_user_cannot_cancel_other_user_run(self, agent_id):
         """User B cannot cancel User A's run."""
         # User A creates run
-        res_a = requests.post(
+        uid_a = uuid.uuid4().hex[:8]
+        email_a = f"cancel-a-{uid_a}@test.zahara.ai"
+        api_post(
             f"{API_BASE}/auth/signup",
             json={
-                "username": f"userA{int(time.time())}",
-                "email": f"cancel-a-{int(time.time())}@test.zahara.ai",
+                "username": f"userA{uid_a}",
+                "email": email_a,
                 "password": "pass123!",
             },
             timeout=5,
         )
-        res_a_login = requests.post(
+        res_a_login = api_post(
             f"{API_BASE}/auth/login",
-            json={"email": f"cancel-a-{int(time.time())}@test.zahara.ai", "password": "pass123!"},
+            json={"email": email_a, "password": "pass123!"},
             timeout=5, 
         )
         token_a = res_a_login.json()["access_token"]
         headers_a = {"Authorization": f"Bearer {token_a}"}
 
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=headers_a,
-            json={"name": "test", "spec": {}},
+            json={"name": f"test-{uid_a}", "spec": {}},
             timeout=5,
         )
         agent_a = res.json()["agent"]["id"]
 
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents/{agent_a}/run",
             headers=headers_a,
             json={"input": "test", "source": "test"},
@@ -194,24 +199,26 @@ class TestCancelOperations:
         run_a = res.json()["run_id"]
 
         # User B tries to cancel User A's run
-        res_b = requests.post(
+        uid_b = uuid.uuid4().hex[:8]
+        email_b = f"cancel-b-{uid_b}@test.zahara.ai"
+        res_b = api_post(
             f"{API_BASE}/auth/signup",
             json={
-                "username": f"userB{int(time.time())}",
-                "email": f"cancel-b-{int(time.time())}@test.zahara.ai",
+                "username": f"userB{uid_b}",
+                "email": email_b,
                 "password": "pass456!",
             },
             timeout=5,
         )
-        res_b_login = requests.post(
+        res_b_login = api_post(
             f"{API_BASE}/auth/login",
-            json={"email": f"cancel-b-{int(time.time())}@test.zahara.ai", "password": "pass456!"},
+            json={"email": email_b, "password": "pass456!"},
             timeout=5,
         )
         token_b = res_b_login.json()["access_token"]
         headers_b = {"Authorization": f"Bearer {token_b}"}
 
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/runs/{run_a}/cancel",
             headers=headers_b,
             timeout=5,
@@ -225,17 +232,18 @@ class TestKillOperations:
     @pytest.fixture
     def auth_headers(self):
         """Authenticated headers."""
-        user_email = f"kill-test-{int(time.time())}@test.zahara.ai"
-        requests.post(
+        uid = uuid.uuid4().hex[:8]
+        user_email = f"kill-test-{uid}@test.zahara.ai"
+        api_post(
             f"{API_BASE}/auth/signup",
             json={
-                "username": f"killuser{int(time.time())}",
+                "username": f"killuser{uid}",
                 "email": user_email,
                 "password": "password123!",
             },
             timeout=5,
         )
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/auth/login",
             json={"email": user_email, "password": "password123!"},
             timeout=5,
@@ -245,10 +253,10 @@ class TestKillOperations:
     @pytest.fixture
     def agent_id(self, auth_headers):
         """Create an agent."""
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
-            json={"name": "test-kill-agent", "spec": {}},
+            json={"name": f"test-kill-agent-{uuid.uuid4().hex[:8]}", "spec": {}},
             timeout=5,
         )
         return res.json()["agent"]["id"]
@@ -259,12 +267,12 @@ class TestKillOperations:
 
     def test_kill_requires_auth(self):
         """Kill endpoint requires authentication."""
-        res = requests.patch(f"{API_BASE}/agents/test-id/kill", timeout=5)
+        res = api_patch(f"{API_BASE}/agents/test-id/kill", timeout=5)
         assert res.status_code == 401
 
     def test_kill_nonexistent_agent_returns_404(self, auth_headers):
         """Kill on non-existent agent returns 404."""
-        res = requests.patch(
+        res = api_patch(
             f"{API_BASE}/agents/nonexistent/kill",
             headers=auth_headers,
             timeout=5,
@@ -273,7 +281,7 @@ class TestKillOperations:
 
     def test_kill_agent_succeeds(self, auth_headers, agent_id):
         """Kill on agent succeeds."""
-        res = requests.patch(
+        res = api_patch(
             f"{API_BASE}/agents/{agent_id}/kill",
             headers=auth_headers,
             timeout=5,
@@ -284,14 +292,14 @@ class TestKillOperations:
 
     def test_kill_pauses_agent(self, auth_headers, agent_id):
         """Kill operation sets agent status to paused."""
-        requests.patch(
+        api_patch(
             f"{API_BASE}/agents/{agent_id}/kill",
             headers=auth_headers,
             timeout=5,
         )
 
         # Get agent details
-        res = requests.get(
+        res = api_get(
             f"{API_BASE}/agents/{agent_id}",
             headers=auth_headers,
             timeout=5,
@@ -304,16 +312,17 @@ class TestKillOperations:
         # Create a few runs
         run_ids = []
         for i in range(2):
-            res = requests.post(
+            res = api_post(
                 f"{API_BASE}/agents/{agent_id}/run",
                 headers=auth_headers,
                 json={"input": f"test {i}", "source": "test"},
                 timeout=5,
             )
+            assert res.status_code == 200, f"run creation failed: {res.text}"
             run_ids.append(res.json()["run_id"])
 
         # Kill the agent - should cancel the pending runs
-        res = requests.patch(
+        res = api_patch(
             f"{API_BASE}/agents/{agent_id}/kill",
             headers=auth_headers,
             timeout=5,
@@ -324,50 +333,54 @@ class TestKillOperations:
     def test_kill_user_cannot_kill_other_user_agent(self):
         """User B cannot kill User A's agent."""
         # User A creates agent
-        res_a = requests.post(
+        uid_a = uuid.uuid4().hex[:8]
+        email_a = f"kill-a-{uid_a}@test.zahara.ai"
+        api_post(
             f"{API_BASE}/auth/signup",
             json={
-                "username": f"killA{int(time.time())}",
-                "email": f"kill-a-{int(time.time())}@test.zahara.ai",
+                "username": f"killA{uid_a}",
+                "email": email_a,
                 "password": "pass123!",
             },
             timeout=5,
         )
-        res_a_login = requests.post(
+        res_a_login = api_post(
             f"{API_BASE}/auth/login",
-            json={"email": f"kill-a-{int(time.time())}@test.zahara.ai", "password": "pass123!"},
+            json={"email": email_a, "password": "pass123!"},
             timeout=5,
         )
         token_a = res_a_login.json()["access_token"]
         headers_a = {"Authorization": f"Bearer {token_a}"}
 
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=headers_a,
-            json={"name": "test", "spec": {}},
+            json={"name": f"test-{uid_a}", "spec": {}},
             timeout=5,
         )
         agent_a = res.json()["agent"]["id"]
 
         # User B tries to kill User A's agent
-        res_b = requests.post(
+        uid_b = uuid.uuid4().hex[:8]
+        email_b = f"kill-b-{uid_b}@test.zahara.ai"
+        res_b = api_post(
             f"{API_BASE}/auth/signup",
             json={
-                "username": f"killB{int(time.time())}",
-                "email": f"kill-b-{int(time.time())}@test.zahara.ai",
+                "username": f"killB{uid_b}",
+                "email": email_b,
                 "password": "pass456!",
             },
             timeout=5,
         )
-        res_b_login = requests.post(
+        res_b_login = api_post(
             f"{API_BASE}/auth/login",
-            json={"email": f"kill-b-{int(time.time())}@test.zahara.ai", "password": "pass456!"},
+            json={"email": email_b, "password": "pass456!"},
             timeout=5,
         )
         token_b = res_b_login.json()["access_token"]
         headers_b = {"Authorization": f"Bearer {token_b}"}
 
-        res = requests.patch(
+        res = api_patch(
             f"{API_BASE}/agents/{agent_a}/kill",
             headers=headers_b,
             timeout=5,

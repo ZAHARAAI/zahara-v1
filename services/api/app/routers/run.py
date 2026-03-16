@@ -117,6 +117,7 @@ class RunDetail(BaseModel):
 
 class RunEventDTO(BaseModel):
     id: int
+    seq: Optional[int] = None
     type: str
     payload: Dict[str, Any]
     created_at: str
@@ -198,6 +199,7 @@ def _run_to_detail(run: RunModel) -> RunDetail:
 def _event_to_dto(ev: RunEventModel) -> RunEventDTO:
     return RunEventDTO(
         id=ev.id,
+        seq=ev.seq,
         type=ev.type,
         payload=ev.payload,
         created_at=_dt_to_iso_z(ev.created_at),
@@ -678,6 +680,7 @@ def stream_run_events(
                     last_id = ev.id
                     data = {
                         "type": ev.type,
+                        "seq": ev.seq,
                         "ts": _dt_to_iso_z(ev.created_at),
                         "created_at": _dt_to_iso_z(ev.created_at),
                         "request_id": run.request_id,
@@ -716,23 +719,7 @@ def stream_run_events(
             now = time.time()
             if now - last_heartbeat >= HEARTBEAT_INTERVAL_SECONDS:
                 last_heartbeat = now
-                hb = {
-                    "type": "heartbeat",
-                    "ts": _dt_to_iso_z(datetime.now(timezone.utc)),
-                    "created_at": _dt_to_iso_z(datetime.now(timezone.utc)),
-                    "request_id": run.request_id,
-                    "payload": {"request_id": run.request_id},
-                    "message": "heartbeat",
-                }
-                if framed:
-                    yield (
-                        f"event: heartbeat\n"
-                        f"data: {json.dumps(hb, ensure_ascii=False)}\n\n"
-                    ).encode("utf-8")
-                else:
-                    yield f"data: {json.dumps(hb, ensure_ascii=False)}\n\n".encode(
-                        "utf-8"
-                    )
+                yield b": heartbeat\n\n"
 
             await asyncio.sleep(0.5)
 
@@ -742,5 +729,6 @@ def stream_run_events(
         headers={
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Pragma": "no-cache",
+            "X-Accel-Buffering": "no",
         },
     )

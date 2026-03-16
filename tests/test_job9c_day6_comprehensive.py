@@ -6,7 +6,9 @@ Covers budget enforcement, field validation, and data persistence.
 """
 
 import time
+import uuid
 import requests
+from tests._http_helpers import api_post, api_get, api_patch, api_delete
 import pytest
 
 API_BASE = "http://localhost:8000"
@@ -18,17 +20,17 @@ class TestBudgetEnforcementComprehensive:
     @pytest.fixture
     def auth_headers(self):
         """Authenticated headers."""
-        user_email = f"budget-comprehensive-{int(time.time())}@test.zahara.ai"
-        requests.post(
+        user_email = f"budget-comprehensive-{uuid.uuid4().hex[:8]}@test.zahara.ai"
+        api_post(
             f"{API_BASE}/auth/signup",
             json={
-                "username": f"budgetcomp{int(time.time())}",
+                "username": f"budgetcomp{uuid.uuid4().hex[:8]}",
                 "email": user_email,
                 "password": "password123!",
             },
             timeout=5,
         )
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/auth/login",
             json={"email": user_email, "password": "password123!"},
             timeout=5,
@@ -42,11 +44,11 @@ class TestBudgetEnforcementComprehensive:
     def test_budget_value_persisted_across_get_requests(self, auth_headers):
         """Budget value is persisted in database and returned on GET."""
         # Create agent with specific budget
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
             json={
-                "name": f"budget-persist-{int(time.time())}",
+                "name": f"budget-persist-{uuid.uuid4().hex[:8]}",
                 "spec": {},
                 "budget_daily_usd": 2.50,
             },
@@ -56,7 +58,7 @@ class TestBudgetEnforcementComprehensive:
         created_budget = float(res.json()["agent"]["budget_daily_usd"])
 
         # Fetch agent and verify budget is the same
-        res = requests.get(
+        res = api_get(
             f"{API_BASE}/agents/{agent_id}",
             headers=auth_headers,
             timeout=5,
@@ -66,11 +68,11 @@ class TestBudgetEnforcementComprehensive:
 
     def test_budget_zero_treated_as_none(self, auth_headers):
         """Budget of 0 is treated as no cap (None)."""
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
             json={
-                "name": f"budget-zero-{int(time.time())}",
+                "name": f"budget-zero-{uuid.uuid4().hex[:8]}",
                 "spec": {},
                 "budget_daily_usd": 0,
             },
@@ -83,11 +85,11 @@ class TestBudgetEnforcementComprehensive:
     def test_budget_update_persisted(self, auth_headers):
         """Budget updates are persisted."""
         # Create agent with initial budget
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
             json={
-                "name": f"budget-update-{int(time.time())}",
+                "name": f"budget-update-{uuid.uuid4().hex[:8]}",
                 "spec": {},
                 "budget_daily_usd": 5.00,
             },
@@ -96,7 +98,7 @@ class TestBudgetEnforcementComprehensive:
         agent_id = res.json()["agent"]["id"]
 
         # Update budget
-        requests.patch(
+        api_patch(
             f"{API_BASE}/agents/{agent_id}",
             headers=auth_headers,
             json={"budget_daily_usd": 10.00},
@@ -104,7 +106,7 @@ class TestBudgetEnforcementComprehensive:
         )
 
         # Fetch and verify
-        res = requests.get(
+        res = api_get(
             f"{API_BASE}/agents/{agent_id}",
             headers=auth_headers,
             timeout=5,
@@ -114,11 +116,11 @@ class TestBudgetEnforcementComprehensive:
     def test_budget_negative_value_rejected(self, auth_headers):
         """Negative budget values are rejected."""
         # Create agent
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
             json={
-                "name": f"budget-test-{int(time.time())}",
+                "name": f"budget-test-{uuid.uuid4().hex[:8]}",
                 "spec": {},
                 "budget_daily_usd": 5.00,
             },
@@ -127,7 +129,7 @@ class TestBudgetEnforcementComprehensive:
         agent_id = res.json()["agent"]["id"]
 
         # Try to update with negative budget
-        res = requests.patch(
+        res = api_patch(
             f"{API_BASE}/agents/{agent_id}",
             headers=auth_headers,
             json={"budget_daily_usd": -1.00},
@@ -138,11 +140,11 @@ class TestBudgetEnforcementComprehensive:
     def test_budget_in_agent_list(self, auth_headers):
         """Budget is included in agent list responses."""
         # Create agent with budget
-        requests.post(
+        api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
             json={
-                "name": f"budget-list-{int(time.time())}",
+                "name": f"budget-list-{uuid.uuid4().hex[:8]}",
                 "spec": {},
                 "budget_daily_usd": 3.75,
             },
@@ -150,7 +152,7 @@ class TestBudgetEnforcementComprehensive:
         )
 
         # Get agent list
-        res = requests.get(
+        res = api_get(
             f"{API_BASE}/agents",
             headers=auth_headers,
             timeout=5,
@@ -167,17 +169,17 @@ class TestToolAllowlistComprehensive:
     @pytest.fixture
     def auth_headers(self):
         """Authenticated headers."""
-        user_email = f"allowlist-comp-{int(time.time())}@test.zahara.ai"
-        requests.post(
+        user_email = f"allowlist-comp-{uuid.uuid4().hex[:8]}@test.zahara.ai"
+        api_post(
             f"{API_BASE}/auth/signup",
             json={
-                "username": f"allowlistcomp{int(time.time())}",
+                "username": f"allowlistcomp{uuid.uuid4().hex[:8]}",
                 "email": user_email,
                 "password": "password123!",
             },
             timeout=5,
         )
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/auth/login",
             json={"email": user_email, "password": "password123!"},
             timeout=5,
@@ -191,11 +193,11 @@ class TestToolAllowlistComprehensive:
     def test_allowlist_persisted_across_requests(self, auth_headers):
         """Tool allowlist is persisted in database."""
         allowlist = ["web_search", "calculator", "email"]
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
             json={
-                "name": f"allowlist-persist-{int(time.time())}",
+                "name": f"allowlist-persist-{uuid.uuid4().hex[:8]}",
                 "spec": {},
                 "tool_allowlist": allowlist,
             },
@@ -205,7 +207,7 @@ class TestToolAllowlistComprehensive:
         created_allowlist = res.json()["agent"]["tool_allowlist"]
 
         # Fetch agent and verify allowlist is the same
-        res = requests.get(
+        res = api_get(
             f"{API_BASE}/agents/{agent_id}",
             headers=auth_headers,
             timeout=5,
@@ -215,11 +217,11 @@ class TestToolAllowlistComprehensive:
 
     def test_empty_allowlist_accepted(self, auth_headers):
         """Empty tool allowlist is accepted."""
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
             json={
-                "name": f"empty-allowlist-{int(time.time())}",
+                "name": f"empty-allowlist-{uuid.uuid4().hex[:8]}",
                 "spec": {},
                 "tool_allowlist": [],
             },
@@ -231,11 +233,11 @@ class TestToolAllowlistComprehensive:
     def test_allowlist_update_persisted(self, auth_headers):
         """Tool allowlist updates are persisted."""
         # Create agent with initial allowlist
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
             json={
-                "name": f"allowlist-update-{int(time.time())}",
+                "name": f"allowlist-update-{uuid.uuid4().hex[:8]}",
                 "spec": {},
                 "tool_allowlist": ["web_search"],
             },
@@ -245,7 +247,7 @@ class TestToolAllowlistComprehensive:
 
         # Update allowlist
         new_allowlist = ["web_search", "calculator", "email"]
-        requests.patch(
+        api_patch(
             f"{API_BASE}/agents/{agent_id}",
             headers=auth_headers,
             json={"tool_allowlist": new_allowlist},
@@ -253,7 +255,7 @@ class TestToolAllowlistComprehensive:
         )
 
         # Fetch and verify
-        res = requests.get(
+        res = api_get(
             f"{API_BASE}/agents/{agent_id}",
             headers=auth_headers,
             timeout=5,
@@ -263,11 +265,11 @@ class TestToolAllowlistComprehensive:
     def test_null_allowlist_means_all_tools_allowed(self, auth_headers):
         """Null tool allowlist means all tools are allowed."""
         # Create agent without allowlist
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
             json={
-                "name": f"no-allowlist-{int(time.time())}",
+                "name": f"no-allowlist-{uuid.uuid4().hex[:8]}",
                 "spec": {},
             },
             timeout=5,
@@ -283,17 +285,17 @@ class TestRunawayProtectionComprehensive:
     @pytest.fixture
     def auth_headers(self):
         """Authenticated headers."""
-        user_email = f"runaway-comp-{int(time.time())}@test.zahara.ai"
-        requests.post(
+        user_email = f"runaway-comp-{uuid.uuid4().hex[:8]}@test.zahara.ai"
+        api_post(
             f"{API_BASE}/auth/signup",
             json={
-                "username": f"runawaycomp{int(time.time())}",
+                "username": f"runawaycomp{uuid.uuid4().hex[:8]}",
                 "email": user_email,
                 "password": "password123!",
             },
             timeout=5,
         )
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/auth/login",
             json={"email": user_email, "password": "password123!"},
             timeout=5,
@@ -306,11 +308,11 @@ class TestRunawayProtectionComprehensive:
 
     def test_max_steps_persisted(self, auth_headers):
         """Max steps limit is persisted in database."""
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
             json={
-                "name": f"max-steps-persist-{int(time.time())}",
+                "name": f"max-steps-persist-{uuid.uuid4().hex[:8]}",
                 "spec": {},
                 "max_steps_per_run": 100,
             },
@@ -320,7 +322,7 @@ class TestRunawayProtectionComprehensive:
         created_steps = res.json()["agent"]["max_steps_per_run"]
 
         # Fetch and verify
-        res = requests.get(
+        res = api_get(
             f"{API_BASE}/agents/{agent_id}",
             headers=auth_headers,
             timeout=5,
@@ -330,11 +332,11 @@ class TestRunawayProtectionComprehensive:
 
     def test_max_duration_persisted(self, auth_headers):
         """Max duration limit is persisted in database."""
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
             json={
-                "name": f"max-duration-persist-{int(time.time())}",
+                "name": f"max-duration-persist-{uuid.uuid4().hex[:8]}",
                 "spec": {},
                 "max_duration_seconds_per_run": 3600,
             },
@@ -344,7 +346,7 @@ class TestRunawayProtectionComprehensive:
         created_duration = res.json()["agent"]["max_duration_seconds_per_run"]
 
         # Fetch and verify
-        res = requests.get(
+        res = api_get(
             f"{API_BASE}/agents/{agent_id}",
             headers=auth_headers,
             timeout=5,
@@ -354,11 +356,11 @@ class TestRunawayProtectionComprehensive:
 
     def test_max_steps_zero_rejected(self, auth_headers):
         """Max steps of 0 is rejected."""
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
             json={
-                "name": f"max-steps-zero-{int(time.time())}",
+                "name": f"max-steps-zero-{uuid.uuid4().hex[:8]}",
                 "spec": {},
                 "max_steps_per_run": 0,
             },
@@ -370,11 +372,11 @@ class TestRunawayProtectionComprehensive:
 
     def test_max_duration_zero_rejected(self, auth_headers):
         """Max duration of 0 is rejected."""
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
             json={
-                "name": f"max-duration-zero-{int(time.time())}",
+                "name": f"max-duration-zero-{uuid.uuid4().hex[:8]}",
                 "spec": {},
                 "max_duration_seconds_per_run": 0,
             },
@@ -386,11 +388,11 @@ class TestRunawayProtectionComprehensive:
     def test_runaway_limits_update_persisted(self, auth_headers):
         """Runaway protection limits can be updated."""
         # Create agent
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
             json={
-                "name": f"runaway-update-{int(time.time())}",
+                "name": f"runaway-update-{uuid.uuid4().hex[:8]}",
                 "spec": {},
                 "max_steps_per_run": 50,
                 "max_duration_seconds_per_run": 1800,
@@ -400,7 +402,7 @@ class TestRunawayProtectionComprehensive:
         agent_id = res.json()["agent"]["id"]
 
         # Update limits
-        res = requests.patch(
+        res = api_patch(
             f"{API_BASE}/agents/{agent_id}",
             headers=auth_headers,
             json={
@@ -411,7 +413,7 @@ class TestRunawayProtectionComprehensive:
         )
 
         # Verify update
-        res = requests.get(
+        res = api_get(
             f"{API_BASE}/agents/{agent_id}",
             headers=auth_headers,
             timeout=5,
@@ -427,17 +429,17 @@ class TestControlPlaneFieldValidation:
     @pytest.fixture
     def auth_headers(self):
         """Authenticated headers."""
-        user_email = f"validation-{int(time.time())}@test.zahara.ai"
-        requests.post(
+        user_email = f"validation-{uuid.uuid4().hex[:8]}@test.zahara.ai"
+        api_post(
             f"{API_BASE}/auth/signup",
             json={
-                "username": f"validation{int(time.time())}",
+                "username": f"validation{uuid.uuid4().hex[:8]}",
                 "email": user_email,
                 "password": "password123!",
             },
             timeout=5,
         )
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/auth/login",
             json={"email": user_email, "password": "password123!"},
             timeout=5,
@@ -450,11 +452,11 @@ class TestControlPlaneFieldValidation:
 
     def test_all_guardrails_can_be_combined(self, auth_headers):
         """All guardrail fields can be set on the same agent."""
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
             json={
-                "name": f"fully-guarded-{int(time.time())}",
+                "name": f"fully-guarded-{uuid.uuid4().hex[:8]}",
                 "spec": {},
                 "budget_daily_usd": 10.00,
                 "tool_allowlist": ["web_search", "calculator"],
@@ -472,11 +474,11 @@ class TestControlPlaneFieldValidation:
 
     def test_guardrails_optional_when_not_needed(self, auth_headers):
         """Guardrail fields are all optional."""
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=auth_headers,
             json={
-                "name": f"no-guardrails-{int(time.time())}",
+                "name": f"no-guardrails-{uuid.uuid4().hex[:8]}",
                 "spec": {},
             },
             timeout=5,

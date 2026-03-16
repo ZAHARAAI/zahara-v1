@@ -11,7 +11,9 @@ Tests full end-to-end scenarios combining features from Days 1-6:
 """
 
 import time
+import uuid
 import requests
+from tests._http_helpers import api_post, api_get, api_patch, api_delete
 import pytest
 
 API_BASE = "http://localhost:8000"
@@ -23,17 +25,17 @@ class TestFullControlPlaneFlow:
     @pytest.fixture
     def user_a(self):
         """Create and authenticate User A."""
-        email = f"user-a-{int(time.time())}@test.zahara.ai"
-        requests.post(
+        email = f"user-a-{uuid.uuid4().hex[:8]}@test.zahara.ai"
+        api_post(
             f"{API_BASE}/auth/signup",
             json={
-                "username": f"usera{int(time.time())}",
+                "username": f"usera{uuid.uuid4().hex[:8]}",
                 "email": email,
                 "password": "password123!",
             },
             timeout=5,
         )
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/auth/login",
             json={"email": email, "password": "password123!"},
             timeout=5,
@@ -44,17 +46,17 @@ class TestFullControlPlaneFlow:
     @pytest.fixture
     def user_b(self):
         """Create and authenticate User B."""
-        email = f"user-b-{int(time.time())}@test.zahara.ai"
-        requests.post(
+        email = f"user-b-{uuid.uuid4().hex[:8]}@test.zahara.ai"
+        api_post(
             f"{API_BASE}/auth/signup",
             json={
-                "username": f"userb{int(time.time())}",
+                "username": f"userb{uuid.uuid4().hex[:8]}",
                 "email": email,
                 "password": "password123!",
             },
             timeout=5,
         )
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/auth/login",
             json={"email": email, "password": "password123!"},
             timeout=5,
@@ -68,7 +70,7 @@ class TestFullControlPlaneFlow:
 
     def test_agent_creation_requires_auth(self):
         """Agent creation requires valid JWT."""
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             json={"name": "test-agent", "spec": {}},
             timeout=5,
@@ -78,16 +80,16 @@ class TestFullControlPlaneFlow:
     def test_user_isolation_on_agents(self, user_a, user_b):
         """Agents created by User A are not visible to User B."""
         # User A creates agent
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers={"Authorization": f"Bearer {user_a['token']}"},
-            json={"name": f"agent-a-{int(time.time())}", "spec": {}},
+            json={"name": f"agent-a-{uuid.uuid4().hex[:8]}", "spec": {}},
             timeout=5,
         )
         agent_a_id = res.json()["agent"]["id"]
 
         # User B cannot see User A's agent
-        res = requests.get(
+        res = api_get(
             f"{API_BASE}/agents/{agent_a_id}",
             headers={"Authorization": f"Bearer {user_b['token']}"},
             timeout=5,
@@ -100,11 +102,11 @@ class TestFullControlPlaneFlow:
 
     def test_agent_with_all_guardrails(self, user_a):
         """Create agent with all Day 6 guardrails."""
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers={"Authorization": f"Bearer {user_a['token']}"},
             json={
-                "name": f"full-guard-{int(time.time())}",
+                "name": f"full-guard-{uuid.uuid4().hex[:8]}",
                 "spec": {},
                 "budget_daily_usd": 5.00,
                 "tool_allowlist": ["web_search", "calculator"],
@@ -123,16 +125,16 @@ class TestFullControlPlaneFlow:
     def test_update_agent_guardrails(self, user_a):
         """Update agent guardrails after creation."""
         # Create basic agent
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers={"Authorization": f"Bearer {user_a['token']}"},
-            json={"name": f"update-test-{int(time.time())}", "spec": {}},
+            json={"name": f"update-test-{uuid.uuid4().hex[:8]}", "spec": {}},
             timeout=5,
         )
         agent_id = res.json()["agent"]["id"]
 
         # Update with guardrails
-        res = requests.patch(
+        res = api_patch(
             f"{API_BASE}/agents/{agent_id}",
             headers={"Authorization": f"Bearer {user_a['token']}"},
             json={
@@ -155,11 +157,11 @@ class TestFullControlPlaneFlow:
     def test_run_inherits_agent_guardrails(self, user_a):
         """Run inherits guardrails from agent."""
         # Create agent with guardrails
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers={"Authorization": f"Bearer {user_a['token']}"},
             json={
-                "name": f"run-guard-{int(time.time())}",
+                "name": f"run-guard-{uuid.uuid4().hex[:8]}",
                 "spec": {},
                 "budget_daily_usd": 2.00,
                 "max_steps_per_run": 25,
@@ -169,7 +171,7 @@ class TestFullControlPlaneFlow:
         agent_id = res.json()["agent"]["id"]
 
         # Start run
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents/{agent_id}/run",
             headers={"Authorization": f"Bearer {user_a['token']}"},
             json={"input": "Hello", "source": "test"},
@@ -184,15 +186,15 @@ class TestFullControlPlaneFlow:
     def test_run_events_accessible(self, user_a):
         """Events for run are accessible via API."""
         # Create agent and run
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers={"Authorization": f"Bearer {user_a['token']}"},
-            json={"name": f"events-test-{int(time.time())}", "spec": {}},
+            json={"name": f"events-test-{uuid.uuid4().hex[:8]}", "spec": {}},
             timeout=5,
         )
         agent_id = res.json()["agent"]["id"]
 
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents/{agent_id}/run",
             headers={"Authorization": f"Bearer {user_a['token']}"},
             json={"input": "test", "source": "test"},
@@ -202,7 +204,7 @@ class TestFullControlPlaneFlow:
             run_id = res.json()["run_id"]
 
             # Get events (may be empty if run hasn't processed yet)
-            res = requests.get(
+            res = api_get(
                 f"{API_BASE}/agents/{agent_id}/runs/{run_id}/events",
                 headers={"Authorization": f"Bearer {user_a['token']}"},
                 timeout=5,
@@ -213,15 +215,15 @@ class TestFullControlPlaneFlow:
     def test_run_accessible_after_creation(self, user_a):
         """Run is accessible after creation."""
         # Create agent and run
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers={"Authorization": f"Bearer {user_a['token']}"},
-            json={"name": f"run-test-{int(time.time())}", "spec": {}},
+            json={"name": f"run-test-{uuid.uuid4().hex[:8]}", "spec": {}},
             timeout=5,
         )
         agent_id = res.json()["agent"]["id"]
 
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents/{agent_id}/run",
             headers={"Authorization": f"Bearer {user_a['token']}"},
             json={"input": "test", "source": "test"},
@@ -236,17 +238,17 @@ class TestFullControlPlaneFlow:
 
     def test_idempotency_key_deduplication(self, user_a):
         """Same Idempotency-Key returns same run."""
-        agent_res = requests.post(
+        agent_res = api_post(
             f"{API_BASE}/agents",
             headers={"Authorization": f"Bearer {user_a['token']}"},
-            json={"name": f"idem-test-{int(time.time())}", "spec": {}},
+            json={"name": f"idem-test-{uuid.uuid4().hex[:8]}", "spec": {}},
             timeout=5,
         )
         agent_id = agent_res.json()["agent"]["id"]
-        idempotency_key = f"idempotent-{int(time.time())}"
+        idempotency_key = f"idempotent-{uuid.uuid4().hex[:8]}"
 
         # First request
-        res1 = requests.post(
+        res1 = api_post(
             f"{API_BASE}/agents/{agent_id}/run",
             headers={
                 "Authorization": f"Bearer {user_a['token']}",
@@ -257,7 +259,7 @@ class TestFullControlPlaneFlow:
         )
 
         # Second request with same key
-        res2 = requests.post(
+        res2 = api_post(
             f"{API_BASE}/agents/{agent_id}/run",
             headers={
                 "Authorization": f"Bearer {user_a['token']}",
@@ -279,15 +281,15 @@ class TestFullControlPlaneFlow:
     def test_user_cannot_access_other_user_run(self, user_a, user_b):
         """User B cannot access User A's run."""
         # User A creates agent and run
-        agent_res = requests.post(
+        agent_res = api_post(
             f"{API_BASE}/agents",
             headers={"Authorization": f"Bearer {user_a['token']}"},
-            json={"name": f"isolation-test-{int(time.time())}", "spec": {}},
+            json={"name": f"isolation-test-{uuid.uuid4().hex[:8]}", "spec": {}},
             timeout=5,
         )
         agent_id = agent_res.json()["agent"]["id"]
 
-        run_res = requests.post(
+        run_res = api_post(
             f"{API_BASE}/agents/{agent_id}/run",
             headers={"Authorization": f"Bearer {user_a['token']}"},
             json={"input": "test", "source": "test"},
@@ -296,7 +298,7 @@ class TestFullControlPlaneFlow:
         run_id = run_res.json()["run_id"]
 
         # User B tries to access User A's run
-        res = requests.get(
+        res = api_get(
             f"{API_BASE}/agents/{agent_id}/runs/{run_id}/events",
             headers={"Authorization": f"Bearer {user_b['token']}"},
             timeout=5,
@@ -311,19 +313,19 @@ class TestFullControlPlaneFlow:
     def test_multiple_users_independent_agents(self, user_a, user_b):
         """Multiple users can create agents independently."""
         # User A creates agent
-        res_a = requests.post(
+        res_a = api_post(
             f"{API_BASE}/agents",
             headers={"Authorization": f"Bearer {user_a['token']}"},
-            json={"name": f"user-a-agent-{int(time.time())}", "spec": {}},
+            json={"name": f"user-a-agent-{uuid.uuid4().hex[:8]}", "spec": {}},
             timeout=5,
         )
         assert res_a.status_code == 200
 
         # User B creates agent
-        res_b = requests.post(
+        res_b = api_post(
             f"{API_BASE}/agents",
             headers={"Authorization": f"Bearer {user_b['token']}"},
-            json={"name": f"user-b-agent-{int(time.time())}", "spec": {}},
+            json={"name": f"user-b-agent-{uuid.uuid4().hex[:8]}", "spec": {}},
             timeout=5,
         )
         assert res_b.status_code == 200
@@ -338,17 +340,17 @@ class TestControlPlaneReliability:
     @pytest.fixture
     def user(self):
         """Create and authenticate user."""
-        email = f"reliability-test-{int(time.time())}@test.zahara.ai"
-        requests.post(
+        email = f"reliability-test-{uuid.uuid4().hex[:8]}@test.zahara.ai"
+        api_post(
             f"{API_BASE}/auth/signup",
             json={
-                "username": f"reliable{int(time.time())}",
+                "username": f"reliable{uuid.uuid4().hex[:8]}",
                 "email": email,
                 "password": "password123!",
             },
             timeout=5,
         )
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/auth/login",
             json={"email": email, "password": "password123!"},
             timeout=5,
@@ -362,17 +364,17 @@ class TestControlPlaneReliability:
     def test_rapid_agent_creation(self, user):
         """Create multiple agents rapidly."""
         for i in range(5):
-            res = requests.post(
+            res = api_post(
                 f"{API_BASE}/agents",
                 headers=user,
-                json={"name": f"rapid-{int(time.time())}-{i}", "spec": {}},
+                json={"name": f"rapid-{uuid.uuid4().hex[:8]}-{i}", "spec": {}},
                 timeout=5,
             )
             assert res.status_code == 200
 
     def test_agent_list_pagination(self, user):
         """Agent list endpoint works."""
-        res = requests.get(
+        res = api_get(
             f"{API_BASE}/agents",
             headers=user,
             timeout=5,
@@ -382,7 +384,7 @@ class TestControlPlaneReliability:
 
     def test_error_handling_missing_agent(self, user):
         """Missing agent returns 404."""
-        res = requests.get(
+        res = api_get(
             f"{API_BASE}/agents/ag_nonexistent",
             headers=user,
             timeout=5,
@@ -391,11 +393,11 @@ class TestControlPlaneReliability:
 
     def test_error_handling_invalid_budget(self, user):
         """Invalid budget value handling."""
-        res = requests.post(
+        res = api_post(
             f"{API_BASE}/agents",
             headers=user,
             json={
-                "name": f"invalid-budget-{int(time.time())}",
+                "name": f"invalid-budget-{uuid.uuid4().hex[:8]}",
                 "spec": {},
                 "budget_daily_usd": -10,
             },

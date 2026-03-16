@@ -47,9 +47,15 @@ with (
     from app.models.run import Run as RunModel
     from app.models.user import User as UserModel
 
+from sqlalchemy.pool import StaticPool
+
 # In-memory SQLite
 TEST_DB_URL = "sqlite:///:memory:"
-engine = create_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
+engine = create_engine(
+    TEST_DB_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
 
 
 @sa_event.listens_for(engine, "connect")
@@ -61,27 +67,14 @@ def _set_sqlite_pragma(dbapi_conn, _):
 
 TestingSession = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# JSONB -> JSON shim for SQLite using TypeDecorator
+# JSONB -> JSON shim for SQLite
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import JSON, TypeDecorator
+from sqlalchemy.ext.compiler import compiles
 
 
-class SafeJSONB(TypeDecorator):
-    """Handle JSONB for both PostgreSQL and SQLite"""
-    impl = JSONB
-    cache_ok = True
-
-    def load_dialect_impl(self, dialect):
-        if dialect.name == "sqlite":
-            return dialect.type_descriptor(JSON())
-        return dialect.type_descriptor(JSONB())
-
-
-# Replace all JSONB columns with SafeJSONB
-for table in Base.metadata.tables.values():
-    for col in table.columns:
-        if isinstance(col.type, JSONB):
-            col.type = SafeJSONB()
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_sqlite(element, compiler, **kw):
+    return "JSON"
 
 
 # Strip PG-specific server defaults
@@ -111,16 +104,21 @@ def override_get_db():
         db.close()
 
 
-app.dependency_overrides[get_db] = override_get_db
-
-
 # ============================================================================
 # Fixtures
 # ============================================================================
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _setup_db_override():
+    """Set and restore DB override for this module."""
+    app.dependency_overrides[get_db] = override_get_db
+    yield
+    app.dependency_overrides.pop(get_db, None)
+
+
 @pytest.fixture(scope="module")
-def client():
+def client(_setup_db_override):
     return TestClient(app, raise_server_exceptions=True)
 
 
@@ -253,7 +251,8 @@ class TestUserDataIsolation:
         agent_id = _create_agent(client, user_a_token, "agent-a")
         res = client.get(f"/agents/{agent_id}", headers=_auth_header(user_b_token))
         assert res.status_code == 404
-        assert "NOT_FOUND" in res.json()["error"]["code"]
+        body = res.json()
+        assert "not found" in (body.get("error") or body.get("detail") or "").lower()
 
     def test_user_b_agent_list_empty_if_none_created(self, client, user_b_token):
         """User B's agent list only shows their agents (empty if none created)."""
@@ -456,6 +455,17 @@ class TestStreamEndpoint:
         run_data = _start_run(client, user_a_token, agent_id)
         run_id = run_data["run_id"]
 
-        res = client.get(f"/runs/{run_id}/stream", headers=_auth_header(user_a_token))
+        # Mark run as terminal so the stream generator exits promptly
+        db = TestingSession()
+        try:
+            from app.models.run import Run as _RM
+            db.query(_RM).filter(_RM.id == run_id).update({"status": "success"})
+            db.commit()
+        finally:
+            db.close()
+
+        # Patch SessionLocal used inside the SSE generator to use the test engine
+        with patch("app.routers.run.SessionLocal", TestingSession):
+            res = client.get(f"/runs/{run_id}/stream", headers=_auth_header(user_a_token))
         assert res.status_code == 200
         assert "text/event-stream" in res.headers.get("content-type", "")

@@ -23,11 +23,12 @@ import time
 import sys
 from concurrent.futures import ThreadPoolExecutor
 import requests
+from tests._http_helpers import api_post, api_get, api_patch, api_delete
 from typing import Dict, List, Tuple
 
 API_BASE = "http://localhost:8000"
-NUM_USERS = 5  # Reduced from 10 to avoid rate limiting
-NUM_AGENTS_PER_USER = 3  # Reduced from 5
+NUM_USERS = 3  # Reduced to stay within rate limits when running with other tests
+NUM_AGENTS_PER_USER = 2  # Reduced from 3
 NUM_RUNS_PER_AGENT = 2  # Reduced from 3
 REQUEST_TIMEOUT = 30
 
@@ -87,7 +88,7 @@ def signup_user(user_num: int) -> Tuple[str, str]:
     username = f"loadtest_user{user_num}_{timestamp}"
 
     # Signup
-    signup_response = requests.post(
+    signup_response = api_post(
         f"{API_BASE}/auth/signup",
         json={
             "username": username,
@@ -107,7 +108,7 @@ def signup_user(user_num: int) -> Tuple[str, str]:
     }, f"Signup failed with {signup_response.status_code}: {signup_response.text}"
 
     # Login
-    login_response = requests.post(
+    login_response = api_post(
         f"{API_BASE}/auth/login",
         json={"email": email, "password": "password123!"},
         timeout=REQUEST_TIMEOUT,
@@ -123,7 +124,7 @@ def create_agent(access_token: str, agent_num: int) -> str:
     timestamp = int(time.time() * 1000)
     agent_name = f"LoadTestAgent_{agent_num}_{timestamp}"
 
-    response = requests.post(
+    response = api_post(
         f"{API_BASE}/agents",
         headers={"Authorization": f"Bearer {access_token}"},
         json={"name": agent_name, "spec": {}, "budget_daily_usd": 5.00},
@@ -139,7 +140,7 @@ def create_agent(access_token: str, agent_num: int) -> str:
 
 def create_run(access_token: str, agent_id: str, run_num: int) -> str:
     """Create a run and return its ID."""
-    response = requests.post(
+    response = api_post(
         f"{API_BASE}/agents/{agent_id}/run",
         headers={"Authorization": f"Bearer {access_token}"},
         json={"input": f"Load test run {run_num}", "source": "soak_test"},
@@ -152,7 +153,7 @@ def create_run(access_token: str, agent_id: str, run_num: int) -> str:
 
 def get_agent(access_token: str, agent_id: str) -> Dict:
     """Get agent details."""
-    response = requests.get(
+    response = api_get(
         f"{API_BASE}/agents/{agent_id}",
         headers={"Authorization": f"Bearer {access_token}"},
         timeout=REQUEST_TIMEOUT,
@@ -163,7 +164,7 @@ def get_agent(access_token: str, agent_id: str) -> Dict:
 
 def list_agents(access_token: str) -> Dict:
     """List agents for a user."""
-    response = requests.get(
+    response = api_get(
         f"{API_BASE}/agents",
         headers={"Authorization": f"Bearer {access_token}"},
         timeout=REQUEST_TIMEOUT,
@@ -174,7 +175,7 @@ def list_agents(access_token: str) -> Dict:
 
 def get_run_events(access_token: str, agent_id: str, run_id: str) -> Dict:
     """Get run events."""
-    response = requests.get(
+    response = api_get(
         f"{API_BASE}/agents/{agent_id}/runs/{run_id}/events",
         headers={"Authorization": f"Bearer {access_token}"},
         timeout=REQUEST_TIMEOUT,
@@ -211,7 +212,7 @@ class TestJob9cSoak:
         assert metrics.successful_requests > 0, "No users created"
         assert len(user_data) > 0, f"No user records, successful_requests={metrics.successful_requests}"
 
-        print(f"\n✓ User Creation Test Results: {metrics.get_stats()}")
+        print(f"\n[PASS] User Creation Test Results: {metrics.get_stats()}")
 
     def test_concurrent_agent_creation(self, metrics: LoadTestMetrics):
         """Test creating multiple agents per user concurrently."""
@@ -258,7 +259,7 @@ class TestJob9cSoak:
 
         # Just verify we made progress
         assert metrics.total_requests > NUM_USERS, f"Expected at least {NUM_USERS + 1} requests, got {metrics.total_requests}"
-        print(f"\n✓ Agent Creation Test Results: {metrics.get_stats()}")
+        print(f"\n[PASS] Agent Creation Test Results: {metrics.get_stats()}")
 
     def test_concurrent_run_creation(self, metrics: LoadTestMetrics):
         """Test creating multiple runs per agent concurrently."""
@@ -319,7 +320,7 @@ class TestJob9cSoak:
 
         # Just verify we made some run creation attempts
         assert len(run_data) > 0, "No runs created"
-        print(f"\n✓ Run Creation Test Results: {metrics.get_stats()}")
+        print(f"\n[PASS] Run Creation Test Results: {metrics.get_stats()}")
 
     def test_full_control_plane_soak(self, metrics: LoadTestMetrics):
         """Full integration test: Create users → agents → runs → verify data."""
@@ -385,7 +386,7 @@ class TestJob9cSoak:
 
         # Verify some operations succeeded
         assert metrics.total_requests >= NUM_USERS, "Not enough requests tracked"
-        print(f"\n✓ Full Control Plane Soak Test Results: {metrics.get_stats()}")
+        print(f"\n[PASS] Full Control Plane Soak Test Results: {metrics.get_stats()}")
 
     def test_sustained_load_no_degradation(self, metrics: LoadTestMetrics):
         """Test that performance doesn't significantly degrade under sustained load."""
@@ -400,7 +401,7 @@ class TestJob9cSoak:
                 username = f"perf_user_{phase_num}_{timestamp}"
                 
                 start = time.time()
-                signup_resp = requests.post(
+                signup_resp = api_post(
                     f"{API_BASE}/auth/signup",
                     json={"username": username, "email": email, "password": "password123!"},
                     timeout=REQUEST_TIMEOUT,
@@ -412,7 +413,7 @@ class TestJob9cSoak:
 
                 # Login
                 start = time.time()
-                login_resp = requests.post(
+                login_resp = api_post(
                     f"{API_BASE}/auth/login",
                     json={"email": email, "password": "password123!"},
                     timeout=REQUEST_TIMEOUT,
@@ -437,7 +438,7 @@ class TestJob9cSoak:
 
         # Verify we made requests
         assert metrics.total_requests > 0, "No requests made"
-        print(f"\n✓ Sustained Load Test Results: {metrics.get_stats()}")
+        print(f"\n[PASS] Sustained Load Test Results: {metrics.get_stats()}")
 
     @staticmethod
     def _timed_operation(operation, operation_name: str, metrics: LoadTestMetrics):

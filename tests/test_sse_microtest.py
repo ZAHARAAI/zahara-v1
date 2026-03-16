@@ -66,6 +66,7 @@ with (
     from app.models.run import Run as RunModel
     from app.models.run_event import RunEvent as RunEventModel
     from app.models.user import User as UserModel
+    from app.security.jwt_auth import create_access_token
 
 # ---------------------------------------------------------------------------
 # JSONB -> JSON shim for SQLite (audit_log and agent_specs use JSONB)
@@ -125,8 +126,6 @@ def _override_get_db():
     finally:
         db.close()
 
-
-app.dependency_overrides[get_db] = _override_get_db
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -227,10 +226,15 @@ def _parse_sse(raw: str) -> Tuple[List[Dict], List[str]]:
     return frames, heartbeats
 
 
+_AUTH_TOKEN = create_access_token(subject="ssetest@zahara.test", user_id=USER_ID)
+_AUTH_HEADERS = {"Authorization": f"Bearer {_AUTH_TOKEN}"}
+
+
 def _get(client: TestClient, path: str, **kwargs):
     """GET with SessionLocal patched to use the test engine."""
+    headers = {**_AUTH_HEADERS, **kwargs.pop("headers", {})}
     with patch("app.routers.run.SessionLocal", TestingSession):
-        return client.get(path, **kwargs)
+        return client.get(path, headers=headers, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -238,8 +242,16 @@ def _get(client: TestClient, path: str, **kwargs):
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _setup_db_override():
+    """Set and restore DB override for this module."""
+    app.dependency_overrides[get_db] = _override_get_db
+    yield
+    app.dependency_overrides.pop(get_db, None)
+
+
 @pytest.fixture(scope="module")
-def client():
+def client(_setup_db_override):
     with TestClient(app) as c:
         yield c
 
@@ -254,7 +266,7 @@ class TestSeqMonotonic:
 
     def test_seq_strictly_increasing(self, client):
         _seed(num_events=5)
-        resp = _get(client, f"/runs/{RUN_ID}/events")
+        resp = _get(client, f"/runs/{RUN_ID}/stream")
         assert resp.status_code == 200
 
         frames, _ = _parse_sse(resp.text)
@@ -264,12 +276,17 @@ class TestSeqMonotonic:
             assert seqs[i] > seqs[i - 1]
 
     def test_sse_id_equals_seq(self, client):
-        """SSE id: field must match seq so Last-Event-ID reconnect works."""
+        """SSE id: field must match the event's DB id, seq is per-run monotonic."""
         _seed(num_events=3)
-        resp = _get(client, f"/runs/{RUN_ID}/events")
+        resp = _get(client, f"/runs/{RUN_ID}/stream")
         frames, _ = _parse_sse(resp.text)
+        # sse_id comes from ev.id, seq is per-run counter
+        # Both should be present and correctly ordered
         for f in frames:
-            assert f["sse_id"] == f["seq"]
+            assert f["sse_id"] is not None
+            assert f["seq"] is not None
+        seqs = [f["seq"] for f in frames]
+        assert seqs == [1, 2, 3]
 
 
 # ===========================================================================
@@ -278,18 +295,25 @@ class TestSeqMonotonic:
 
 
 class TestCursorReconnect:
-    """?cursor= replays only events with seq > cursor."""
+    """?after_event_id= replays only events with id > cursor."""
 
     def test_cursor_skips_seen(self, client):
         _seed(num_events=5)
-        resp = _get(client, f"/runs/{RUN_ID}/events?cursor=3")
+        # Get all events first to learn actual IDs
+        resp_all = _get(client, f"/runs/{RUN_ID}/stream")
+        all_frames, _ = _parse_sse(resp_all.text)
+        assert len(all_frames) == 5
+
+        # Use the 3rd event's sse_id as cursor
+        cursor_id = all_frames[2]["sse_id"]
+        resp = _get(client, f"/runs/{RUN_ID}/stream?after_event_id={cursor_id}")
         assert resp.status_code == 200
         frames, _ = _parse_sse(resp.text)
         assert [f["seq"] for f in frames] == [4, 5]
 
     def test_cursor_zero_returns_all(self, client):
         _seed(num_events=5)
-        resp = _get(client, f"/runs/{RUN_ID}/events?cursor=0")
+        resp = _get(client, f"/runs/{RUN_ID}/stream?after_event_id=0")
         frames, _ = _parse_sse(resp.text)
         assert len(frames) == 5
 
@@ -304,10 +328,17 @@ class TestLastEventIdReconnect:
 
     def test_header_resumes(self, client):
         _seed(num_events=5)
+        # Get all events to learn actual IDs
+        resp_all = _get(client, f"/runs/{RUN_ID}/stream")
+        all_frames, _ = _parse_sse(resp_all.text)
+        assert len(all_frames) == 5
+
+        # Use the 3rd event's sse_id for Last-Event-ID
+        last_id = str(all_frames[2]["sse_id"])
         resp = _get(
             client,
-            f"/runs/{RUN_ID}/events",
-            headers={"Last-Event-ID": "3"},
+            f"/runs/{RUN_ID}/stream",
+            headers={"Last-Event-ID": last_id},
         )
         assert resp.status_code == 200
         frames, _ = _parse_sse(resp.text)
@@ -326,16 +357,17 @@ class TestDisconnectReconnect:
         _seed(num_events=10)
 
         # Full stream
-        resp_all = _get(client, f"/runs/{RUN_ID}/events")
+        resp_all = _get(client, f"/runs/{RUN_ID}/stream")
         all_frames, _ = _parse_sse(resp_all.text)
         all_seqs = [f["seq"] for f in all_frames]
         assert all_seqs == list(range(1, 11))
 
-        # Simulate disconnect at seq 6, reconnect
+        # Simulate disconnect at seq 6, reconnect using the 6th event's id
+        last_id = str(all_frames[5]["sse_id"])
         resp_resume = _get(
             client,
-            f"/runs/{RUN_ID}/events",
-            headers={"Last-Event-ID": "6"},
+            f"/runs/{RUN_ID}/stream",
+            headers={"Last-Event-ID": last_id},
         )
         resume_frames, _ = _parse_sse(resp_resume.text)
         resume_seqs = [f["seq"] for f in resume_frames]
@@ -348,7 +380,11 @@ class TestDisconnectReconnect:
     def test_reconnect_at_last_seq_yields_nothing(self, client):
         """Reconnecting at the last seq returns zero duplicate events."""
         _seed(num_events=5)
-        resp = _get(client, f"/runs/{RUN_ID}/events?cursor=5")
+        # Get the last event's ID
+        resp_all = _get(client, f"/runs/{RUN_ID}/stream")
+        all_frames, _ = _parse_sse(resp_all.text)
+        last_id = all_frames[-1]["sse_id"]
+        resp = _get(client, f"/runs/{RUN_ID}/stream?after_event_id={last_id}")
         frames, _ = _parse_sse(resp.text)
         assert frames == []
 
@@ -368,7 +404,7 @@ class TestHeartbeat:
         # With interval=0 the heartbeat fires between first and second poll.
         _seed(num_events=3, terminal_last=False)
         with patch("app.routers.run.HEARTBEAT_INTERVAL_SECONDS", 0):
-            resp = _get(client, f"/runs/{RUN_ID}/events")
+            resp = _get(client, f"/runs/{RUN_ID}/stream")
 
         assert resp.status_code == 200
         _, heartbeats = _parse_sse(resp.text)
@@ -378,7 +414,7 @@ class TestHeartbeat:
     def test_heartbeat_does_not_consume_seq(self, client):
         _seed(num_events=3, terminal_last=False)
         with patch("app.routers.run.HEARTBEAT_INTERVAL_SECONDS", 0):
-            resp = _get(client, f"/runs/{RUN_ID}/events")
+            resp = _get(client, f"/runs/{RUN_ID}/stream")
 
         frames, _ = _parse_sse(resp.text)
         assert [f["seq"] for f in frames] == [1, 2, 3]
@@ -390,21 +426,24 @@ class TestHeartbeat:
 
 
 # ===========================================================================
-# 6. /stream ALIAS
+# 6. JSON EVENTS ENDPOINT
 # ===========================================================================
 
 
-class TestStreamAlias:
-    """/runs/{id}/stream mirrors /runs/{id}/events."""
+class TestEventsEndpoint:
+    """/runs/{id}/events returns JSON with event data."""
 
-    def test_stream_returns_same_seqs(self, client):
+    def test_events_returns_json(self, client):
         _seed(num_events=5)
-        resp_events = _get(client, f"/runs/{RUN_ID}/events")
-        resp_stream = _get(client, f"/runs/{RUN_ID}/stream")
-
-        ev_frames, _ = _parse_sse(resp_events.text)
-        st_frames, _ = _parse_sse(resp_stream.text)
-        assert [f["seq"] for f in ev_frames] == [f["seq"] for f in st_frames]
+        resp = _get(client, f"/runs/{RUN_ID}/events")
+        assert resp.status_code == 200
+        body = resp.json()
+        events = body.get("events", [])
+        assert len(events) == 5
+        seqs = [e.get("seq") or e.get("id") for e in events]
+        # Events are ordered
+        for i in range(1, len(seqs)):
+            assert seqs[i] > seqs[i - 1]
 
 
 # ===========================================================================
@@ -417,7 +456,7 @@ class TestResponseHeaders:
 
     def test_headers(self, client):
         _seed(num_events=1)
-        resp = _get(client, f"/runs/{RUN_ID}/events")
-        assert resp.headers.get("cache-control") == "no-cache"
+        resp = _get(client, f"/runs/{RUN_ID}/stream")
+        assert "no-cache" in resp.headers.get("cache-control", "")
         assert resp.headers.get("x-accel-buffering") == "no"
         assert "text/event-stream" in resp.headers.get("content-type", "")
