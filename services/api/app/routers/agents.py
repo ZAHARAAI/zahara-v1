@@ -134,7 +134,7 @@ class AgentCreate(BaseModel):
     description: Optional[str] = None
     spec: Dict[str, Any] = Field(default_factory=dict)
     budget_daily_usd: Optional[float] = None
-    tool_allowlist: Optional[List[str]] = None  # List of allowed tool names, None = all allowed
+    tool_allowlist: Optional[List[str]] = None  # Deny-by-default: None blocks tools unless TOOL_GOVERNANCE_LEGACY_OPEN=true
     max_steps_per_run: Optional[int] = None  # Max steps per run, None = unlimited
     max_duration_seconds_per_run: Optional[int] = None  # Max duration per run, None = unlimited
 
@@ -148,7 +148,7 @@ class AgentUpdate(BaseModel):
     budget_daily_usd: Optional[float] = None  # None means no cap
 
     # Job9C Day 6: Tool allowlist and runaway protection
-    tool_allowlist: Optional[List[str]] = None  # List of allowed tool names, None = all allowed
+    tool_allowlist: Optional[List[str]] = None  # Deny-by-default: None blocks tools unless TOOL_GOVERNANCE_LEGACY_OPEN=true
     max_steps_per_run: Optional[int] = None  # Max steps per run, None = unlimited
     max_duration_seconds_per_run: Optional[int] = None  # Max duration per run, None = unlimited
 

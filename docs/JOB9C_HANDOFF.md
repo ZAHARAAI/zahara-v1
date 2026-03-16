@@ -133,7 +133,8 @@ id, user_id, event_type, entity_type, entity_id, payload (JSONB)
 
 **Tool governance (deny-by-default):**
 - `tool_allowlist` on agent model (JSON array)
-- `null` = allow all tools (default, backward compatible)
+- `null` = **deny all tools** (deny-by-default, the default behavior)
+- `null` with `TOOL_GOVERNANCE_LEGACY_OPEN=true` = allow all tools (legacy backward compat)
 - `[]` (empty array) = deny all tools
 - `["search", "calculator"]` = allow only named tools (case-sensitive)
 - Enforcement: `_extract_tool_names()` parses OpenAI-format tool calls during streaming,
@@ -297,6 +298,7 @@ JWT_SECRET_KEY=<32+ char random string>
 JWT_ALGORITHM=HS256
 RATE_LIMIT_MAX_REQUESTS=60
 RATE_LIMIT_PERIOD_SECONDS=60
+TOOL_GOVERNANCE_LEGACY_OPEN=false  # true to allow all tools when allowlist is null (legacy)
 ```
 
 ### Rate Limiting
@@ -312,7 +314,8 @@ Default: 60 requests per 60 seconds per IP. Returns HTTP 429 when exceeded.
 3. Tool allowlist uses exact string matching (case-sensitive, no glob/regex)
 4. Budget tracking resets daily (no sub-day granularity)
 5. Enforcement violations are audit-logged internally but not sent to external systems
-6. Usernames are lowercased on storage (case-insensitive uniqueness)
+6. `TOOL_GOVERNANCE_LEGACY_OPEN=true` re-enables pre-Job-9C behavior (`null` = allow all)
+7. Usernames are lowercased on storage (case-insensitive uniqueness)
 7. SSE endpoint only accepts GET; HEAD requests return HTTP 405
 8. Health endpoint returns `{"status":"healthy"}`, not `{"status":"ok"}`
 

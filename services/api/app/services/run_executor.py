@@ -11,6 +11,7 @@ import httpx
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..database import SessionLocal
 from ..models.agent import Agent as AgentModel
 from ..models.agent_spec import AgentSpec as AgentSpecModel
@@ -115,11 +116,20 @@ def _check_tool_allowlist(
     """
     Check if all tool names are in the agent's allowlist.
     Returns (is_allowed, error_message).
-    If agent has no allowlist, all tools are allowed.
+
+    Deny-by-default: when tool_allowlist is None, behavior depends on
+    TOOL_GOVERNANCE_LEGACY_OPEN (default False = deny all).
     """
     allowlist = getattr(agent, "tool_allowlist", None)
     if allowlist is None:
-        # No allowlist means all tools allowed
+        if settings.tool_governance_legacy_open:
+            return True, None
+        # Deny-by-default: no allowlist configured means no tools permitted
+        if tool_names:
+            return False, (
+                "Agent has no tool_allowlist configured (deny-by-default). "
+                f"Set tool_allowlist to allow tools: {', '.join(tool_names)}"
+            )
         return True, None
     
     if not isinstance(allowlist, list) or not allowlist:

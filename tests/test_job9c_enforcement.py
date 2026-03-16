@@ -55,14 +55,35 @@ class TestToolAllowlistEnforcement:
         assert _extract_tool_names(None) == []
         assert _extract_tool_names({}) == []
 
-    def test_check_allowlist_null_allows_all_tools(self):
-        """Null allowlist allows all tools."""
+    def test_check_allowlist_null_denies_by_default(self):
+        """Null allowlist denies tools when legacy flag is off (default)."""
         agent = Mock(spec=AgentModel)
         agent.tool_allowlist = None
 
         allowed, error = _check_tool_allowlist(agent, ["web_search", "calculator"])
+        assert allowed is False
+        assert "deny-by-default" in error.lower()
+
+    def test_check_allowlist_null_allows_no_tool_calls(self):
+        """Null allowlist allows calls with no tools even when deny-by-default."""
+        agent = Mock(spec=AgentModel)
+        agent.tool_allowlist = None
+
+        allowed, error = _check_tool_allowlist(agent, [])
         assert allowed is True
         assert error is None
+
+    def test_check_allowlist_null_allows_all_when_legacy_open(self):
+        """Null allowlist allows all tools when TOOL_GOVERNANCE_LEGACY_OPEN=true."""
+        from unittest.mock import patch as _patch
+        with _patch("services.api.app.services.run_executor.settings") as mock_settings:
+            mock_settings.tool_governance_legacy_open = True
+            agent = Mock(spec=AgentModel)
+            agent.tool_allowlist = None
+
+            allowed, error = _check_tool_allowlist(agent, ["web_search", "calculator"])
+            assert allowed is True
+            assert error is None
 
     def test_check_allowlist_empty_blocks_all_tools(self):
         """Empty allowlist blocks all tools."""
