@@ -1,0 +1,29 @@
+# Zahara.ai Code Owners
+# Each line is a file pattern followed by one or more owners.
+# These owners will be the default assignees for pull requests
+
+# Global owners
+* @zahara-ai/core-team @umerfarok
+
+# Infrastructure and deployment
+/infra/ @zahara-ai/devops-team
+/.github/ @zahara-ai/devops-team
+/docker-compose*.yml @zahara-ai/devops-team
+/Dockerfile @zahara-ai/devops-team
+
+# API service
+/services/api/ @zahara-ai/backend-team
+
+# Router service  
+/services/router/ @zahara-ai/backend-team
+
+# Tests
+/tests/ @zahara-ai/backend-team @zahara-ai/qa-team
+
+# Documentation
+*.md @zahara-ai/docs-team
+/docs/ @zahara-ai/docs-team
+
+# Configuration files
+pyproject.toml @zahara-ai/core-team
+requirements.txt @zahara-ai/backend-team

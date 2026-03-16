@@ -1,0 +1,4 @@
+services:
+  api:
+    environment:
+      - ENABLE_DEV_PAGES=1

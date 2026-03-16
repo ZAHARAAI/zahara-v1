@@ -1,0 +1,202 @@
+graph TD
+    %% External Layer with Azure Icons
+    subgraph EXT ["🌐 External Access Layer"]
+        USERS["👥 Internet Users<br/>📱 Web/Mobile Clients"]
+        ADMIN["👨‍💼 System Administrators<br/>🔧 DevOps Team"]
+        DNS["🌍 Public DNS<br/>📍 development.vectormind.chat<br/>🔢 9.223.83.214"]
+    end
+
+    %% Administrative Cloud Environment
+    subgraph AZURE_ADMIN ["☁️ Microsoft Azure - Administrative Subscription"]
+        direction TB
+        subgraph ADMIN_RG ["🏢 rg-vectormind-admin-prod"]
+            subgraph ADMIN_VNET ["📡 vnet-admin-prod<br/>🔢 Address Space: 10.10.0.0/16<br/>📍 East US 2"]
+                subgraph VPN_GATEWAY ["🔐 VPN Gateway Subnet<br/>🔢 10.10.0.0/24"]
+                    OPENVPN["🛡️ vm-openvpn-prod<br/>⚙️ Standard_B2s (2 vCPU, 4GB)<br/>💾 Premium SSD 64GB<br/>🔒 Network Security Group"]
+                end
+                subgraph MGMT_SUBNET ["⚙️ Management Subnet<br/>🔢 10.10.1.0/24"]
+                    MGMT_SERVICES["📋 Future: Jump Boxes<br/>🛠️ Admin Tools<br/>📊 Monitoring Agents"]
+                end
+                subgraph BASTION_SUBNET ["🏰 AzureBastionSubnet<br/>🔢 10.10.2.0/27"]
+                    BASTION_HOST["🏰 Azure Bastion<br/>🔒 Browser-based SSH/RDP<br/>⚡ Standard SKU"]
+                end
+            end
+        end
+    end
+
+    %% Production Application Environment  
+    subgraph AZURE_MAIN ["☁️ Microsoft Azure - Production Subscription"]
+        direction TB
+        subgraph MAIN_RG ["🏢 rg-vectormind-app-prod"]
+            
+            %% Kubernetes Service Section
+            subgraph AKS_SECTION ["🚀 Azure Kubernetes Service (AKS)"]
+                subgraph MAIN_VNET ["📡 vnet-vectormind-prod<br/>🔢 Address Space: 10.0.0.0/16<br/>📍 East US 2"]
+                    subgraph AKS_SUBNET ["⚙️ snet-aks-prod<br/>🔢 10.0.1.0/24<br/>🔗 Delegated to AKS"]
+                        subgraph AKS_CLUSTER ["🎯 aks-vectormind-prod<br/>📋 Kubernetes v1.32<br/>🔐 Azure RBAC Enabled<br/>🌐 Azure CNI Network"]
+                            
+                            subgraph NODE_POOLS ["🖥️ Node Pool Configuration"]
+                                SYS_NODES["⚙️ System Node Pool<br/>📛 'systempool'<br/>💾 Standard_D4s_v3<br/>🔢 Min: 1, Max: 3 nodes<br/>💿 OS Disk: 128GB Premium"]
+                                APP_NODES["🖥️ User Node Pool<br/>📛 'apppool'<br/>💾 Standard_D4s_v3<br/>🔢 Min: 1, Max: 10 nodes<br/>🔄 Auto-scaling Enabled"]
+                            end
+                            
+                            subgraph INGRESS_CTRL ["🚪 Ingress & Load Balancing"]
+                                LOAD_BALANCER["🔀 Azure Load Balancer<br/>🌐 Public IP: 9.223.83.214<br/>⚡ Standard SKU"]
+                                EMISSARY["📡 Emissary Ingress Controller<br/>🔀 Layer 7 Load Balancing<br/>🎯 Path-based Routing"]
+                                CERT_MGR["🔐 cert-manager<br/>🔏 Let's Encrypt Integration<br/>🔄 Auto SSL Renewal<br/>📋 ClusterIssuer: letsencrypt"]
+                            end
+                            
+                            subgraph APP_WORKLOADS ["🐳 Application Microservices"]
+                                AI_SERVICE["🤖 AI Processing Service<br/>🧠 LLM Request Handler<br/>📊 Vector Operations<br/>🔄 HPA: 2-10 replicas"]
+                                VECTOR_DB["🗂️ Vector Database<br/>🔍 Similarity Search Engine<br/>📈 Real-time Indexing<br/>💾 Persistent Volume Claims"]
+                                DASHBOARD_UI["📈 Management Dashboard<br/>📱 React SPA Frontend<br/>📊 Analytics Interface<br/>🔐 Role-based Access"]
+                                AUTH_SERVICE["🔐 Authentication Service<br/>🎫 JWT Token Management<br/>🛡️ OAuth2 Integration<br/>📋 RBAC Enforcement"]
+                            end
+                            
+                            subgraph DATA_TIER ["💾 Data & Caching Layer"]
+                                REDIS_CLUSTER["🔴 Redis Cluster<br/>⚡ Session Management<br/>🗄️ Application Cache<br/>📊 6GB Memory Limit<br/>🔄 3 Master + 3 Replica"]
+                                LANGFUSE_ANALYTICS["📊 Langfuse Observability<br/>📈 LLM Performance Metrics<br/>🔍 Request Tracing<br/>📋 Usage Analytics<br/>💾 PostgreSQL Backend"]
+                            end
+                        end
+                    end
+                    
+                    subgraph DATABASE_SUBNET ["🗄️ snet-database-prod<br/>🔢 10.0.2.0/24<br/>🔒 Private Endpoints Only"]
+                        POSTGRES_SERVER["🐘 Azure Database for PostgreSQL<br/>📋 Flexible Server v16<br/>💾 General Purpose D4s_v3<br/>💿 512GB Premium SSD<br/>🔐 Private Endpoint<br/>🔄 7-day Backup Retention<br/>🌍 Geo-redundant Backup"]
+                    end
+                    
+                    PRIVATE_DNS_ZONE["🌐 Azure Private DNS Zone<br/>📋 privatelink.postgres.database.azure.com<br/>🔗 VNet Link: Admin + Main VNets"]
+                end
+            end
+            
+            %% Serverless Computing
+            subgraph SERVERLESS ["⚡ Azure Functions - Serverless Computing"]
+                APP_SERVICE_PLAN["📋 Azure Functions Premium Plan<br/>⚡ Always On Enabled<br/>🔢 EP1: 1 vCPU, 3.5GB RAM<br/>🔄 Auto-scale: 1-20 instances"]
+                
+                subgraph FUNCTION_APPS ["🔧 Function App Collection"]
+                    DOC_PROCESSOR["📄 func-document-processor<br/>🔍 PDF/Word Analysis<br/>🤖 OCR Integration<br/>⏱️ Timeout: 10 minutes"]
+                    API_GATEWAY["🔌 func-api-gateway<br/>🌐 External API Proxy<br/>🔐 Rate Limiting<br/>📊 Request Logging"]
+                    BACKGROUND_TASKS["⏰ func-background-tasks<br/>🔄 Scheduled Jobs<br/>📧 Email Processing<br/>🧹 Data Cleanup"]
+                    NOTIFICATION_HUB["📨 func-notifications<br/>💌 Multi-channel Alerts<br/>📱 Push Notifications<br/>📧 Email Templates"]
+                    ANALYTICS_PIPELINE["📊 func-analytics-pipeline<br/>📈 Data Aggregation<br/>🔄 ETL Operations<br/>📋 Report Generation"]
+                    HEALTH_MONITOR["👁️ func-health-monitor<br/>🏥 System Health Checks<br/>🚨 Alerting Logic<br/>📊 Metrics Collection"]
+                end
+            end
+            
+            %% Managed Azure Services
+            subgraph AZURE_SERVICES ["🛠️ Azure Managed Services"]
+                
+                subgraph SECURITY_VAULT ["🔐 Security & Key Management"]
+                    KEY_VAULT["🗝️ Azure Key Vault<br/>📛 kv-vectormind-prod<br/>🔒 Secrets, Keys & Certificates<br/>🔐 RBAC + Access Policies<br/>🛡️ HSM-backed Keys<br/>📋 Audit Logging"]
+                end
+                
+                subgraph AI_COGNITIVE ["🤖 Azure AI & Cognitive Services"]
+                    OPENAI_SERVICE["🎯 Azure OpenAI Service<br/>📛 openai-vectormind-prod<br/>🧠 GPT-4o (150K TPM)<br/>🚀 GPT-4o-mini (450K TPM)<br/>📜 GPT-3.5-turbo (240K TPM)<br/>🔒 Private Endpoint<br/>📊 Content Safety Enabled"]
+                    FORM_RECOGNIZER["🔍 Azure AI Document Intelligence<br/>📋 Form Recognizer API<br/>📄 Custom Model Training<br/>🏷️ Layout Analysis<br/>📊 Table Extraction"]
+                end
+                
+                subgraph STORAGE_ACCOUNTS ["💾 Azure Storage Services"]
+                    BLOB_STORAGE["🗄️ Azure Blob Storage<br/>📛 stvectormindprod<br/>🔥 Hot Tier: Frequently accessed<br/>❄️ Cool Tier: Archived data<br/>🔐 Private Endpoints<br/>🔄 Lifecycle Management"]
+                    FILE_STORAGE["📁 Azure Files<br/>💾 SMB/NFS File Shares<br/>🔗 AKS Persistent Volumes<br/>📊 Standard Performance<br/>🔄 Snapshot Backups"]
+                end
+                
+                subgraph OBSERVABILITY ["📊 Monitoring & Observability"]
+                    APP_INSIGHTS["📈 Application Insights<br/>📛 appi-vectormind-prod<br/>🔍 APM & Performance<br/>📊 Custom Telemetry<br/>🚨 Smart Detection<br/>📋 Live Metrics<br/>🎯 Distributed Tracing"]
+                    LOG_ANALYTICS["📋 Log Analytics Workspace<br/>📛 law-vectormind-prod<br/>🔎 Centralized Logging<br/>📊 KQL Query Language<br/>🔄 Data Retention: 90 days<br/>📈 Custom Dashboards"]
+                end
+                
+                BACKUP_VAULT["🔄 Recovery Services Vault<br/>📛 rsv-vectormind-prod<br/>💾 VM & Database Backups<br/>🌍 Geo-redundant Storage<br/>🔄 30-day Retention<br/>⚡ Instant Restore Points"]
+            end
+            
+            subgraph CONFIGURATION ["⚙️ Configuration & Feature Management"]
+                APP_CONFIGURATION["🎛️ Azure App Configuration<br/>📛 appconfig-vectormind-prod<br/>📝 Feature Flag Management<br/>🔄 Dynamic Configuration<br/>🔐 Managed Identity Access<br/>📋 Configuration Import/Export"]
+            end
+        end
+    end
+
+    %% Enhanced Connection Flows with Professional Styling
+    
+    %% Public Internet Traffic Flow
+    USERS ==>|"🌐 HTTPS/443<br/>📱 Client Requests"| DNS
+    DNS ==>|"🔀 DNS Resolution<br/>⚡ Global CDN"| LOAD_BALANCER
+    LOAD_BALANCER ==>|"🎯 Layer 4 LB<br/>🔒 SSL Termination"| EMISSARY
+    
+    %% Administrative Access
+    ADMIN ==>|"🔐 OpenVPN Client<br/>🛡️ Encrypted Tunnel"| OPENVPN
+    
+    %% VNet Peering - Secure Inter-VNet Communication
+    ADMIN_VNET <==>|"🔗 VNet Peering<br/>🔒 Encrypted Transit<br/>📶 No Internet Gateway"| MAIN_VNET
+    
+    %% Secure Administrative Access Paths
+    OPENVPN -.->|"🔐 Private Endpoint<br/>🗄️ Database Admin"| POSTGRES_SERVER
+    OPENVPN -.->|"⚙️ kubectl Access<br/>🎯 K8s Management"| AKS_CLUSTER
+    OPENVPN -.->|"🗝️ Secret Management<br/>🔐 Key Vault Admin"| KEY_VAULT
+    BASTION_HOST -.->|"🖥️ SSH/RDP Access<br/>🌐 Browser-based"| OPENVPN
+    
+    %% Core Application Data Flow
+    EMISSARY -->|"🎯 L7 Routing<br/>📋 Path-based Rules"| APP_WORKLOADS
+    APP_WORKLOADS -->|"🔐 Private Endpoint<br/>⚡ Connection Pooling"| POSTGRES_SERVER
+    APP_WORKLOADS -->|"🗝️ Managed Identity<br/>🔒 Secret Retrieval"| KEY_VAULT
+    APP_WORKLOADS -->|"🤖 AI API Calls<br/>🧠 LLM Processing"| OPENAI_SERVICE
+    APP_WORKLOADS -->|"📄 Document Analysis<br/>🔍 Form Processing"| FORM_RECOGNIZER
+    
+    %% High-Performance Data Layer
+    APP_WORKLOADS <-->|"⚡ Redis Protocol<br/>🗄️ Session Cache"| REDIS_CLUSTER
+    AI_SERVICE -->|"📊 Performance Metrics<br/>🔍 Request Tracing"| LANGFUSE_ANALYTICS
+    APP_WORKLOADS -->|"📈 Custom Events<br/>📊 Business Metrics"| LANGFUSE_ANALYTICS
+    
+    %% Serverless Integration Layer
+    FUNCTION_APPS -->|"🗄️ Connection Pooling<br/>⚡ Auto-retry Logic"| POSTGRES_SERVER
+    FUNCTION_APPS -->|"🔑 Managed Identity<br/>🗝️ Secret Access"| KEY_VAULT
+    FUNCTION_APPS -->|"💾 Blob Operations<br/>📁 File Processing"| BLOB_STORAGE
+    FUNCTION_APPS -->|"🤖 Batch AI Processing<br/>📊 Analytics Tasks"| OPENAI_SERVICE
+    FUNCTION_APPS -.->|"⚡ Event Grid<br/>🔄 Async Triggers"| APP_WORKLOADS
+    
+    %% Dynamic Configuration Management
+    APP_WORKLOADS -.->|"⚙️ Runtime Config<br/>🎛️ Feature Flags"| APP_CONFIGURATION
+    FUNCTION_APPS -.->|"📝 Settings Sync<br/>🔄 Hot Reload"| APP_CONFIGURATION
+    
+    %% Comprehensive Observability
+    AKS_CLUSTER -->|"📊 Container Insights<br/>📈 Node Metrics"| APP_INSIGHTS
+    AKS_CLUSTER -->|"📋 Container Logs<br/>🔍 Audit Logs"| LOG_ANALYTICS
+    FUNCTION_APPS -->|"⚡ Function Metrics<br/>📊 Execution Stats"| APP_INSIGHTS
+    POSTGRES_SERVER -->|"🗄️ Database Metrics<br/>🔍 Query Performance"| LOG_ANALYTICS
+    LANGFUSE_ANALYTICS -->|"🤖 LLM Analytics<br/>📈 Usage Patterns"| APP_INSIGHTS
+    
+    %% DNS Resolution & Service Discovery
+    PRIVATE_DNS_ZONE -.->|"🌐 Name Resolution<br/>🔍 Service Discovery"| POSTGRES_SERVER
+    PRIVATE_DNS_ZONE -.->|"🔗 Cross-VNet DNS<br/>📡 Private Zones"| ADMIN_VNET
+    
+    %% Backup & Disaster Recovery
+    POSTGRES_SERVER -->|"💾 Automated Backups<br/>🌍 Geo-redundancy"| BACKUP_VAULT
+    BLOB_STORAGE -->|"🔄 Cross-region Sync<br/>❄️ Archive Tier"| BACKUP_VAULT
+    AKS_CLUSTER -->|"📦 Persistent Volumes<br/>💾 Snapshot Backups"| BACKUP_VAULT
+
+    %% Professional Azure Color Scheme
+    classDef external fill:#0078d4,stroke:#004578,stroke-width:4px,color:#ffffff,font-weight:bold,font-size:14px
+    classDef adminCloud fill:#00bcf2,stroke:#0078d4,stroke-width:3px,color:#000000,font-weight:bold,font-size:13px
+    classDef adminResources fill:#40e0d0,stroke:#20b2aa,stroke-width:2px,color:#000000,font-weight:600,font-size:12px
+    classDef kubernetes fill:#326ce5,stroke:#1e3a8a,stroke-width:3px,color:#ffffff,font-weight:bold,font-size:13px
+    classDef kubernetesNodes fill:#4a90e2,stroke:#2c5aa0,stroke-width:2px,color:#ffffff,font-weight:600,font-size:12px
+    classDef database fill:#e74c3c,stroke:#c0392b,stroke-width:3px,color:#ffffff,font-weight:bold,font-size:13px
+    classDef serverless fill:#9b59b6,stroke:#8e44ad,stroke-width:3px,color:#ffffff,font-weight:bold,font-size:13px
+    classDef azureAI fill:#ff6b35,stroke:#e55100,stroke-width:3px,color:#ffffff,font-weight:bold,font-size:13px
+    classDef security fill:#ffa726,stroke:#f57c00,stroke-width:3px,color:#000000,font-weight:bold,font-size:13px
+    classDef monitoring fill:#26a69a,stroke:#00695c,stroke-width:3px,color:#ffffff,font-weight:bold,font-size:13px
+    classDef storage fill:#78909c,stroke:#455a64,stroke-width:3px,color:#ffffff,font-weight:bold,font-size:13px
+    classDef configuration fill:#5e35b1,stroke:#4527a0,stroke-width:3px,color:#ffffff,font-weight:bold,font-size:13px
+    classDef networkSecurity fill:#d32f2f,stroke:#b71c1c,stroke-width:2px,color:#ffffff,font-weight:600,font-size:12px
+
+    %% Apply Enhanced Class Styling
+    class EXT,USERS,ADMIN,DNS external
+    class AZURE_ADMIN adminCloud
+    class ADMIN_RG,ADMIN_VNET,VPN_GATEWAY,MGMT_SUBNET,BASTION_SUBNET,OPENVPN,MGMT_SERVICES,BASTION_HOST adminResources
+    class AZURE_MAIN,AKS_SECTION,MAIN_VNET,AKS_SUBNET,AKS_CLUSTER kubernetes
+    class NODE_POOLS,SYS_NODES,APP_NODES,INGRESS_CTRL,APP_WORKLOADS,DATA_TIER kubernetesNodes
+    class DATABASE_SUBNET,POSTGRES_SERVER database
+    class SERVERLESS,APP_SERVICE_PLAN,FUNCTION_APPS,DOC_PROCESSOR,API_GATEWAY,BACKGROUND_TASKS,NOTIFICATION_HUB,ANALYTICS_PIPELINE,HEALTH_MONITOR serverless
+    class AI_COGNITIVE,OPENAI_SERVICE,FORM_RECOGNIZER azureAI
+    class SECURITY_VAULT,KEY_VAULT security
+    class OBSERVABILITY,APP_INSIGHTS,LOG_ANALYTICS monitoring
+    class STORAGE_ACCOUNTS,BLOB_STORAGE,FILE_STORAGE,BACKUP_VAULT storage
+    class CONFIGURATION,APP_CONFIGURATION configuration
+    class LOAD_BALANCER,EMISSARY,CERT_MGR,PRIVATE_DNS_ZONE networkSecurity
