@@ -19,6 +19,7 @@ from ..models.provider_key import ProviderKey as ProviderKeyModel
 from ..models.run import Run as RunModel
 from ..models.run_event import RunEvent as RunEventModel
 from ..security.provider_keys_crypto import decrypt_secret
+from ..services.audit import log_audit_event
 from ..services.daily_usage import upsert_daily_usage
 from ..services.pricing import estimate_cost_usd_with_fallback
 
@@ -358,25 +359,37 @@ def execute_run_via_router(run_id: str) -> None:
                             agent, run, current_time
                         )
                         if not within_limits:
-                            run.status = "error"
+                            run.status = "cancelled"
                             run.error_message = f"Run cancelled due to runaway protection: {runaway_error}"
                             db.add(run)
                             db.commit()
                             _add_event(
                                 db,
                                 run.id,
-                                "error",
+                                "cancelled",
                                 {
                                     "message": run.error_message,
                                     "request_id": run.request_id,
                                 },
                             )
+                            if run.user_id:
+                                log_audit_event(
+                                    db,
+                                    user_id=run.user_id,
+                                    event_type="runaway.stopped",
+                                    entity_type="run",
+                                    entity_id=run.id,
+                                    payload={
+                                        "agent_id": run.agent_id,
+                                        "reason": runaway_error,
+                                    },
+                                )
                             return
 
                         # Check max_steps limit
                         max_steps = getattr(agent, "max_steps_per_run", None)
                         if max_steps and max_steps > 0 and step_count > max_steps:
-                            run.status = "error"
+                            run.status = "cancelled"
                             run.error_message = (
                                 f"Run exceeded max steps: {step_count} > {max_steps}"
                             )
@@ -385,12 +398,24 @@ def execute_run_via_router(run_id: str) -> None:
                             _add_event(
                                 db,
                                 run.id,
-                                "error",
+                                "cancelled",
                                 {
                                     "message": run.error_message,
                                     "request_id": run.request_id,
                                 },
                             )
+                            if run.user_id:
+                                log_audit_event(
+                                    db,
+                                    user_id=run.user_id,
+                                    event_type="runaway.stopped",
+                                    entity_type="run",
+                                    entity_id=run.id,
+                                    payload={
+                                        "agent_id": run.agent_id,
+                                        "reason": run.error_message,
+                                    },
+                                )
                             return
 
                     line = _coerce_line_to_str(raw_line)
@@ -439,6 +464,19 @@ def execute_run_via_router(run_id: str) -> None:
                                     "request_id": run.request_id,
                                 },
                             )
+                            if run.user_id:
+                                log_audit_event(
+                                    db,
+                                    user_id=run.user_id,
+                                    event_type="tool.blocked",
+                                    entity_type="run",
+                                    entity_id=run.id,
+                                    payload={
+                                        "agent_id": run.agent_id,
+                                        "blocked_tools": tool_names,
+                                        "reason": error_msg,
+                                    },
+                                )
                             return
 
                         step_count += 1

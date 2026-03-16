@@ -19,6 +19,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
+# Sentinel to distinguish "field not sent" from "explicitly set to null"
+_UNSET = object()
+
 from ..database import get_db
 from ..middleware.auth import get_current_user
 from ..middleware.run_rate_limit import enforce_run_start_rate_limit
@@ -140,6 +143,8 @@ class AgentCreate(BaseModel):
 
 
 class AgentUpdate(BaseModel):
+    model_config = {"arbitrary_types_allowed": True}
+
     name: Optional[str] = None
     description: Optional[str] = None
 
@@ -148,7 +153,9 @@ class AgentUpdate(BaseModel):
     budget_daily_usd: Optional[float] = None  # None means no cap
 
     # Job9C Day 6: Tool allowlist and runaway protection
-    tool_allowlist: Optional[List[str]] = None  # Deny-by-default: None blocks tools unless TOOL_GOVERNANCE_LEGACY_OPEN=true
+    # Uses _UNSET sentinel so PATCH can distinguish "not sent" from "explicitly null".
+    # Send tool_allowlist: null in JSON to clear back to deny-by-default.
+    tool_allowlist: Any = Field(default=_UNSET)
     max_steps_per_run: Optional[int] = None  # Max steps per run, None = unlimited
     max_duration_seconds_per_run: Optional[int] = None  # Max duration per run, None = unlimited
 
@@ -799,7 +806,8 @@ def update_agent(
         )
 
     # Job9C Day 6: Tool allowlist and runaway protection updates
-    if body.tool_allowlist is not None:
+    if body.tool_allowlist is not _UNSET:
+        # Explicitly sent: None clears to deny-by-default, list sets allowlist
         agent.tool_allowlist = body.tool_allowlist
 
     if body.max_steps_per_run is not None:

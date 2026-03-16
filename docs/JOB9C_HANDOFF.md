@@ -139,13 +139,16 @@ id, user_id, event_type, entity_type, entity_id, payload (JSONB)
 - `["search", "calculator"]` = allow only named tools (case-sensitive)
 - Enforcement: `_extract_tool_names()` parses OpenAI-format tool calls during streaming,
   `_check_tool_allowlist()` validates each tool, disallowed tool -> run set to `error`
+- **Audit:** `tool.blocked` event written with `blocked_tools` and `reason` in payload
+- **PATCH to clear:** Send `{"tool_allowlist": null}` to reset agent to deny-by-default;
+  uses `_UNSET` sentinel so omitting the field != setting it to null
 
 **Runaway protection:**
 - `max_steps_per_run` and `max_duration_seconds_per_run` on agent model
 - `step_count` incremented on each `tool_call`/`function_call` delta
 - Duration compared against elapsed time since `run.created_at`
 - Both checked every 20 chunks during streaming
-- Violation -> run set to `error`, audit event written
+- Violation -> run set to `cancelled` (not error), `runaway.stopped` audit event written
 
 **Cancellation check during execution:**
 - `run.status` re-read from DB every 20 chunks
@@ -223,13 +226,13 @@ id, user_id, event_type, entity_type, entity_id, payload (JSONB)
 | test_job9c_auth_and_events.py | 24 | Auth enforcement, user isolation, idempotency, event ordering | In-process TestClient + SQLite |
 | test_job9c_cancel_kill.py | 13 | Cancel idempotency, kill agent, cross-user protection | HTTP integration |
 | test_job9c_day6_comprehensive.py | 16 | Budget persistence, allowlist CRUD, runaway limits, combined guardrails | HTTP integration |
-| test_job9c_enforcement.py | 19 | Tool name extraction, allowlist validation, runaway detection | Unit tests with mocks |
+| test_job9c_enforcement.py | 33 | Tool name extraction, allowlist validation, runaway detection, audit event contracts, sentinel PATCH semantics | Unit tests with mocks |
 | test_job9c_integration.py | 14 | Full control plane flow, user isolation, error handling | HTTP integration |
 | test_job9c_soak.py | 5 | Concurrent load, sustained performance, rate limiting | HTTP load test |
 | test_sse_microtest.py | 12 | Seq monotonicity, cursor reconnect, Last-Event-ID, heartbeat | In-process TestClient + SQLite |
 | job9c_smoke_test.sh | 12 | End-to-end curl: signup -> login -> CRUD -> run -> events -> cancel | Shell script (curl) |
 
-**Total: 103 tests + 12 curl scenarios = 115 test items**
+**Total: 117 tests + 12 curl scenarios = 129 test items**
 
 ### Running Tests
 
@@ -346,7 +349,7 @@ Full spec verification performed on 16 Mar 2026.
 | Codebase audit (endpoints + features) | 26/26 present |
 | Live Docker curl (40-check script) | 40/40 PASS |
 | Curl smoke script (`job9c_smoke_test.sh`) | 12/12 PASS |
-| Pytest (`test_job9c_*.py` + `test_sse_microtest.py`) | 102 passed, 1 skipped |
+| Pytest (`test_job9c_*.py` + `test_sse_microtest.py`) | 116 passed, 1 skipped |
 
 All 9 workstreams (A through I) verified against the running Docker stack.
 Every acceptance gate in the original sprint spec passed.
