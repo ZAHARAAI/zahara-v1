@@ -9,6 +9,8 @@ import { AgentListSkeleton } from "@/components/ui/SkeletonCard";
 import { Bot, Loader2Icon } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import VibeChat from "@/components/Vibe/VibeChat";
+import { useBuildersStore } from "@/hooks/useBuildersStore";
+import { useShallow } from "zustand/react/shallow";
 
 import {
   Agent,
@@ -107,7 +109,15 @@ export default function VibePage() {
   const [statsByAgent, setStatsByAgent] = useState<
     Record<string, AgentStatsItem>
   >({});
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+
+  // Sync agent selection with BuildersStore so deep-links and mode switches work
+  const { selectedAgentId, setSelectedAgentId } = useBuildersStore(
+    useShallow((s) => ({
+      selectedAgentId: s.selectedAgentId,
+      setSelectedAgentId: s.setSelectedAgentId,
+    })),
+  );
+
   const [loadingLeft, setLoadingLeft] = useState(false);
   const [deleteAgentIdx, SetDeleteAgentIdx] = useState<number>(-1);
 
@@ -278,9 +288,9 @@ export default function VibePage() {
                 return (
                   <li
                     key={agent.id}
-                    className={`group flex flex-col gap-2 px-3 py-2 hover:bg-muted ${active ? "bg-muted" : ""}`}
+                    className={`flex flex-col gap-2 px-3 py-2 hover:bg-muted ${active ? "bg-muted" : ""}`}
                   >
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="group flex items-start justify-between gap-2">
                       <button
                         type="button"
                         className="flex-1 text-left"
@@ -292,7 +302,7 @@ export default function VibePage() {
                           </div>
                           {statusBadge(agentStatus)}
                         </div>
-                        <div className="text-[11px] text-muted_fg truncate">
+                        <div className="text-[11px] text-muted_fg line-clamp-2 ">
                           {agent.description ?? agent.slug}
                         </div>
                         <div className="mt-1 flex items-center gap-2 text-[11px] text-muted_fg">
@@ -354,9 +364,9 @@ export default function VibePage() {
                           onClick={() => void handleDeleteAgent(agent.id, idx)}
                           className="p-1 mt-10 rounded-md hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
                           title="Delete agent"
-                          disabled={deleteAgentIdx > -1}
+                          disabled={deleteAgentIdx == idx}
                         >
-                          {deleteAgentIdx > -1 ? (
+                          {deleteAgentIdx == idx ? (
                             <Loader2Icon className="h-5 w-5 text-red-400 animate-spin " />
                           ) : (
                             <Trash2Icon className="h-5 w-5 text-red-300 hover:text-red-400" />

@@ -1,13 +1,21 @@
-// web/components/Pro/Toolbar.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Play, Sparkles, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  Play,
+  CheckCircle2,
+  XCircle,
+  Sparkles,
+  X,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { useEventBus } from "@/hooks/useEventBus";
 import { useProStore } from "@/hooks/useProStore";
 import { useRunUIStore } from "@/hooks/useRunUIStore";
+import { useBuildersStore } from "@/hooks/useBuildersStore";
 import {
   startAgentRun,
   streamRun,
@@ -16,12 +24,16 @@ import {
 } from "@/services/api";
 import { Button } from "@/components/ui/Button";
 
+type RunButtonState = "idle" | "running" | "success" | "error";
+
 const Toolbar = () => {
+  const router = useRouter();
   const { selectedPath, content, agentId } = useProStore();
   const runUI = useRunUIStore();
   const { setRunId, pushEvent, clearEvents } = useEventBus();
 
   const [running, setRunning] = useState(false);
+  const [runState, setRunState] = useState<RunButtonState>("idle");
   const [lastRunId, setLastRunId] = useState<string | null>(null);
   const currentRunIdRef = useRef<string | null>(null);
 
@@ -72,7 +84,7 @@ const Toolbar = () => {
         type: "error",
         ts: new Date().toISOString(),
         message:
-          "No agent bound to this Pro session. Open Pro from a Flow that was saved as an Agent.",
+          "No agent bound. Open Pro from a Flow that was saved as an Agent.",
       });
       return;
     }
@@ -87,8 +99,9 @@ const Toolbar = () => {
 
     clearEvents?.();
     setRunning(true);
+    setRunState("running");
 
-    runUI.show("BUILD", "Running via Job 6 router…", { autoCloseMs: 1500 });
+    runUI.show("BUILD", "Running via Pro…", { autoCloseMs: 1500 });
 
     try {
       const res = await startAgentRun(agentId, {
@@ -97,13 +110,8 @@ const Toolbar = () => {
         config: { path: selectedPath, surface: "pro" },
       });
 
-      if (res?.budget && typeof res.budget.percent_used === "number") {
-        const pct = res.budget.percent_used;
-        if (pct >= 80 && pct < 100) {
-          toast.warning(
-            `Budget warning: ${pct.toFixed(0)}% of today's agent budget used`,
-          );
-        }
+      if (res?.budget?.percent_used && res?.budget?.percent_used >= 80) {
+        toast.warning(`Budget ${res.budget.percent_used.toFixed(0)}% used`);
       }
 
       const run_id = res.run_id;
@@ -112,20 +120,57 @@ const Toolbar = () => {
       setLastRunId(run_id);
       currentRunIdRef.current = run_id;
 
-      stopRef.current?.();
-      stopRef.current = streamRun(run_id, (event) => emitLocal(event), {
-        autoCloseMs: 1500,
-        fadeMs: 180,
+      // Sync to BuildersStore
+      useBuildersStore.getState().setActiveRun({
+        runId: run_id,
+        status: "running",
+        startedAt: Date.now(),
+        source: "pro",
       });
+      useBuildersStore.getState().setSelectedRunId(run_id);
+
+      stopRef.current?.();
+      stopRef.current = streamRun(
+        run_id,
+        (event) => {
+          emitLocal(event);
+          if (event.type === "done") {
+            setRunState("success");
+            setRunning(false);
+            useBuildersStore.getState().clearActiveRun();
+            toast.success("Pro run completed!", {
+              duration: 8000,
+              action: {
+                label: "View in Clinic →",
+                onClick: () =>
+                  router.push(`/clinic?runId=${encodeURIComponent(run_id)}`),
+              },
+            });
+            setTimeout(() => setRunState("idle"), 3000);
+          }
+          if (event.type === "error") {
+            setRunState("error");
+            setRunning(false);
+            useBuildersStore
+              .getState()
+              .setActiveRun((p) => (p ? { ...p, status: "error" } : null));
+            setTimeout(() => setRunState("idle"), 4000);
+          }
+        },
+        { autoCloseMs: 1500, fadeMs: 180 },
+      );
     } catch (err) {
-      console.error("Failed to start agent run from Pro", err);
       emitLocal({
         type: "error",
         ts: new Date().toISOString(),
-        message:
-          "Failed to start run via Job 6 pipeline. Check console / network tab.",
+        message: "Failed to start run. Check console / network tab.",
       });
       runUI.setError("Failed to start run.");
+      setRunState("error");
+      useBuildersStore
+        .getState()
+        .setActiveRun((p) => (p ? { ...p, status: "error" } : null));
+      setTimeout(() => setRunState("idle"), 4000);
     } finally {
       setRunning(false);
     }
@@ -201,19 +246,45 @@ const Toolbar = () => {
           <span className="ml-1">AG-UI</span>
         </Button>
 
-        {!running ? (
-          <Button size="xs" onClick={handleRun} disabled={!selectedPath}>
-            <Play className="h-3 w-3" />
-            <span className="ml-1">Run</span>
-          </Button>
-        ) : (
+        {running ? (
           <Button
             size="xs"
             variant="outline"
             onClick={() => void handleCancel()}
+            className="gap-1.5"
           >
             <X className="h-3 w-3" />
-            <span className="ml-1">Cancel</span>
+            Cancel
+          </Button>
+        ) : runState === "success" ? (
+          <Button
+            size="xs"
+            variant="outline"
+            disabled
+            className="gap-1.5 border-emerald-500/40 text-emerald-400"
+          >
+            <CheckCircle2 className="h-3 w-3" />
+            Done ✓
+          </Button>
+        ) : runState === "error" ? (
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={handleRun}
+            className="gap-1.5 border-red-500/40 text-red-400 hover:bg-red-500/10"
+          >
+            <XCircle className="h-3 w-3" />
+            Retry
+          </Button>
+        ) : (
+          <Button
+            size="xs"
+            onClick={handleRun}
+            disabled={!selectedPath}
+            className="gap-1.5"
+          >
+            <Play className="h-3 w-3" />
+            Run
           </Button>
         )}
       </div>

@@ -4,6 +4,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { Users } from "lucide-react";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { SkeletonBar } from "@/components/ui/SkeletonCard";
+import { useDemoStore } from "@/hooks/useDemoStore";
 import {
   getAgentsStats,
   listAgents,
@@ -41,10 +45,12 @@ export default function AgentsPage() {
     "all",
   );
   const [loading, setLoading] = useState(true);
-
   const [rows, setRows] = useState<Row[]>([]);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [killing, setKilling] = useState<Record<string, boolean>>({});
+
+  const demoPhase = useDemoStore((s) => s.phase);
+  const demoSeed = useDemoStore((s) => s.seed);
 
   async function load() {
     setLoading(true);
@@ -212,15 +218,47 @@ export default function AgentsPage() {
 
           <tbody className="divide-y divide-border">
             {loading ? (
-              <tr>
-                <td className="px-4 py-6 text-sm opacity-70" colSpan={8}>
-                  Loading…
-                </td>
-              </tr>
+              Array.from({ length: 4 }, (_, i) => (
+                <tr key={i}>
+                  <td className="px-4 py-3 bg-muted">
+                    <SkeletonBar width="w-28" height="h-3" className="mb-1.5" />
+                    <SkeletonBar width="w-16" height="h-2" className="mb-1" />
+                    <SkeletonBar width="w-40" height="h-2" />
+                  </td>
+                  {Array.from({ length: 7 }, (_, j) => (
+                    <td key={j} className="px-4 py-3">
+                      <SkeletonBar width="w-12" height="h-3" />
+                    </td>
+                  ))}
+                </tr>
+              ))
             ) : filtered.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-sm opacity-70" colSpan={8}>
-                  No agents found.
+                <td colSpan={8} className="px-4 py-12">
+                  <EmptyState
+                    icon={<Users className="h-5 w-5" />}
+                    title={
+                      q || status !== "all"
+                        ? "No agents match filters"
+                        : "No agents yet"
+                    }
+                    description={
+                      q || status !== "all"
+                        ? "Try adjusting your search or status filter."
+                        : "Seed demo data to create agents instantly, or build one from Flow."
+                    }
+                    action={
+                      !q && status === "all" ? (
+                        <button
+                          onClick={() => void demoSeed({ force: false })}
+                          disabled={demoPhase === "seeding"}
+                          className="text-sm text-accent hover:underline disabled:opacity-50"
+                        >
+                          {demoPhase === "seeding" ? "Seeding…" : "Seed demo →"}
+                        </button>
+                      ) : undefined
+                    }
+                  />
                 </td>
               </tr>
             ) : (
@@ -237,7 +275,7 @@ export default function AgentsPage() {
                       <Link
                         href={`/agents/${encodeURIComponent(r.agent_id)}`}
                         className="font-medium uppercase hover:underline"
-                        title="Open agent details"
+                        title="Open in Builders (Vibe)"
                       >
                         {r.name}
                       </Link>

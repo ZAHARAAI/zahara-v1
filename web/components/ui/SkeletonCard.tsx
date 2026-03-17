@@ -93,3 +93,34 @@ export function AgentListSkeleton({ rows = 3 }: AgentListSkeletonProps) {
     </ul>
   );
 }
+
+// ── Composite: run list item skeleton ────────────────────────────────────
+
+export function RunRowSkeleton() {
+  return (
+    <li className="flex flex-col gap-1.5 px-3 py-2.5 border-b border-border last:border-0">
+      <div className="flex items-center justify-between gap-2">
+        <SkeletonBar width="w-28" height="h-3" className="rounded" />
+        <SkeletonBar width="w-14" height="h-4" className="rounded-full" />
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <SkeletonBar width="w-20" height="h-2" />
+        <SkeletonBar width="w-14" height="h-2" />
+      </div>
+      <SkeletonBar width="w-3/4" height="h-2" />
+    </li>
+  );
+}
+
+export function RunListSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <ul>
+      {Array.from({ length: rows }, (_, i) => (
+        <RunRowSkeleton key={`run-skeleton-${i}`} />
+      ))}
+    </ul>
+  );
+}
+
+// ── Generic re-export alias ───────────────────────────────────────────────
+export const SkeletonCard = SkeletonBlock;

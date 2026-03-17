@@ -30,7 +30,7 @@ export default function LoginPage() {
       if (!res.ok) throw new Error(data?.error?.message || "Login failed");
       if (!data.ok && data.error) throw new Error(data.error);
 
-      router.push("/flow");
+      router.push("/builders");
     } catch (err: any) {
       setError(err.message || "Something went wrong");
     } finally {

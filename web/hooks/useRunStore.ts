@@ -408,7 +408,7 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
       const records: RunRecord[] = res.items.map((item: RunListItem) => ({
         runId: item.id,
         agentId: item.agent_id ?? agentId,
-        prompt: "—",
+        prompt: item.input ?? "—",
         status: mapStatus(item.status),
         startedAt: new Date(item.created_at).getTime(),
         tokensTotal: item.tokens_total ?? undefined,

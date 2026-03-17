@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
+import Link from "next/link";
 import { useEventBus } from "@/hooks/useEventBus";
 import { useMemo } from "react";
 
@@ -142,14 +143,24 @@ const LogPanel = () => {
           <div className="flex items-center gap-2 text-muted_fg">
             <span className="font-medium">Run logs</span>
             {runId && (
-              <span className="font-mono text-[11px] text-muted_fg/80">
+              <span className="font-mono text-[11px] text-muted_fg/80 truncate max-w-[120px]">
                 {runId}
               </span>
             )}
           </div>
-          <span className="text-[11px] text-muted_fg">
-            {events.length} events
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[11px] text-muted_fg">
+              {events.length} events
+            </span>
+            {runId && (
+              <Link
+                href={`/clinic?runId=${encodeURIComponent(runId)}`}
+                className="text-[11px] text-accent hover:opacity-80 transition-opacity"
+              >
+                Clinic →
+              </Link>
+            )}
+          </div>
         </div>
 
         <div className="h-full overflow-auto px-3 py-2">

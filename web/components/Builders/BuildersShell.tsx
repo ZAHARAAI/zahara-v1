@@ -2,8 +2,13 @@
 
 import { useEffect, useRef, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { useBuildersStore, type BuilderMode } from "@/hooks/useBuildersStore";
+import {
+  useBuildersStore,
+  useActiveRun,
+  type BuilderMode,
+} from "@/hooks/useBuildersStore";
 import { useDemoStore } from "@/hooks/useDemoStore";
 
 import dynamic from "next/dynamic";
@@ -132,6 +137,9 @@ export default function BuildersShell() {
       {/* ── Demo controls header ── */}
       <BuildersHeader />
 
+      {/* ── Active run banner (persists across mode switches) ── */}
+      <ActiveRunBanner />
+
       {/* ── Centered mode nav ── */}
       <ModeNav activeMode={mode} onSwitch={switchMode} />
 
@@ -182,6 +190,50 @@ function BuildersHeader() {
       <div className="ml-auto">
         <DemoControls />
       </div>
+    </div>
+  );
+}
+
+// ── ActiveRunBanner — persists across mode switches ───────────────────────
+// Shows whenever a run is pending or running from any mode.
+// Clicking "View in Clinic" navigates to /clinic?runId=X.
+function ActiveRunBanner() {
+  const activeRun = useActiveRun();
+
+  if (!activeRun) return null;
+
+  const isPending = activeRun.status === "pending";
+  const isRunning = activeRun.status === "running";
+
+  if (!isPending && !isRunning) return null;
+
+  return (
+    <div
+      className={[
+        "flex items-center gap-3 px-4 py-2 shrink-0",
+        "border-b font-mono text-[11px]",
+        "bg-accent/5 dark:bg-accent/8 border-accent/20 text-accent",
+      ].join(" ")}
+    >
+      {/* Live pulse dot */}
+      <span className="relative flex h-2 w-2 shrink-0">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-60" />
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-accent" />
+      </span>
+
+      <span>{isPending ? "Starting run…" : "Run in progress"}</span>
+
+      <span className="text-accent/50 truncate flex-1 hidden sm:block">
+        {activeRun.runId}
+      </span>
+
+      {/* View in Clinic CTA */}
+      <Link
+        href={`/clinic?runId=${encodeURIComponent(activeRun.runId)}`}
+        className="ml-auto shrink-0 opacity-70 hover:opacity-100 transition-opacity"
+      >
+        View in Clinic →
+      </Link>
     </div>
   );
 }

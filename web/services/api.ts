@@ -350,6 +350,7 @@ export type RunListItem = {
   id: string;
   agent_id?: string | null;
   status: string;
+  input?: string | null;
   model?: string | null;
   provider?: string | null;
   source?: string | null;

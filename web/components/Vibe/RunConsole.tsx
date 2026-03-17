@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState, memo } from "react";
+import { useRouter } from "next/navigation";
 import {
   useRunStore,
   useRunEvents,
@@ -8,6 +9,7 @@ import {
   useRunSummaryState,
   type ConsoleEvent,
 } from "@/hooks/useRunStore";
+import { useBuildersStore } from "@/hooks/useBuildersStore";
 import { XCircle, RotateCcw, Radio, WifiOff } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -251,6 +253,7 @@ function ReplayBanner({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function RunSummaryFooter({ agentId }: { agentId: string | null }) {
+  const router = useRouter();
   const { runStatus, activeRun } = useRunSummaryState();
 
   if (
@@ -272,6 +275,12 @@ function RunSummaryFooter({ agentId }: { agentId: string | null }) {
     : null;
 
   const isOk = runStatus === "done";
+
+  function handleViewInClinic() {
+    if (!activeRun?.runId) return;
+    useBuildersStore.getState().setSelectedRunId(activeRun.runId);
+    router.push(`/clinic?runId=${encodeURIComponent(activeRun.runId)}`);
+  }
 
   return (
     <div
@@ -297,6 +306,18 @@ function RunSummaryFooter({ agentId }: { agentId: string | null }) {
         {tokens && <span>{tokens}</span>}
         {cost && <span>{cost}</span>}
       </div>
+
+      {/* View in Clinic CTA — always shown when run has an ID */}
+      {activeRun?.runId && (
+        <button
+          type="button"
+          onClick={handleViewInClinic}
+          className="ml-auto flex items-center gap-1.5 opacity-70 hover:opacity-100 transition-opacity"
+        >
+          View in Clinic →
+        </button>
+      )}
+
       {runStatus === "error" && agentId && (
         <button
           type="button"
@@ -305,10 +326,13 @@ function RunSummaryFooter({ agentId }: { agentId: string | null }) {
             const r = s.runs.find((r) => r.runId === s.activeRun?.runId);
             if (r) void s.retryRun(r.runId);
           }}
-          className="ml-auto flex items-center gap-1.5
-            text-red-500 dark:text-red-400
-            hover:text-red-600 dark:hover:text-red-300
-            transition-colors"
+          className={[
+            "flex items-center gap-1.5",
+            "text-red-500 dark:text-red-400",
+            "hover:text-red-600 dark:hover:text-red-300",
+            "transition-colors",
+            activeRun?.runId ? "" : "ml-auto",
+          ].join(" ")}
         >
           <RotateCcw className="h-3 w-3" />
           retry
