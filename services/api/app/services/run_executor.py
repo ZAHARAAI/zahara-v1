@@ -137,7 +137,23 @@ def _add_event(
     type_: str,
     payload: Dict[str, Any],
 ) -> None:
-    db.add(RunEventModel(run_id=run_id, type=type_, payload=payload))
+    """Insert a RunEvent with an auto-incremented seq number.
+
+    The uq_run_events_run_id_seq constraint requires (run_id, seq) to be
+    unique. SQLAlchemy's column default of 0 means every event without an
+    explicit seq collides. We compute the next seq via MAX(seq)+1 so this
+    is safe even across concurrent writers (each commit is visible before
+    the next call because we commit immediately after each add).
+    """
+    from sqlalchemy import func as sa_func
+
+    max_seq = (
+        db.query(sa_func.max(RunEventModel.seq))
+        .filter(RunEventModel.run_id == run_id)
+        .scalar()
+    )
+    next_seq = (max_seq + 1) if max_seq is not None else 0
+    db.add(RunEventModel(run_id=run_id, type=type_, payload=payload, seq=next_seq))
     db.commit()
 
 
