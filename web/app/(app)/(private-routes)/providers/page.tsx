@@ -3,6 +3,8 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useIsSeeded } from "@/hooks/useDemoStore";
+import { Info } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -24,6 +26,7 @@ const PROVIDERS: [string, string][] = [
 export default function ProvidersPage() {
   const [keys, setKeys] = useState<ProviderKey[]>([]);
   const [loading, setLoading] = useState(false);
+  const isSeeded = useIsSeeded();
 
   const [provider, setProvider] = useState("openai");
   const [label, setLabel] = useState("");
@@ -89,7 +92,7 @@ export default function ProvidersPage() {
     try {
       const res = await testProviderKey(id);
       toast[res.status === "ok" ? "success" : "error"](
-        res.message ?? `Test ${res.status}`
+        res.message ?? `Test ${res.status}`,
       );
       setKeys((prev) =>
         prev.map((k) =>
@@ -99,8 +102,8 @@ export default function ProvidersPage() {
                 last_test_status: res.status,
                 last_tested_at: res.last_tested_at ?? k.last_tested_at,
               }
-            : k
-        )
+            : k,
+        ),
       );
     } catch (err: any) {
       console.error("Failed to test provider key", err);
@@ -110,6 +113,21 @@ export default function ProvidersPage() {
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col gap-4">
+      {/* Demo mode banner */}
+      {isSeeded && (
+        <div className="flex items-start gap-3 rounded-xl border border-accent/25 bg-accent/5 px-4 py-3 text-sm text-accent">
+          <Info className="h-4 w-4 mt-0.5 shrink-0" />
+          <div>
+            <span className="font-medium">Running in demo mode</span>
+            <span className="text-accent/70">
+              {" "}
+              — provider keys are not required. Demo runs use canned responses
+              from the backend.
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[16px] font-semibold">Provider Keys</h1>

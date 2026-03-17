@@ -350,6 +350,7 @@ export type RunListItem = {
   id: string;
   agent_id?: string | null;
   status: string;
+  input?: string | null;
   model?: string | null;
   provider?: string | null;
   source?: string | null;
@@ -550,7 +551,6 @@ export async function testProviderKey(keyId: string): Promise<{
   return data;
 }
 
-// TODO: testRawProviderKey method has not been used
 export async function testRawProviderKey(body: {
   provider: string;
   key: string;
@@ -681,7 +681,10 @@ export async function testConnector(body: { connector_id: string }): Promise<{
   return ensureOk(json, "testing connector");
 }
 
-// job7 sprint functions
+/* ----------------------------------------------------- */
+/* Agent stats (Job 7)                                   */
+/* ----------------------------------------------------- */
+
 export type AgentStatsItem = {
   agent_id: string;
   name: string;
@@ -689,7 +692,6 @@ export type AgentStatsItem = {
   status?: "active" | "paused" | "retired" | string | null;
   budget_daily_usd?: number | null;
 
-  // ✅ Job7
   spent_today_usd: number;
   spent_today_is_approximate?: boolean;
 
@@ -828,4 +830,45 @@ export async function listAudit(params?: {
     total: data.total ?? 0,
     next_cursor: data.next_cursor ?? null,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Dev / Demo seed                                                      */
+/* ------------------------------------------------------------------ */
+
+export interface SeedRequest {
+  preset?: "minimal" | "full";
+  force?: boolean;
+}
+
+export interface SeedResponse {
+  ok: boolean;
+  agents_created: number;
+  runs_created: number;
+  agent_ids: string[];
+  seeded_at: string;
+  message: string;
+}
+
+export async function seedDemo(req?: SeedRequest): Promise<SeedResponse> {
+  const { json, error } = await api("/dev/seed", {
+    method: "POST",
+    body: JSON.stringify(req ?? {}),
+  });
+
+  // "already_seeded" 409 → treat as soft success: agents already exist.
+  // actions/api.ts breaks the retry loop on this string (isClientError guard).
+  if (error?.includes("already_seeded")) {
+    return {
+      ok: true,
+      agents_created: 0,
+      runs_created: 0,
+      agent_ids: [],
+      seeded_at: new Date().toISOString(),
+      message: "Demo agents already exist",
+    };
+  }
+
+  if (error) throw new Error(error);
+  return ensureOk(json, "seeding demo data");
 }

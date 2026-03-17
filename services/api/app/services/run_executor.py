@@ -5,7 +5,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 from sqlalchemy import func
@@ -25,7 +25,75 @@ from ..services.pricing import estimate_cost_usd_with_fallback
 
 logger = logging.getLogger("zahara.api.run_executor")
 
-ROUTER_BASE_URL = os.getenv("LLM_ROUTER_URL")
+
+# Read at function call time so tests can override via env
+def _router_base_url() -> Optional[str]:
+    return os.getenv("LLM_ROUTER_URL")
+
+
+# ── Demo execution constants ───────────────────────────────────────────────────
+
+DEMO_SLUG_PREFIX = "demo-"
+
+# Canned token streams keyed by agent slug prefix (matched with startswith)
+_DEMO_RESPONSES: Dict[str, List[str]] = {
+    "demo-zahara-assistant": [
+        "I'd be happy to help with that! Here's what I found:\n\n",
+        "**Analysis**\n\n",
+        "Based on your request, there are several key points to consider. ",
+        "First, let me break this down into manageable components:\n\n",
+        "1. **Context & Background** — Understanding the full scope ",
+        "helps ensure the response is accurate and actionable.\n\n",
+        "2. **Core Insights** — The data suggests a clear pattern here. ",
+        "The most important factor is consistency across all variables.\n\n",
+        "3. **Recommendations** — Based on this analysis, I would suggest:\n",
+        "   - Start with the highest-impact items first\n",
+        "   - Validate assumptions early to avoid rework\n",
+        "   - Document decisions for future reference\n\n",
+        "4. **Next Steps** — To move forward effectively:\n",
+        "   - Review the findings with your team\n",
+        "   - Prioritise based on effort vs. impact\n",
+        "   - Set measurable success criteria\n\n",
+        "Is there a specific aspect you'd like me to explore further? ",
+        "I can dive deeper into any of the points above. \u2728",
+    ],
+    "demo-code-reviewer": [
+        "I've reviewed the code. Here are my findings:\n\n",
+        "**\U0001f534 Critical Issues (fix before merge)**\n\n",
+        "- **Null pointer risk**: `data` may be `None` on line 14 — ",
+        "add a guard before accessing `.items()`.\n",
+        "- **Race condition**: the shared counter is modified without a lock ",
+        "in the concurrent path.\n\n",
+        "**\U0001f7e1 Performance**\n\n",
+        "- O(n\u00b2) nested loop on lines 22–31 — replace with a lookup dict.\n",
+        "- Unnecessary list copy via `list()` on line 18 — iterate directly.\n\n",
+        "**\U0001f535 Style**\n\n",
+        "- Missing type hints throughout. Suggest: `def process(items: list[str]) -> dict`\n",
+        "- Long function (47 lines) — split at the natural boundary on line 28.\n\n",
+        "**\u2705 What's good**\n\n",
+        "- Error handling in the `except` block is clean.\n",
+        "- Variable names are clear and descriptive.\n\n",
+        "Fix the critical issues and this is good to merge. \U0001f44d",
+    ],
+}
+
+# Fallback response for demo agents whose slug doesn't match above
+_DEMO_FALLBACK: List[str] = [
+    "Thanks for your message! I'm a demo AI agent running in simulation mode.\n\n",
+    "This is a **live demo** of Zahara's streaming response system. ",
+    "In production, this would connect to a real LLM provider.\n\n",
+    "**What you're seeing**:\n",
+    "- Real-time token streaming from the backend\n",
+    "- SSE (Server-Sent Events) delivery to the browser\n",
+    "- Proper run lifecycle tracking (start \u2192 stream \u2192 done)\n\n",
+    "To enable real LLM responses, add a provider key in the **Provider Keys** page ",
+    "and point `LLM_ROUTER_URL` at a running LiteLLM instance.\n\n",
+    "Feel free to try the Vibe, Flow, and Pro builder modes! \U0001f680",
+]
+
+_DEMO_TOKEN_DELAY = 0.055  # seconds between each token chunk (~18 chunks/sec)
+_DEMO_MODEL = "gpt-4o-mini"
+_DEMO_PROVIDER = "openai"
 
 
 def _approx_tokens(text: str) -> int:
@@ -66,9 +134,29 @@ def _get_provider_key(db: Session, user_id: int, provider: str) -> Optional[str]
         return None
 
 
-def _add_event(db: Session, run_id: str, type_: str, payload: Dict[str, Any]) -> None:
-    max_seq = db.query(func.max(RunEventModel.seq)).filter(RunEventModel.run_id == run_id).scalar()
-    db.add(RunEventModel(run_id=run_id, type=type_, payload=payload, seq=(max_seq or 0) + 1))
+def _add_event(
+    db: Session,
+    run_id: str,
+    type_: str,
+    payload: Dict[str, Any],
+) -> None:
+    """Insert a RunEvent with an auto-incremented seq number.
+
+    The uq_run_events_run_id_seq constraint requires (run_id, seq) to be
+    unique. SQLAlchemy's column default of 0 means every event without an
+    explicit seq collides. We compute the next seq via MAX(seq)+1 so this
+    is safe even across concurrent writers (each commit is visible before
+    the next call because we commit immediately after each add).
+    """
+    from sqlalchemy import func as sa_func
+
+    max_seq = (
+        db.query(sa_func.max(RunEventModel.seq))
+        .filter(RunEventModel.run_id == run_id)
+        .scalar()
+    )
+    next_seq = (max_seq + 1) if max_seq is not None else 0
+    db.add(RunEventModel(run_id=run_id, type=type_, payload=payload, seq=next_seq))
     db.commit()
 
 
@@ -173,6 +261,157 @@ def _check_runaway_protection(
     return True, None
 
 
+def _is_demo_agent(agent: AgentModel, spec_content: Dict[str, Any]) -> bool:
+    """
+    True when the run should use the canned demo executor instead of a real LLM.
+    Triggers on:
+      - agent slug starting with "demo-"
+      - spec content flag   { "demo_mode": true }
+    """
+    if agent.slug and agent.slug.startswith(DEMO_SLUG_PREFIX):
+        return True
+    if spec_content.get("demo_mode") is True:
+        return True
+    return False
+
+
+def _pick_demo_tokens(agent: AgentModel) -> List[str]:
+    """Return the right canned token stream for this demo agent."""
+    slug = agent.slug or ""
+    for key, tokens in _DEMO_RESPONSES.items():
+        if slug.startswith(key) or key in slug:
+            return tokens
+    return _DEMO_FALLBACK
+
+
+def _execute_demo_run(db: Session, run: RunModel, agent: AgentModel) -> None:
+    """
+    Simulate a realistic streaming LLM run without hitting any external service.
+
+    Flow:
+      1. Mark run as running
+      2. Emit system/run_started
+      3. Stream token chunks with small delays (checks cancellation every 5 chunks)
+      4. Emit done with realistic metrics
+      5. Mark run as success
+    """
+    t0 = time.time()
+
+    run.status = "running"
+    run.model = _DEMO_MODEL
+    run.provider = _DEMO_PROVIDER
+    run.updated_at = datetime.now(timezone.utc)
+    db.add(run)
+    db.commit()
+
+    _add_event(
+        db,
+        run.id,
+        "system",
+        {
+            "message": "run_started",
+            "model": _DEMO_MODEL,
+            "provider": _DEMO_PROVIDER,
+            "request_id": run.request_id,
+            "demo_mode": True,
+        },
+    )
+
+    token_chunks = _pick_demo_tokens(agent)
+    full_text = ""
+
+    for i, chunk in enumerate(token_chunks):
+        # Check for cancellation every 5 chunks
+        if i % 5 == 0:
+            db.refresh(run)
+            if run.status == "cancelled":
+                _add_event(
+                    db,
+                    run.id,
+                    "cancelled",
+                    {
+                        "message": "Cancelled by user",
+                        "request_id": run.request_id,
+                    },
+                )
+                return
+
+        time.sleep(_DEMO_TOKEN_DELAY)
+        full_text += chunk
+        _add_event(
+            db,
+            run.id,
+            "token",
+            {
+                "text": chunk,
+                "request_id": run.request_id,
+            },
+        )
+
+    # Final cancellation check before committing success
+    db.refresh(run)
+    if run.status == "cancelled":
+        _add_event(
+            db,
+            run.id,
+            "cancelled",
+            {
+                "message": "Cancelled by user",
+                "request_id": run.request_id,
+            },
+        )
+        return
+
+    latency_ms = int((time.time() - t0) * 1000)
+    tokens_in = _approx_tokens(run.input or "")
+    tokens_out = _approx_tokens(full_text)
+    cost_usd, is_approx = estimate_cost_usd_with_fallback(
+        _DEMO_MODEL,
+        {
+            "prompt_tokens": tokens_in,
+            "completion_tokens": tokens_out,
+            "total_tokens": tokens_in + tokens_out,
+        },
+    )
+
+    run.status = "success"
+    run.error_message = None
+    run.latency_ms = latency_ms
+    run.tokens_in = tokens_in
+    run.tokens_out = tokens_out
+    run.tokens_total = tokens_in + tokens_out
+    run.cost_estimate_usd = cost_usd
+    run.cost_is_approximate = bool(is_approx)
+    db.add(run)
+    db.commit()
+
+    try:
+        upsert_daily_usage(
+            db=db,
+            user_id=run.user_id,
+            tokens_total=run.tokens_total,
+            cost_usd=run.cost_estimate_usd,
+        )
+    except Exception:
+        pass
+
+    _add_event(
+        db,
+        run.id,
+        "done",
+        {
+            "ok": True,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "tokens_total": tokens_in + tokens_out,
+            "cost_estimate_usd": cost_usd,
+            "cost_is_approximate": bool(is_approx),
+            "latency_ms": latency_ms,
+            "request_id": run.request_id,
+        },
+    )
+
+
 def execute_run_via_router(run_id: str) -> None:
     """
     Streaming run execution:
@@ -180,6 +419,7 @@ def execute_run_via_router(run_id: str) -> None:
     - emits token/log/tool_call/tool_result events
     - writes final run tokens/cost (fallback if missing usage)
     - respects cancellation (status=cancelled)
+    - demo agents bypass the LLM router entirely
     """
     db = SessionLocal()
     try:
@@ -244,7 +484,14 @@ def execute_run_via_router(run_id: str) -> None:
         spec_content = (spec.content or {}) if hasattr(spec, "content") else {}
         provider, model = _pick_provider_and_model(spec_content)
 
-        if not ROUTER_BASE_URL:
+        # ── TASK-B2: Demo mode — bypass LLM router entirely ───────────────────
+        if _is_demo_agent(agent, spec_content):
+            _execute_demo_run(db, run, agent)
+            return
+        # ─────────────────────────────────────────────────────────────────────
+
+        router_url = _router_base_url()
+        if not router_url:
             run.status = "error"
             run.error_message = "LLM_ROUTER_URL is not configured."
             db.add(run)
@@ -324,7 +571,7 @@ def execute_run_via_router(run_id: str) -> None:
         with httpx.Client(timeout=None) as client:
             with client.stream(
                 "POST",
-                f"{ROUTER_BASE_URL.rstrip('/')}/v1/chat/completions",
+                f"{router_url.rstrip('/')}/v1/chat/completions",
                 json=payload,
                 headers=headers,
             ) as resp:
@@ -580,7 +827,21 @@ def execute_run_via_router(run_id: str) -> None:
             "token",
             {"text": full_text, "is_final": True, "request_id": run.request_id},
         )
-        _add_event(db, run.id, "done", {"ok": True, "request_id": run.request_id})
+        _add_event(
+            db,
+            run.id,
+            "done",
+            {
+                "ok": True,
+                "tokens_in": run.tokens_in,
+                "tokens_out": run.tokens_out,
+                "tokens_total": run.tokens_total,
+                "cost_estimate_usd": run.cost_estimate_usd,
+                "cost_is_approximate": run.cost_is_approximate,
+                "latency_ms": run.latency_ms,
+                "request_id": run.request_id,
+            },
+        )
 
     except Exception as e:
         logger.exception("execute_run_via_router failed")

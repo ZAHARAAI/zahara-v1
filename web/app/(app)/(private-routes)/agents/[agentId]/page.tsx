@@ -287,9 +287,9 @@ export default function AgentDetailPage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <Link
             className="h-10 rounded-xl border border-border bg-panel px-3 text-sm flex justify-center items-center hover:bg-muted "
-            href={`/flow?agentId=${agentId}`}
+            href={`/builders?v=vibe&agentId=${encodeURIComponent(agentId)}`}
           >
-            Open in Flow
+            Open in Builder
           </Link>
           <select
             className="h-10 rounded-xl border border-border bg-panel px-3 text-sm"
@@ -486,7 +486,13 @@ export default function AgentDetailPage() {
 
         <div className="rounded-2xl border border-border bg-panel p-4">
           <div className="text-sm font-medium">Recent runs</div>
-          <div className="mt-3 space-y-2">
+          <div
+            className="mt-3 max-h-[300px] space-y-2 overflow-y-auto "
+            style={{
+              scrollbarWidth: "thin",
+              scrollbarColor: "hsl(var(--border)) transparent",
+            }}
+          >
             {runs.length === 0 ? (
               <div className="text-sm opacity-60">No runs yet</div>
             ) : (

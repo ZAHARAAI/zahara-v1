@@ -49,20 +49,6 @@ def _new_run_id() -> str:
     return "run_" + uuid4().hex[:16]
 
 
-class RunRequest(BaseModel):
-    prompt: str = ""
-    model: str = "gpt-4o-mini"
-    provider: Optional[str] = None
-    source: Optional[str] = None
-    config: Optional[Dict[str, Any]] = None
-
-
-class RunResponse(BaseModel):
-    ok: bool = True
-    run_id: str
-    request_id: str
-
-
 class RunCancelResponse(BaseModel):
     ok: bool = True
     run_id: str
@@ -73,6 +59,7 @@ class RunListItem(BaseModel):
     id: str
     agent_id: Optional[str] = None
     status: str
+    input: Optional[str] = None
     model: Optional[str] = None
     provider: Optional[str] = None
     source: Optional[str] = None
@@ -155,6 +142,7 @@ def _run_to_list_item(run: RunModel) -> RunListItem:
         id=run.id,
         agent_id=run.agent_id,
         status=run.status,
+        input=run.input,
         model=run.model,
         provider=run.provider,
         source=run.source,

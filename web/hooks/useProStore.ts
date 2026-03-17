@@ -50,6 +50,16 @@ export const useProStore = create<ProState>((set, get) => ({
     try {
       const files = await listFiles();
       set({ files });
+
+      // Auto-select first file if nothing is selected yet — spec requires
+      // "default file auto-selected" so the Run button is never permanently disabled
+      const { selectedPath, openFile } = get();
+      if (!selectedPath) {
+        const firstFile = files.find((f) => f.type === "file");
+        if (firstFile) {
+          await openFile(firstFile.path);
+        }
+      }
     } catch (err: any) {
       console.error("Failed to load files", err);
       set({ error: err?.message ?? "Failed to load files" });
@@ -97,7 +107,7 @@ export const useProStore = create<ProState>((set, get) => ({
       const json: SaveFileResponse = await saveFile(
         selectedPath,
         content,
-        sha ?? undefined
+        sha ?? undefined,
       );
       set({ sha: json.sha, dirty: false });
     } catch (err: any) {

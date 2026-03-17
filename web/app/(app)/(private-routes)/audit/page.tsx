@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { ClipboardList } from "lucide-react";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { SkeletonBar } from "@/components/ui/SkeletonCard";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -157,7 +160,13 @@ export default function AuditPage() {
                   </div>
                 </div>
                 {it.payload ? (
-                  <pre className="mt-2 max-h-60 overflow-auto rounded-xl border border-border bg-panel p-3 text-[11px] text-fg">
+                  <pre
+                    className="mt-2 max-h-60 overflow-auto rounded-xl border border-border bg-panel p-3 text-[11px] text-fg"
+                    style={{
+                      scrollbarWidth: "thin",
+                      scrollbarColor: "hsl(var(--border)) transparent",
+                    }}
+                  >
                     {JSON.stringify(it.payload, null, 2)}
                   </pre>
                 ) : null}
