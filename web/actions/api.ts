@@ -10,18 +10,25 @@ export const api = async (
   path: string,
   init: RequestInit = {},
 ): Promise<{ json?: any; error?: string }> => {
-  // const token = await getAccessToken();
-  // if (!token) return { error: "NO ACCESS TOKEN FOUND" };
+  const token = await getAccessToken();
+  // Don't block the request if no token — let the backend return 401.
+  // Public endpoints (health, login, signup) are called before a token exists.
 
   let last: string = "";
   for (let attempt = 0; attempt <= Retry.max; attempt++) {
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      // Attach JWT when we have one. Backend expects: Authorization: Bearer <token>
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const res = await fetch(`${BASE}${path}`, {
         method: init.method ?? "GET",
-        headers: {
-          "Content-Type": "application/json",
-          // "x-jwt-token": token,
-        },
+        headers,
         body: init.body,
         cache: "no-store",
       });

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* Merged API client: Job6 + existing endpoints */
+/* Merged API client: Job6 + Job8 + Job9 */
 
 import { api } from "@/actions/api";
 import { AnyNodeData } from "@/components/Flow/types";
@@ -19,7 +19,7 @@ function ensureOk(json: any, msg: string) {
 /* Agents                                                             */
 /* ------------------------------------------------------------------ */
 
-/** Public (frontend-friendly) agent model */
+/** Public (frontend-friendly) agent model — includes Job9 guardrail fields */
 export type Agent = {
   id: string;
   user_id: number;
@@ -28,6 +28,10 @@ export type Agent = {
   status?: "active" | "paused" | "retired" | string | null;
   budget_daily_usd?: number | null;
   description?: string | null;
+  // Job9 guardrail fields
+  tool_allowlist?: string[] | null; // null = deny-by-default (no tools); array = permitted tool names
+  max_steps_per_run?: number | null; // null = unlimited
+  max_duration_seconds_per_run?: number | null; // null = unlimited
   created_at: string;
   updated_at: string;
 };
@@ -75,11 +79,24 @@ export async function getAgent(agent_id: string): Promise<AgentSpec> {
   return data;
 }
 
+/** Patchable agent fields — includes all Job9 guardrail fields */
+export type AgentPatchBody = Partial<
+  Pick<
+    Agent,
+    | "name"
+    | "slug"
+    | "description"
+    | "status"
+    | "budget_daily_usd"
+    | "tool_allowlist"
+    | "max_steps_per_run"
+    | "max_duration_seconds_per_run"
+  >
+>;
+
 export async function patchAgent(
   agent_id: string,
-  body: Partial<
-    Pick<Agent, "name" | "slug" | "description" | "status" | "budget_daily_usd">
-  >,
+  body: AgentPatchBody,
 ): Promise<AgentSpec> {
   const { json, error } = await api(`/agents/${encodeURIComponent(agent_id)}`, {
     method: "PATCH",

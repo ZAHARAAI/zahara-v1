@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -28,6 +28,9 @@ import {
   type AuditLogItem,
 } from "@/services/api";
 import { toPlainDecimal } from "@/lib/utilities";
+
+// Auto-dismiss for kill confirm
+const KILL_CONFIRM_DISMISS_MS = 3_000;
 
 function fmtUsd(n: number) {
   if (!Number.isFinite(n)) return "—";
@@ -81,10 +84,27 @@ export default function AgentDetailPage() {
   const [runs, setRuns] = useState<RunListItem[]>([]);
   const [audit, setAudit] = useState<AuditLogItem[]>([]);
 
+  // ── Core edit state ──────────────────────────────────────────────────
   const [editingStatus, setEditingStatus] = useState<Agent["status"]>("active");
   const [editingBudget, setEditingBudget] = useState<number>(0);
   const [saving, setSaving] = useState(false);
+
+  // ── Kill 2-click confirm ─────────────────────────────────────────────
+  const [killConfirming, setKillConfirming] = useState(false);
   const [killing, setKilling] = useState(false);
+  const killTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Guardrail edit state (Job9) ──────────────────────────────────────
+  // tool_allowlist stored as comma-separated string in the input
+  const [editingAllowlist, setEditingAllowlist] = useState<string>("");
+  const [editingMaxSteps, setEditingMaxSteps] = useState<string>("");
+  const [editingMaxDuration, setEditingMaxDuration] = useState<string>("");
+
+  useEffect(() => {
+    return () => {
+      if (killTimerRef.current) clearTimeout(killTimerRef.current);
+    };
+  }, []);
 
   async function load() {
     setLoading(true);
@@ -113,6 +133,20 @@ export default function AgentDetailPage() {
           ? agentObj.budget_daily_usd
           : 0,
       );
+
+      // Populate guardrail fields
+      const allowlist = agentObj.tool_allowlist;
+      setEditingAllowlist(Array.isArray(allowlist) ? allowlist.join(", ") : "");
+      setEditingMaxSteps(
+        agentObj.max_steps_per_run != null
+          ? String(agentObj.max_steps_per_run)
+          : "",
+      );
+      setEditingMaxDuration(
+        agentObj.max_duration_seconds_per_run != null
+          ? String(agentObj.max_duration_seconds_per_run)
+          : "",
+      );
     } catch (e: any) {
       console.error(e);
       toast.error(e?.message ?? "Failed to load agent");
@@ -127,8 +161,6 @@ export default function AgentDetailPage() {
   }, [agentId, period]);
 
   const chartData: ChartPoint[] = useMemo(() => {
-    // Build a simple day-bucket timeseries from runs list.
-    // If period=all and there are a lot of runs, we still only fetched 200.
     const m = new Map<string, { runs: number; cost: number }>();
 
     for (const r of runs) {
@@ -150,7 +182,6 @@ export default function AgentDetailPage() {
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    // For 7d/30d we want to show empty days too.
     const wantDays = period === "7d" ? 7 : period === "30d" ? 30 : null;
     if (!wantDays) return pts;
 
@@ -173,14 +204,9 @@ export default function AgentDetailPage() {
   }, [runs, period]);
 
   const spentTodayUsd = useMemo(() => {
-    // 1) Prefer backend accurate value — it sums ALL today's runs server-side,
-    //    including runs beyond the 200-run client fetch limit, and adds
-    //    best-effort estimates for runs missing stored cost.
     if (typeof stats?.spent_today_usd === "number")
       return toPlainDecimal(stats.spent_today_usd);
 
-    // 2) Fallback: derive from client-side run list (capped at 200 fetched runs).
-    //    Used when the backend hasn't returned the field yet (e.g. loading state).
     const today = new Date();
     const key = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
       today.getDate(),
@@ -190,11 +216,9 @@ export default function AgentDetailPage() {
   }, [stats, chartData]);
 
   const spentTodayIsApprox = useMemo(() => {
-    // 1) Prefer backend truth (ultimate correctness)
     const backendFlag = (stats as any)?.spent_today_is_approximate;
     if (typeof backendFlag === "boolean") return backendFlag;
 
-    // 2) Fallback: derive from today's runs (prefer explicit run flag if present)
     const today = new Date();
     const y = today.getFullYear();
     const mo = today.getMonth();
@@ -205,12 +229,8 @@ export default function AgentDetailPage() {
       const isToday =
         d.getFullYear() === y && d.getMonth() === mo && d.getDate() === da;
       if (!isToday) return false;
-
-      // Prefer explicit API flag if available
       if (typeof r.cost_is_approximate === "boolean")
         return r.cost_is_approximate;
-
-      // Last-resort inference (old behavior)
       const hasTokens = Number(r.tokens_total ?? 0) > 0;
       const missingCost =
         r.cost_estimate_usd === null ||
@@ -225,13 +245,38 @@ export default function AgentDetailPage() {
     return Math.max(0, Math.min(1, Number(spentTodayUsd) / b));
   }, [spentTodayUsd, editingBudget]);
 
+  // ── Save: includes guardrail fields ──────────────────────────────────
   async function save() {
     setSaving(true);
     try {
+      // Parse tool_allowlist from comma-separated string
+      const rawAllowlist = editingAllowlist.trim();
+      const tool_allowlist: string[] | null =
+        rawAllowlist === ""
+          ? null
+          : rawAllowlist
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean);
+
+      // Parse integer guardrail fields (empty string → null = unlimited)
+      const max_steps_per_run =
+        editingMaxSteps.trim() === ""
+          ? null
+          : parseInt(editingMaxSteps.trim(), 10) || null;
+
+      const max_duration_seconds_per_run =
+        editingMaxDuration.trim() === ""
+          ? null
+          : parseInt(editingMaxDuration.trim(), 10) || null;
+
       await patchAgent(agentId, {
         status: editingStatus as any,
         budget_daily_usd: Number(editingBudget ?? 0),
-      } as any);
+        tool_allowlist,
+        max_steps_per_run,
+        max_duration_seconds_per_run,
+      });
       toast.success("Saved");
       await load();
     } catch (e: any) {
@@ -241,7 +286,26 @@ export default function AgentDetailPage() {
     }
   }
 
-  async function kill() {
+  // ── Kill: 2-click confirm pattern ────────────────────────────────────
+  function handleKillClick() {
+    if (killing) return;
+
+    if (killConfirming) {
+      // Second click — confirmed
+      if (killTimerRef.current) clearTimeout(killTimerRef.current);
+      setKillConfirming(false);
+      void executeKill();
+    } else {
+      // First click — arm confirm with auto-dismiss
+      if (killTimerRef.current) clearTimeout(killTimerRef.current);
+      setKillConfirming(true);
+      killTimerRef.current = setTimeout(() => {
+        setKillConfirming(false);
+      }, KILL_CONFIRM_DISMISS_MS);
+    }
+  }
+
+  async function executeKill() {
     setKilling(true);
     try {
       const res = await killAgent(agentId);
@@ -258,6 +322,7 @@ export default function AgentDetailPage() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* ── Page header ── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <div className="flex items-center gap-3">
@@ -286,7 +351,7 @@ export default function AgentDetailPage() {
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <Link
-            className="h-10 rounded-xl border border-border bg-panel px-3 text-sm flex justify-center items-center hover:bg-muted "
+            className="h-10 rounded-xl border border-border bg-panel px-3 text-sm flex justify-center items-center hover:bg-muted"
             href={`/builders?v=vibe&agentId=${encodeURIComponent(agentId)}`}
           >
             Open in Builder
@@ -312,14 +377,15 @@ export default function AgentDetailPage() {
         </div>
       </div>
 
-      {/* Controls */}
+      {/* ── Controls: status + budget + actions ── */}
       <div className="rounded-2xl border border-border bg-panel p-4">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          {/* Status */}
           <div>
-            <div className="text-xs uppercase tracking-wide opacity-70">
+            <div className="text-xs uppercase tracking-wide opacity-70 mb-2">
               Status
             </div>
-            <div className="mt-2 flex items-center gap-2">
+            <div className="flex items-center gap-2">
               <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs ring-1 ring-border opacity-90">
                 {editingStatus ?? "active"}
               </span>
@@ -335,11 +401,12 @@ export default function AgentDetailPage() {
             </div>
           </div>
 
+          {/* Daily budget */}
           <div>
-            <div className="text-xs uppercase tracking-wide opacity-70">
+            <div className="text-xs uppercase tracking-wide opacity-70 mb-2">
               Daily budget (USD/day)
             </div>
-            <div className="mt-2 flex items-center gap-2">
+            <div className="flex items-center gap-2">
               <input
                 className="h-10 w-40 rounded-xl border border-border bg-panel px-3 text-sm"
                 type="number"
@@ -372,28 +439,151 @@ export default function AgentDetailPage() {
             </div>
           </div>
 
+          {/* Actions: Save + Kill */}
           <div className="flex items-end justify-start gap-2 md:justify-end">
             <button
               className="h-10 rounded-xl border border-border px-4 text-sm hover:bg-muted disabled:opacity-50"
               onClick={save}
               disabled={saving}
-              title="Save status + budget"
+              title="Save all settings"
             >
               {saving ? "Saving…" : "Save"}
             </button>
-            <button
-              className="h-10 rounded-xl border border-border px-4 text-sm hover:bg-muted disabled:opacity-50"
-              onClick={kill}
-              disabled={killing}
-              title="Pause agent and cancel running runs"
-            >
-              {killing ? "Killing…" : "Kill"}
-            </button>
+
+            {/* Kill: 2-click confirm */}
+            {killing ? (
+              <button
+                disabled
+                className="h-10 rounded-xl border border-border px-4 text-sm opacity-50"
+              >
+                Killing…
+              </button>
+            ) : killConfirming ? (
+              <button
+                className="h-10 rounded-xl border border-red-500/50 bg-red-500/10 px-4 text-sm font-semibold text-red-500 hover:bg-red-500/20 animate-pulse transition-colors"
+                onClick={handleKillClick}
+                title="Click again to confirm — pauses agent and cancels all running runs"
+              >
+                Confirm kill?
+              </button>
+            ) : (
+              <button
+                className="h-10 rounded-xl border border-border px-4 text-sm text-muted_fg hover:border-red-500/40 hover:text-red-500 hover:bg-red-500/5 transition-colors"
+                onClick={handleKillClick}
+                title="Pause agent and cancel running runs (click twice to confirm)"
+              >
+                Kill
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* KPI cards */}
+      {/* ── Guardrails panel (Job9) ── */}
+      <div className="rounded-2xl border border-border bg-panel p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="text-sm font-medium">Guardrails</div>
+            <div className="text-xs text-muted_fg mt-0.5">
+              Tool governance + runaway protection — enforced by the backend
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          {/* Tool allowlist */}
+          <div>
+            <label className="block text-xs text-muted_fg mb-1.5">
+              Tool allowlist
+              <span
+                className="ml-1.5 cursor-help opacity-60"
+                title="Comma-separated list of permitted tool names. Leave blank to block all tools (deny-by-default). Example: web_search, calculator"
+              >
+                ⓘ
+              </span>
+            </label>
+            <input
+              type="text"
+              className="w-full h-10 rounded-xl border border-border bg-bg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-border"
+              value={editingAllowlist}
+              onChange={(e) => setEditingAllowlist(e.target.value)}
+              placeholder="e.g. web_search, calculator"
+            />
+            <p className="mt-1 text-[11px] text-muted_fg">
+              {editingAllowlist.trim() === ""
+                ? "Empty = deny all tools (deny-by-default)"
+                : `Allowing: ${editingAllowlist
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                    .join(", ")}`}
+            </p>
+          </div>
+
+          {/* Max steps per run */}
+          <div>
+            <label className="block text-xs text-muted_fg mb-1.5">
+              Max steps per run
+              <span
+                className="ml-1.5 cursor-help opacity-60"
+                title="Maximum number of tool calls allowed per run. Leave blank for unlimited."
+              >
+                ⓘ
+              </span>
+            </label>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              className="w-full h-10 rounded-xl border border-border bg-bg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-border"
+              value={editingMaxSteps}
+              onChange={(e) => setEditingMaxSteps(e.target.value)}
+              placeholder="Unlimited"
+            />
+            <p className="mt-1 text-[11px] text-muted_fg">
+              {editingMaxSteps.trim() === ""
+                ? "Unlimited — no step cap"
+                : `Run auto-cancelled after ${editingMaxSteps} steps`}
+            </p>
+          </div>
+
+          {/* Max duration */}
+          <div>
+            <label className="block text-xs text-muted_fg mb-1.5">
+              Max duration (seconds)
+              <span
+                className="ml-1.5 cursor-help opacity-60"
+                title="Maximum wall-clock seconds a run may take. Leave blank for unlimited."
+              >
+                ⓘ
+              </span>
+            </label>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              className="w-full h-10 rounded-xl border border-border bg-bg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-border"
+              value={editingMaxDuration}
+              onChange={(e) => setEditingMaxDuration(e.target.value)}
+              placeholder="Unlimited"
+            />
+            <p className="mt-1 text-[11px] text-muted_fg">
+              {editingMaxDuration.trim() === ""
+                ? "Unlimited — no time cap"
+                : `Run auto-cancelled after ${editingMaxDuration}s`}
+            </p>
+          </div>
+        </div>
+
+        <p className="mt-3 text-[11px] text-muted_fg">
+          Click <strong>Save</strong> above to persist guardrail changes.
+          Violations are recorded in the audit log with events{" "}
+          <code className="font-mono">tool.blocked</code> /{" "}
+          <code className="font-mono">runaway.stopped</code>.
+        </p>
+      </div>
+
+      {/* ── KPI cards ── */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
         <Card title="Runs" value={String(stats?.runs ?? 0)} />
         <Card
@@ -412,7 +602,7 @@ export default function AgentDetailPage() {
         />
       </div>
 
-      {/* Chart + lists */}
+      {/* ── Chart + recent runs ── */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="xl:col-span-2 rounded-2xl border border-border bg-panel p-4">
           <div className="flex items-center justify-between">
@@ -487,7 +677,7 @@ export default function AgentDetailPage() {
         <div className="rounded-2xl border border-border bg-panel p-4">
           <div className="text-sm font-medium">Recent runs</div>
           <div
-            className="mt-3 max-h-[300px] space-y-2 overflow-y-auto "
+            className="mt-3 max-h-[300px] space-y-2 overflow-y-auto"
             style={{
               scrollbarWidth: "thin",
               scrollbarColor: "hsl(var(--border)) transparent",
@@ -525,6 +715,7 @@ export default function AgentDetailPage() {
         </div>
       </div>
 
+      {/* ── Audit log ── */}
       <div className="rounded-2xl border border-border bg-panel p-4">
         <div className="text-sm font-medium">Audit (this agent)</div>
         <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">

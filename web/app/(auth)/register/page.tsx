@@ -36,7 +36,8 @@ export default function RegisterPage() {
         throw new Error(data?.error?.message || "Registration failed");
       if (!data.ok && data.error) throw new Error(data.error);
 
-      router.push("/flow");
+      // Redirect to the main app entry point after successful registration
+      router.push("/builders");
     } catch (err: any) {
       setError(err.message || "Something went wrong");
     } finally {
@@ -51,7 +52,7 @@ export default function RegisterPage() {
           Create your account
         </h1>
         <p className="mb-6 text-sm text-muted_fg">
-          Start building with Zaharam AI
+          Start building with Zahara AI
         </p>
 
         {error && (

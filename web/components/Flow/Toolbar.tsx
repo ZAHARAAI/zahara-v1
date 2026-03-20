@@ -168,6 +168,10 @@ export default function Toolbar() {
   const agentId: string | undefined = meta?.agentId ?? undefined;
   const canRun = !!agentId && runInput.trim().length > 0;
 
+  // Current description value — lives in meta so it persists across re-renders
+  // and is populated automatically when loading an existing agent in Flow.tsx
+  const description: string = meta?.description ?? "";
+
   // ── Save / update spec ───────────────────────────────────────────────────
   async function handleSaveAsAgent() {
     if (!nodes || !edges) {
@@ -187,8 +191,11 @@ export default function Toolbar() {
       } = await upsertAgentFromFlow({
         agent_id: agentId,
         name: flowName,
+        // Use the user-entered description; fall back to a sensible default
+        // only when the user has left it completely blank on a brand-new agent.
         description:
-          meta?.description ?? "Flow created from Zahara Flow Builder",
+          description.trim() ||
+          (agentId ? undefined : "Flow created from Zahara Flow Builder"),
         graph: { nodes, edges },
         meta: { ...(meta ?? {}) },
       });
@@ -197,6 +204,8 @@ export default function Toolbar() {
         ...(meta ?? {}),
         agentId: newAgentId,
         agentVersion: version,
+        // Keep description in sync so the input stays populated after save
+        description: description.trim() || meta?.description,
       });
       useBuildersStore.getState().setSelectedAgentId(newAgentId);
       localStorage.setItem("zahara.flow.lastAgentId", newAgentId);
@@ -217,7 +226,6 @@ export default function Toolbar() {
     setRunInput("");
     setFlowName("");
     setFlowMeta({});
-    setGraph([], []);
     setIsDirty(false);
   }
 
@@ -253,7 +261,6 @@ export default function Toolbar() {
 
       runId = res.run_id;
 
-      // Sync into BuildersStore — ActiveRunBanner picks this up
       useBuildersStore.getState().setActiveRun({
         runId,
         status: "running",
@@ -319,22 +326,42 @@ export default function Toolbar() {
 
   return (
     <div className="flex items-center justify-between rounded-2xl border border-border bg-panel px-4 py-2 gap-3 shrink-0">
-      {/* Left — name + agent context */}
+      {/* ── Left: flow label + name + description + agent badge ── */}
       <div className="flex items-center gap-2 min-w-0">
         <span className="text-[10px] uppercase tracking-widest text-muted_fg shrink-0">
           Flow
         </span>
+
+        {/* Agent name */}
         <Input
           value={flowName}
           onChange={(e) => {
             setFlowName(e.target.value);
             setIsDirty(true);
           }}
-          className="h-7 w-[180px] text-xs font-mono"
+          className="h-7 w-40 text-xs font-mono shrink-0"
           placeholder="Flow name…"
+          title="Agent name"
         />
+
+        {/* Divider */}
+        <span className="text-muted_fg/30 select-none shrink-0">·</span>
+
+        {/* Description — writes into meta.description, saved on next save */}
+        <Input
+          value={description}
+          onChange={(e) => {
+            setFlowMeta({ ...(meta ?? {}), description: e.target.value });
+            setIsDirty(true);
+          }}
+          className="h-7 w-[220px] text-xs text-muted_fg shrink-0"
+          placeholder="Description (optional)…"
+          title="Agent description — saved with the agent"
+        />
+
+        {/* Agent ID + version badge */}
         {meta?.agentId && (
-          <span className="hidden lg:flex items-center gap-1 text-[10px] font-mono text-muted_fg truncate">
+          <span className="hidden xl:flex items-center gap-1 text-[10px] font-mono text-muted_fg truncate">
             <span className="opacity-40">agent</span>
             <span className="opacity-60">…{meta.agentId.slice(-8)}</span>
             {meta.agentVersion && (
@@ -344,7 +371,7 @@ export default function Toolbar() {
         )}
       </div>
 
-      {/* Right — actions */}
+      {/* ── Right: new + save + divider + run input + quick run ── */}
       <div className="flex items-center gap-2 shrink-0">
         {meta?.agentId && (
           <Button
@@ -377,7 +404,7 @@ export default function Toolbar() {
               if (canRun && runState !== "running") void handleQuickRun();
             }
           }}
-          className="h-7 w-60 text-xs"
+          className="h-7 w-52 text-xs"
           placeholder="Input for quick run… (Enter)"
         />
 
