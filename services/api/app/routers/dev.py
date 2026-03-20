@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import List, Optional
 from uuid import uuid4
 
@@ -29,10 +31,19 @@ from ..models.agent_spec import AgentSpec as AgentSpecModel
 from ..models.run import Run as RunModel
 from ..models.run_event import RunEvent as RunEventModel
 from ..models.user import User
+from ..security.jwt_auth import hash_password
 from ..services.audit import log_audit_event
 
 logger = logging.getLogger("zahara.api.dev")
 router = APIRouter(prefix="/dev", tags=["development"])
+
+# ── Filesystem root (same as files.py) ────────────────────────────────────────
+FS_ROOT = Path(os.getenv("ZAHARA_FS_ROOT", "./data/agents")).resolve()
+
+# ── Guest user constants ──────────────────────────────────────────────────────
+GUEST_EMAIL = "guest@demo.zahara.ai"
+GUEST_USERNAME = "guest"
+GUEST_PASSWORD = "guest_demo_not_a_real_password"
 
 
 # ── ID generators (same convention as agents.py / run.py) ─────────────────────
@@ -314,6 +325,8 @@ class SeedResponse(BaseModel):
     agents_created: int
     runs_created: int
     agent_ids: List[str]
+    files_written: int = 0
+    guest_user_id: Optional[int] = None
     seeded_at: str
     message: str
 
@@ -322,12 +335,132 @@ class DeleteSeedResponse(BaseModel):
     ok: bool = True
     agents_deleted: int
     runs_deleted: int
+    dirs_deleted: int = 0
     message: str
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 DEMO_SLUG_PREFIX = "demo-"
+
+# ── Pro workspace file definitions ────────────────────────────────────────────
+
+_WORKSPACE_FILES: dict[str, dict[str, str]] = {
+    "demo-zahara-assistant": {
+        "agent.yaml": """\
+name: Zahara Assistant
+slug: demo-zahara-assistant
+description: A helpful general-purpose AI assistant.
+model:
+  provider: openai
+  model: gpt-4o-mini
+  temperature: 0.7
+  max_tokens: 800
+system_prompt: |
+  You are Zahara, a helpful and concise AI assistant.
+  You excel at writing, analysis, summarisation,
+  and answering questions clearly.
+""",
+        "README.md": """\
+# Zahara Assistant
+
+A general-purpose AI assistant that excels at writing, analysis,
+summarisation, and answering questions clearly.
+
+Open **agent.yaml** to view or edit the agent configuration, then
+click **Run** in the Pro toolbar to execute against this agent.
+""",
+    },
+    "demo-code-reviewer": {
+        "agent.yaml": """\
+name: Code Reviewer
+slug: demo-code-reviewer
+description: Reviews code for bugs, performance issues, and best-practice violations.
+model:
+  provider: openai
+  model: gpt-4o-mini
+  temperature: 0.3
+  max_tokens: 1200
+system_prompt: |
+  You are an expert code reviewer. Identify bugs, performance problems,
+  security vulnerabilities, and style issues.
+  Always suggest concrete fixes.
+""",
+        "README.md": """\
+# Code Reviewer
+
+An expert code reviewer that identifies bugs, performance problems,
+security vulnerabilities, and style issues — with concrete fix suggestions.
+
+Open **agent.yaml** to view or edit the configuration, then click
+**Run** in the Pro toolbar to test it against sample code.
+""",
+    },
+    "shared": {
+        "example.py": """\
+# Example agent spec — edit and run via Pro mode
+# Click 'Run' in the toolbar to execute against the bound agent
+
+def greet(name: str) -> str:
+    \"\"\"Return a greeting message.\"\"\"
+    return f"Hello, {name}! How can I help you today?"
+""",
+    },
+}
+
+
+def _seed_workspace_files(*, force: bool = False) -> int:
+    """
+    Write the default Pro workspace files into ZAHARA_FS_ROOT.
+
+    Returns the number of files written.
+    Skips existing files unless force=True.
+    """
+    written = 0
+    for dirname, files in _WORKSPACE_FILES.items():
+        dirpath = FS_ROOT / dirname
+        dirpath.mkdir(parents=True, exist_ok=True)
+        for filename, content in files.items():
+            filepath = dirpath / filename
+            if filepath.exists() and not force:
+                continue
+            filepath.write_text(content, encoding="utf-8")
+            written += 1
+    return written
+
+
+def _delete_demo_workspace_dirs() -> int:
+    """
+    Delete data/agents/demo-* directories but keep shared/.
+
+    Returns the number of directories deleted.
+    """
+    deleted = 0
+    if not FS_ROOT.exists():
+        return 0
+    for child in FS_ROOT.iterdir():
+        if child.is_dir() and child.name.startswith(DEMO_SLUG_PREFIX):
+            shutil.rmtree(child)
+            deleted += 1
+    return deleted
+
+
+def _ensure_guest_user(db: Session) -> User:
+    """
+    Return the shared guest user, creating it if it does not exist.
+    """
+    guest = db.query(User).filter(User.email == GUEST_EMAIL).first()
+    if guest:
+        return guest
+    guest = User(
+        username=GUEST_USERNAME,
+        email=GUEST_EMAIL,
+        hashed_password=hash_password(GUEST_PASSWORD),
+        is_active=True,
+    )
+    db.add(guest)
+    db.flush()
+    return guest
 
 
 def _get_existing_demo_agents(db: Session, user_id: int) -> List[AgentModel]:
@@ -552,6 +685,19 @@ def seed_demo(
 
         result = _build_demo_data(db, user_id=current_user.id)
 
+        # Provision shared guest user
+        try:
+            guest = _ensure_guest_user(db)
+            result.guest_user_id = guest.id
+        except Exception as guest_err:
+            logger.warning("Guest user provisioning failed: %s", guest_err)
+
+        # Write Pro workspace files
+        try:
+            result.files_written = _seed_workspace_files(force=req.force)
+        except Exception as fs_err:
+            logger.warning("Workspace file seeding failed: %s", fs_err)
+
         try:
             log_audit_event(
                 db,
@@ -605,6 +751,13 @@ def delete_seed(
     """
     agents_deleted, runs_deleted = _purge_demo_data(db, user_id=current_user.id)
 
+    # Remove demo-* workspace directories, keep shared/
+    try:
+        dirs_deleted = _delete_demo_workspace_dirs()
+    except Exception as fs_err:
+        logger.warning("Workspace dir cleanup failed: %s", fs_err)
+        dirs_deleted = 0
+
     try:
         log_audit_event(
             db,
@@ -612,7 +765,7 @@ def delete_seed(
             event_type="demo.deleted",
             entity_type="user",
             entity_id=str(current_user.id),
-            payload={"agents_deleted": agents_deleted, "runs_deleted": runs_deleted},
+            payload={"agents_deleted": agents_deleted, "runs_deleted": runs_deleted, "dirs_deleted": dirs_deleted},
         )
     except Exception:
         pass
@@ -621,9 +774,10 @@ def delete_seed(
         ok=True,
         agents_deleted=agents_deleted,
         runs_deleted=runs_deleted,
+        dirs_deleted=dirs_deleted,
         message=(
-            f"Removed {agents_deleted} demo agent(s) and {runs_deleted} run(s)."
-            if agents_deleted
+            f"Removed {agents_deleted} demo agent(s), {runs_deleted} run(s), {dirs_deleted} workspace dir(s)."
+            if agents_deleted or dirs_deleted
             else "No demo data found for this user."
         ),
     )
