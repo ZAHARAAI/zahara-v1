@@ -18,6 +18,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import SessionLocal, get_db
@@ -49,20 +50,6 @@ def _new_run_id() -> str:
     return "run_" + uuid4().hex[:16]
 
 
-class RunRequest(BaseModel):
-    prompt: str = ""
-    model: str = "gpt-4o-mini"
-    provider: Optional[str] = None
-    source: Optional[str] = None
-    config: Optional[Dict[str, Any]] = None
-
-
-class RunResponse(BaseModel):
-    ok: bool = True
-    run_id: str
-    request_id: str
-
-
 class RunCancelResponse(BaseModel):
     ok: bool = True
     run_id: str
@@ -73,6 +60,7 @@ class RunListItem(BaseModel):
     id: str
     agent_id: Optional[str] = None
     status: str
+    input: Optional[str] = None
     model: Optional[str] = None
     provider: Optional[str] = None
     source: Optional[str] = None
@@ -117,6 +105,7 @@ class RunDetail(BaseModel):
 
 class RunEventDTO(BaseModel):
     id: int
+    seq: Optional[int] = None
     type: str
     payload: Dict[str, Any]
     created_at: str
@@ -154,6 +143,7 @@ def _run_to_list_item(run: RunModel) -> RunListItem:
         id=run.id,
         agent_id=run.agent_id,
         status=run.status,
+        input=run.input,
         model=run.model,
         provider=run.provider,
         source=run.source,
@@ -198,16 +188,28 @@ def _run_to_detail(run: RunModel) -> RunDetail:
 def _event_to_dto(ev: RunEventModel) -> RunEventDTO:
     return RunEventDTO(
         id=ev.id,
+        seq=ev.seq,
         type=ev.type,
         payload=ev.payload,
         created_at=_dt_to_iso_z(ev.created_at),
     )
 
 
+def _get_next_seq(db: Session, run_id: str) -> int:
+    """Get the next seq number for a run (for monotonic ordering)."""
+    max_seq = (
+        db.query(func.max(RunEventModel.seq))
+        .filter(RunEventModel.run_id == run_id)
+        .scalar()
+    )
+    return (max_seq or 0) + 1
+
+
 def _create_event(
     db: Session, run_id: str, type_: str, payload: Dict[str, Any]
 ) -> None:
-    ev = RunEventModel(run_id=run_id, type=type_, payload=payload)
+    seq = _get_next_seq(db, run_id)
+    ev = RunEventModel(run_id=run_id, type=type_, payload=payload, seq=seq)
     db.add(ev)
     db.commit()
 
@@ -401,6 +403,7 @@ def retry_run(
         db.commit()
         db.refresh(new_run)
 
+        seq = _get_next_seq(db, new_run.id)
         db.add(
             RunEventModel(
                 run_id=new_run.id,
@@ -410,6 +413,7 @@ def retry_run(
                     "request_id": request_id,
                     "retry_of": old.id,
                 },
+                seq=seq,
             )
         )
         db.commit()
@@ -588,7 +592,35 @@ def delete_run(
         )
 
 
-@router.get("/{run_id}/events")
+@router.get("/{run_id}/events", response_model=RunDetailResponse)
+def list_run_events(
+    run_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> RunDetailResponse:
+    """GET /runs/{run_id}/events - Returns all run events as a JSON list, sorted by sequence."""
+    run = (
+        db.query(RunModel)
+        .filter(RunModel.id == run_id, RunModel.user_id == current_user.id)
+        .first()
+    )
+    if not run:
+        raise HTTPException(status_code=404, detail="run_not_found")
+
+    events = (
+        db.query(RunEventModel)
+        .filter(RunEventModel.run_id == run_id)
+        .order_by(RunEventModel.id.asc())
+        .limit(5000)
+        .all()
+    )
+
+    return RunDetailResponse(
+        ok=True, run=_run_to_detail(run), events=[_event_to_dto(e) for e in events]
+    )
+
+
+@router.get("/{run_id}/stream")
 def stream_run_events(
     run_id: str,
     request: Request,
@@ -601,6 +633,7 @@ def stream_run_events(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
+    """GET /runs/{run_id}/stream - SSE streaming with heartbeat and Last-Event-ID reconnect support."""
     run = (
         db.query(RunModel)
         .filter(RunModel.id == run_id, RunModel.user_id == current_user.id)
@@ -636,6 +669,7 @@ def stream_run_events(
                     last_id = ev.id
                     data = {
                         "type": ev.type,
+                        "seq": ev.seq,
                         "ts": _dt_to_iso_z(ev.created_at),
                         "created_at": _dt_to_iso_z(ev.created_at),
                         "request_id": run.request_id,
@@ -674,24 +708,16 @@ def stream_run_events(
             now = time.time()
             if now - last_heartbeat >= HEARTBEAT_INTERVAL_SECONDS:
                 last_heartbeat = now
-                hb = {
-                    "type": "heartbeat",
-                    "ts": _dt_to_iso_z(datetime.now(timezone.utc)),
-                    "created_at": _dt_to_iso_z(datetime.now(timezone.utc)),
-                    "request_id": run.request_id,
-                    "payload": {"request_id": run.request_id},
-                    "message": "heartbeat",
-                }
-                if framed:
-                    yield (
-                        f"event: heartbeat\n"
-                        f"data: {json.dumps(hb, ensure_ascii=False)}\n\n"
-                    ).encode("utf-8")
-                else:
-                    yield f"data: {json.dumps(hb, ensure_ascii=False)}\n\n".encode(
-                        "utf-8"
-                    )
+                yield b": heartbeat\n\n"
 
             await asyncio.sleep(0.5)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

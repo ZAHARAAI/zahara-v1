@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
+import { useEffect } from "react";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useRunUIStore } from "@/hooks/useRunUIStore";
@@ -79,8 +80,28 @@ export default function BuildModal({
   const phase = useRunUIStore((s) => s.phase);
   const errorMessage = useRunUIStore((s) => s.errorMessage);
   const logs = useRunUIStore((s) => s.logs);
-  const isClosing = useRunUIStore((s) => s.isClosing);
-  const hideWithFade = useRunUIStore((s) => s.hideWithFade);
+  const autoCloseMs = useRunUIStore((s) => s.autoCloseMs);
+  const sessionId = useRunUIStore((s) => s.sessionId);
+
+  // ── Authoritative auto-close ──────────────────────────────────────────
+  // Watches phase + open in React's effect system. When phase reaches "done",
+  // calls hide() directly after the configured delay. This is the single
+  // source of truth for closing the modal — simpler and more reliable than
+  // chaining safeHideAfter / hideWithFade through the Zustand store.
+  useEffect(() => {
+    if (!open || phase !== "done") return;
+
+    const delay =
+      typeof autoCloseMs === "number" && autoCloseMs > 0 ? autoCloseMs : 1500;
+
+    const timer = setTimeout(() => {
+      useRunUIStore.getState().hide();
+    }, delay);
+
+    return () => clearTimeout(timer);
+    // sessionId in deps: if a new run starts while modal is open, the effect
+    // re-runs and resets the timer so the new run gets its own countdown.
+  }, [open, phase, autoCloseMs, sessionId]);
 
   if (!open) return null;
 
@@ -89,25 +110,14 @@ export default function BuildModal({
 
   const isError = phase === "error";
   const isDone = phase === "done";
-  const isFinalizing = phase === "finalizing";
 
   const Icon = isError ? XCircle : isDone ? CheckCircle2 : Loader2;
 
   return (
-    <div
-      className={[
-        "fixed inset-0 z-50 flex items-center justify-center",
-        "bg-black/40 backdrop-blur-sm",
-        "transition-opacity duration-150",
-        isClosing ? "opacity-0" : "opacity-100",
-      ].join(" ")}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
       <div
         className={[
-          "w-full max-w-sm rounded-2xl border p-4 shadow-lg",
-          "bg-panel border-border",
-          "transition-all duration-150",
-          isClosing ? "opacity-0 scale-[0.98]" : "opacity-100 scale-100",
+          "w-full max-w-sm rounded-2xl border p-4 shadow-lg bg-panel border-border",
           isError ? "border-red-500/40 bg-red-500/5" : "",
           isDone ? "border-emerald-500/40 bg-emerald-500/5" : "",
         ].join(" ")}
@@ -123,9 +133,7 @@ export default function BuildModal({
           />
           <div className="flex flex-col">
             <span className="text-[14px] font-medium">{finalTitle}</span>
-            <span className="text-[11px] text-muted_fg">
-              {isFinalizing ? "Finalizing run…" : finalSubtitle}
-            </span>
+            <span className="text-[11px] text-muted_fg">{finalSubtitle}</span>
           </div>
         </div>
 
@@ -189,7 +197,7 @@ export default function BuildModal({
               size="sm"
               onClick={() => {
                 onClose?.();
-                hideWithFade(180);
+                useRunUIStore.getState().hide();
               }}
             >
               Close

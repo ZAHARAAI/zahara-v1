@@ -1,5 +1,7 @@
 # --- Standard library
+import logging
 import os
+import traceback
 
 # --- Third-party libraries
 import uvicorn
@@ -70,11 +72,16 @@ allowed_origins = (
         "http://localhost:8000",
         "https://zahara-v1-web.fly.dev",
         "https://zahara.ai",
-        "https://job5-ui-sprint.vercel.app",
+        # Job 8 canonical Vercel deployment
+        "https://zahara-v1.vercel.app",
     ]
 )
 
-ALLOWED_ORIGIN_REGEX = r"https://job5-ui-sprint(-[a-z0-9]+)?\.vercel\.app"
+# Covers all Vercel preview deployments for any sprint/job branch.
+# Pattern matches:  zahara-v1-<hash>.vercel.app
+#                   zahara-v1-git-<branch>-<org>.vercel.app
+#                   zahara-<anything>.vercel.app
+ALLOWED_ORIGIN_REGEX = r"https://zahara(-[a-z0-9-]+)?\.vercel\.app"
 
 app.add_middleware(
     CORSMiddleware,
@@ -109,11 +116,26 @@ async def not_found_handler(request: Request, exc):
 
 @app.exception_handler(500)
 async def internal_error_handler(request: Request, exc):
+    logger = logging.getLogger("zahara.api")
+    logger.error(
+        "Unhandled 500 on %s %s:\n%s",
+        request.method,
+        request.url.path,
+        traceback.format_exc(),
+    )
+
+    # If a router already raised an HTTPException with a rich detail dict,
+    # pass that detail through so the client sees the real error.
+    from fastapi import HTTPException as FastHTTPException
+
+    if isinstance(exc, FastHTTPException) and exc.detail:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
     return JSONResponse(
         status_code=500,
         content={
             "error": "Internal server error",
-            "detail": "An unexpected error occurred",
+            "detail": str(exc) if str(exc) else "An unexpected error occurred",
         },
     )
 
@@ -123,7 +145,7 @@ app.include_router(agents.router)
 app.include_router(api_keys.router)
 app.include_router(audit.router)
 app.include_router(auth.router)
-# app.include_router(dev.router)
+app.include_router(dev.router)
 app.include_router(files.router)
 app.include_router(health.router)
 app.include_router(llm_router.router)
@@ -153,8 +175,8 @@ app.include_router(version.router)
 # app.include_router(api_v1)
 
 # Include dev router only if dev pages are enabled
-if os.getenv("ENABLE_DEV_PAGES") == "1":
-    app.include_router(dev.router)
+# if os.getenv("ENABLE_DEV_PAGES") == "1":
+#     app.include_router(dev.router)
 
 # Mount static files
 static_path = os.path.join(os.path.dirname(__file__), "static")

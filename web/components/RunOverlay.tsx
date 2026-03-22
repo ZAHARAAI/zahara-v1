@@ -12,6 +12,7 @@ export default function RunOverlay() {
       title={title}
       subtitle={subtitle}
       onCancel={hide}
+      onClose={hide}
     />
   );
 }

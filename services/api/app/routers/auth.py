@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
@@ -10,7 +12,14 @@ from ..models.user import User
 from ..security.jwt_auth import create_access_token, hash_password, verify_password
 from ..services.audit import log_audit_event
 
+logger = logging.getLogger("zahara.api.auth")
+
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# ── Guest user constants ──────────────────────────────────────────────────────
+GUEST_EMAIL = "guest@demo.zahara.ai"
+GUEST_USERNAME = "guest"
+GUEST_TOKEN_TTL_MINUTES = 24 * 60  # 24 hours
 
 
 class SignupRequest(BaseModel):
@@ -34,6 +43,14 @@ class AuthResponse(BaseModel):
 class MeResponse(BaseModel):
     ok: bool = True
     user: dict
+
+
+class GuestResponse(BaseModel):
+    ok: bool = True
+    access_token: str
+    token_type: str = "bearer"
+    is_guest: bool = True
+    expires_in: int = 86400
 
 
 def _user_public(u: User) -> dict:
@@ -175,3 +192,50 @@ def login(body: LoginRequest, db: Session = Depends(get_db)) -> AuthResponse:
 @router.get("/me", response_model=MeResponse)
 def me(current_user: User = Depends(get_current_user)) -> MeResponse:
     return MeResponse(ok=True, user=_user_public(current_user))
+
+
+@router.post("/guest", response_model=GuestResponse)
+def guest_token(db: Session = Depends(get_db)) -> GuestResponse:
+    """
+    Issue a short-lived JWT for anonymous demo access.
+
+    Returns a 24-hour token scoped to a shared guest user row.
+    The guest user must already exist in the database (created by
+    migration or startup seed). If it does not exist, returns 500.
+    """
+    guest = db.query(User).filter(User.email == GUEST_EMAIL).first()
+
+    if not guest:
+        logger.error(
+            "Guest user %s not found in database. "
+            "Run alembic upgrade head or POST /dev/seed to create it.",
+            GUEST_EMAIL,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "ok": False,
+                "error": {
+                    "code": "GUEST_USER_MISSING",
+                    "message": (
+                        "Guest user has not been provisioned. "
+                        "Please run the database seed first."
+                    ),
+                },
+            },
+        )
+
+    token = create_access_token(
+        subject=guest.email,
+        user_id=guest.id,
+        expires_minutes=GUEST_TOKEN_TTL_MINUTES,
+        extra_claims={"is_guest": True},
+    )
+
+    return GuestResponse(
+        ok=True,
+        access_token=token,
+        token_type="bearer",
+        is_guest=True,
+        expires_in=GUEST_TOKEN_TTL_MINUTES * 60,
+    )

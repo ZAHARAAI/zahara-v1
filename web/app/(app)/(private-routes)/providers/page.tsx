@@ -3,6 +3,8 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useIsSeeded } from "@/hooks/useDemoStore";
+import { Info, KeyRound, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -24,6 +26,7 @@ const PROVIDERS: [string, string][] = [
 export default function ProvidersPage() {
   const [keys, setKeys] = useState<ProviderKey[]>([]);
   const [loading, setLoading] = useState(false);
+  const isSeeded = useIsSeeded();
 
   const [provider, setProvider] = useState("openai");
   const [label, setLabel] = useState("");
@@ -89,7 +92,7 @@ export default function ProvidersPage() {
     try {
       const res = await testProviderKey(id);
       toast[res.status === "ok" ? "success" : "error"](
-        res.message ?? `Test ${res.status}`
+        res.message ?? `Test ${res.status}`,
       );
       setKeys((prev) =>
         prev.map((k) =>
@@ -99,8 +102,8 @@ export default function ProvidersPage() {
                 last_test_status: res.status,
                 last_tested_at: res.last_tested_at ?? k.last_tested_at,
               }
-            : k
-        )
+            : k,
+        ),
       );
     } catch (err: any) {
       console.error("Failed to test provider key", err);
@@ -110,53 +113,95 @@ export default function ProvidersPage() {
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col gap-4">
+      {/* ── Demo mode banner ─────────────────────────────────────────────── */}
+      {isSeeded && (
+        <div className="flex items-start gap-3 rounded-xl border border-accent/25 bg-accent/5 px-4 py-3 text-sm text-accent">
+          <Sparkles className="h-4 w-4 mt-0.5 shrink-0" />
+          <div>
+            <span className="font-medium">Demo mode active</span>
+            <span className="text-accent/70">
+              {" "}
+              — provider keys are not required. Demo agents use canned streaming
+              responses from the backend. Add real keys only when you&apos;re
+              ready to connect to a live LLM provider.
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[16px] font-semibold">Provider Keys</h1>
           <p className="text-[12px] text-muted_fg">
-            Keys configured here are used by the run pipeline when calling the
-            central LLM router.
+            Keys configured here are encrypted and injected into the run
+            pipeline when calling the LLM router.
           </p>
         </div>
       </div>
 
       <div className="flex gap-4">
-        <form
-          onSubmit={handleCreate}
-          className="w-80 rounded-2xl border border-border bg-panel p-4 flex flex-col gap-3"
-        >
-          <div className="text-[13px] font-medium">Add provider key</div>
+        {/* ── Add key form — disabled in demo mode ─────────────────────── */}
+        {isSeeded ? (
+          /* Demo mode: show a locked placeholder instead of the live form */
+          <div className="w-80 rounded-2xl border border-border bg-panel/60 p-4 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-muted_fg" />
+              <div className="text-[13px] font-medium text-muted_fg">
+                Add provider key
+              </div>
+            </div>
 
-          <div className="flex flex-col gap-1 text-[12px]">
-            <Select
-              // className="rounded-md border border-border bg-transparent px-2 py-1 text-[12px]"
-              label="Provider"
-              value={provider}
-              onChange={(v) => setProvider(v)}
-              options={PROVIDERS}
-            />
+            <div className="rounded-xl border border-dashed border-border bg-muted/40 px-4 py-5 text-center">
+              <Info className="h-5 w-5 text-muted_fg mx-auto mb-2" />
+              <p className="text-[12px] text-muted_fg leading-relaxed">
+                Not needed in demo mode.
+                <br />
+                Demo runs use canned responses.
+              </p>
+              <p className="text-[11px] text-muted_fg/60 mt-2">
+                Remove demo data to enable live keys.
+              </p>
+            </div>
           </div>
+        ) : (
+          /* Normal mode: full add-key form */
+          <form
+            onSubmit={handleCreate}
+            className="w-80 rounded-2xl border border-border bg-panel p-4 flex flex-col gap-3"
+          >
+            <div className="text-[13px] font-medium">Add provider key</div>
 
-          <Input
-            label="Label (optional)"
-            placeholder="e.g. Primary OpenAI key"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-          />
+            <div className="flex flex-col gap-1 text-[12px]">
+              <Select
+                label="Provider"
+                value={provider}
+                onChange={(v) => setProvider(v)}
+                options={PROVIDERS}
+              />
+            </div>
 
-          <Input
-            label="Secret"
-            type="password"
-            placeholder="Paste API key…"
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
-          />
+            <Input
+              label="Label (optional)"
+              placeholder="e.g. Primary OpenAI key"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+            />
 
-          <Button type="submit" size="sm" disabled={saving}>
-            {saving ? "Saving…" : "Add key"}
-          </Button>
-        </form>
+            <Input
+              label="Secret"
+              type="password"
+              placeholder="Paste API key…"
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+            />
 
+            <Button type="submit" size="sm" disabled={saving}>
+              {saving ? "Saving…" : "Add key"}
+            </Button>
+          </form>
+        )}
+
+        {/* ── Existing keys table ──────────────────────────────────────── */}
         <div className="flex-1 rounded-2xl border border-border bg-panel p-4">
           <div className="flex items-center justify-between mb-2">
             <div className="text-[13px] font-medium">Existing keys</div>
@@ -167,7 +212,9 @@ export default function ProvidersPage() {
 
           {keys.length === 0 ? (
             <div className="text-[12px] text-muted_fg">
-              No provider keys configured yet.
+              {isSeeded
+                ? "No keys configured — not needed in demo mode."
+                : "No provider keys configured yet."}
             </div>
           ) : (
             <table className="w-full text-[11px]">

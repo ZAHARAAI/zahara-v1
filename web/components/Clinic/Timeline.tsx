@@ -6,7 +6,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
-  Ban,
   CheckCircle2,
   XCircle,
   Loader2,
@@ -28,12 +27,16 @@ import {
   Hash,
   AlertTriangle,
   Terminal,
+  Ban,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { RunListSkeleton } from "@/components/ui/SkeletonCard";
 import {
   deleteRun,
+  cancelRun,
   getRunDetail,
   getAgent,
   listRuns,
@@ -224,7 +227,13 @@ function CollapsibleJson({
         <span>{label ?? "payload"}</span>
       </button>
       {open && (
-        <pre className="mt-1 max-h-48 overflow-auto rounded-md bg-black/20 px-3 py-2 text-[10px] text-fg/80 whitespace-pre-wrap break-all leading-relaxed">
+        <pre
+          className="mt-1 max-h-48 overflow-auto rounded-md bg-black/20 px-3 py-2 text-[10px] text-fg/80 whitespace-pre-wrap break-all leading-relaxed"
+          style={{
+            scrollbarWidth: "thin",
+            scrollbarColor: "hsl(var(--border)) transparent",
+          }}
+        >
           {str}
         </pre>
       )}
@@ -494,6 +503,7 @@ export default function Timeline() {
   const [retrying, setRetrying] = useState(false);
   const [replaying, setReplaying] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const terminalEventElRef = useRef<HTMLLIElement | null>(null);
 
@@ -587,6 +597,11 @@ export default function Timeline() {
     return !!(r && r.status === "success" && r.agent_id && r.input);
   }, [detail]);
 
+  const canCancel = useMemo(() => {
+    const r = detail?.run;
+    return !!(r && (r.status === "running" || r.status === "pending"));
+  }, [detail]);
+
   const eventSummary = useMemo(() => {
     const evs = detail?.events ?? [];
     return {
@@ -639,6 +654,30 @@ export default function Timeline() {
       runUI.setError(err?.message ?? `Failed to ${label.toLowerCase()} run`);
     } finally {
       setLoading(false);
+      runUI.hide();
+    }
+  }
+
+  async function handleCancelRun() {
+    if (!detail?.run?.id) return;
+    setCancelling(true);
+    try {
+      // Stop any active SSE stream first so the UI doesn't fight the cancel
+      clinicStopRef.current?.();
+      clinicStopRef.current = null;
+
+      await cancelRun(detail.run.id);
+      toast.success("Run cancelled");
+
+      // Reload the detail so status updates to cancelled
+      setDetail(await getRunDetail(detail.run.id));
+
+      // Refresh the run list so the status chip updates too
+      await loadRuns(detail.run.id);
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to cancel run");
+    } finally {
+      setCancelling(false);
     }
   }
 
@@ -734,13 +773,26 @@ export default function Timeline() {
             />
           </div>
 
-          <div className="flex-1 overflow-auto">
+          <div
+            className="flex-1 overflow-y-auto"
+            style={{
+              scrollbarWidth: "thin",
+              scrollbarColor: "hsl(var(--border)) transparent",
+            }}
+          >
             {loadingRuns ? (
-              <div className="p-3 text-[11px] text-muted_fg">Loading…</div>
+              <RunListSkeleton rows={8} />
             ) : runs.length === 0 ? (
-              <div className="p-4 text-[11px] text-muted_fg">
-                No runs found.
-              </div>
+              <EmptyState
+                size="sm"
+                icon={<Activity className="h-4 w-4" />}
+                title="No runs yet"
+                description={
+                  statusFilter
+                    ? `No ${statusFilter} runs found. Try a different filter.`
+                    : "Seed demo data or trigger a run from Builders to see the timeline."
+                }
+              />
             ) : (
               <ul className="divide-y divide-border">
                 {runs.map((run, idx) => {
@@ -769,14 +821,24 @@ export default function Timeline() {
                             <span>{run.status}</span>
                           </span>
                         </div>
-                        {/* Row 2: model + time */}
+                        {/* Row 2: prompt preview */}
+                        {run.input && (
+                          <div className="text-[10px] text-muted_fg truncate italic">
+                            "
+                            {run.input.length > 60
+                              ? run.input.slice(0, 60) + "…"
+                              : run.input}
+                            "
+                          </div>
+                        )}
+                        {/* Row 3: model + time */}
                         <div className="flex items-center justify-between gap-2 text-[10px] text-muted_fg">
                           <span className="truncate">{run.model ?? "—"}</span>
                           <span className="shrink-0">
                             {new Date(run.created_at).toLocaleTimeString()}
                           </span>
                         </div>
-                        {/* Row 3: cost + latency */}
+                        {/* Row 4: cost + latency */}
                         {(run.cost_estimate_usd != null ||
                           run.latency_ms != null) && (
                           <div className="flex items-center gap-2 text-[10px] text-muted_fg">
@@ -817,19 +879,33 @@ export default function Timeline() {
         {/* ── Right: detail ── */}
         <div className="flex-1 min-w-0 rounded-2xl border border-border bg-card overflow-hidden flex flex-col">
           {!selectedRunId ? (
-            <div className="flex-1 flex items-center justify-center text-[12px] text-muted_fg">
-              Select a run to inspect it.
+            <div className="flex-1 flex items-center justify-center p-8">
+              <EmptyState
+                icon={<Activity className="h-5 w-5" />}
+                title="No run selected"
+                description="Pick a run from the list to inspect its timeline, metrics, and events."
+              />
             </div>
           ) : loadingDetail ? (
             <div className="flex-1 flex items-center justify-center text-[12px] text-muted_fg">
-              <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading…
+              <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading run…
             </div>
           ) : !detail ? (
-            <div className="flex-1 flex items-center justify-center text-[12px] text-muted_fg">
-              No detail found.
+            <div className="flex-1 flex items-center justify-center p-8">
+              <EmptyState
+                icon={<AlertTriangle className="h-5 w-5" />}
+                title="Run not found"
+                description="This run may have been deleted."
+              />
             </div>
           ) : (
-            <div className="flex-1 overflow-auto p-4 space-y-4">
+            <div
+              className="flex-1 overflow-y-auto p-4 space-y-4"
+              style={{
+                scrollbarWidth: "thin",
+                scrollbarColor: "hsl(var(--border)) transparent",
+              }}
+            >
               {/* Run header card */}
               <section
                 className={`rounded-xl border bg-panel p-4 ${detailHeaderBorderClass(detail.run.status)}`}
@@ -861,6 +937,18 @@ export default function Timeline() {
 
                   {/* Action buttons */}
                   <div className="flex items-center gap-2 flex-wrap">
+                    {canCancel && (
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={cancelling}
+                        onClick={() => void handleCancelRun()}
+                        className="gap-1 border-red-500/40 text-red-400 hover:bg-red-500/10"
+                      >
+                        <Ban className="h-3 w-3" />
+                        {cancelling ? "Cancelling…" : "Cancel Run"}
+                      </Button>
+                    )}
                     {canRetry && (
                       <Button
                         size="xs"
@@ -897,85 +985,65 @@ export default function Timeline() {
                   </div>
                 </div>
 
-                {/* Metrics grid */}
-                <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[10px] text-muted_fg uppercase tracking-wide flex items-center gap-1">
-                      <DollarSign className="h-3 w-3" />
-                      Cost
+                {/* Metrics KPI cards */}
+                <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="rounded-xl border border-border bg-card px-3 py-2.5 flex flex-col gap-1">
+                    <span className="text-[9px] text-muted_fg uppercase tracking-widest flex items-center gap-1">
+                      <DollarSign className="h-2.5 w-2.5" /> Cost
                     </span>
-                    <span className="text-[13px] font-semibold text-fg tabular-nums">
+                    <span className="text-[15px] font-semibold tabular-nums text-fg">
                       {fmtCost(
                         detail.run.cost_estimate_usd,
                         detail.run.cost_is_approximate,
                       )}
-                      {detail.run.cost_is_approximate && (
-                        <span className="ml-1 text-[10px] text-muted_fg font-normal">
-                          (approx)
-                        </span>
-                      )}
                     </span>
+                    {detail.run.cost_is_approximate && (
+                      <span className="text-[9px] text-muted_fg">
+                        approximate
+                      </span>
+                    )}
                   </div>
 
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[10px] text-muted_fg uppercase tracking-wide flex items-center gap-1">
-                      <Timer className="h-3 w-3" />
-                      Latency
+                  <div className="rounded-xl border border-border bg-card px-3 py-2.5 flex flex-col gap-1">
+                    <span className="text-[9px] text-muted_fg uppercase tracking-widest flex items-center gap-1">
+                      <Timer className="h-2.5 w-2.5" /> Latency
                     </span>
-                    <span className="text-[13px] font-semibold text-fg tabular-nums">
+                    <span className="text-[15px] font-semibold tabular-nums text-fg">
                       {fmtLatency(detail.run.latency_ms)}
                     </span>
+                    {detail.run.latency_ms != null && (
+                      <span className="text-[9px] text-muted_fg">
+                        milliseconds
+                      </span>
+                    )}
                   </div>
 
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[10px] text-muted_fg uppercase tracking-wide flex items-center gap-1">
-                      <Hash className="h-3 w-3" />
-                      Tokens
+                  <div className="rounded-xl border border-border bg-card px-3 py-2.5 flex flex-col gap-1">
+                    <span className="text-[9px] text-muted_fg uppercase tracking-widest flex items-center gap-1">
+                      <Hash className="h-2.5 w-2.5" /> Tokens
                     </span>
-                    <span className="text-[13px] font-semibold text-fg tabular-nums">
-                      {detail.run.tokens_total != null ? (
-                        <>
-                          {detail.run.tokens_total.toLocaleString()}
-                          {detail.run.tokens_in != null &&
-                            detail.run.tokens_out != null && (
-                              <span className="ml-1 text-[10px] text-muted_fg font-normal">
-                                ({detail.run.tokens_in}↑ {detail.run.tokens_out}
-                                ↓)
-                              </span>
-                            )}
-                        </>
-                      ) : (
-                        "—"
+                    <span className="text-[15px] font-semibold tabular-nums text-fg">
+                      {detail.run.tokens_total != null
+                        ? detail.run.tokens_total.toLocaleString()
+                        : "—"}
+                    </span>
+                    {detail.run.tokens_in != null &&
+                      detail.run.tokens_out != null && (
+                        <span className="text-[9px] text-muted_fg">
+                          {detail.run.tokens_in}↑ {detail.run.tokens_out}↓
+                        </span>
                       )}
-                    </span>
                   </div>
 
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[10px] text-muted_fg uppercase tracking-wide flex items-center gap-1">
-                      <Zap className="h-3 w-3" />
-                      Provider
+                  <div className="rounded-xl border border-border bg-card px-3 py-2.5 flex flex-col gap-1">
+                    <span className="text-[9px] text-muted_fg uppercase tracking-widest flex items-center gap-1">
+                      <Zap className="h-2.5 w-2.5" /> Model
                     </span>
-                    <span className="text-[12px] font-semibold text-fg capitalize">
-                      {detail.run.provider ?? "—"}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[10px] text-muted_fg uppercase tracking-wide">
-                      Model
-                    </span>
-                    <span className="text-[12px] font-semibold text-fg font-mono truncate">
+                    <span className="text-[12px] font-semibold font-mono text-fg truncate">
                       {detail.run.model ?? "—"}
                     </span>
-                  </div>
-
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[10px] text-muted_fg uppercase tracking-wide flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      Started
-                    </span>
-                    <span className="text-[11px] text-fg">
-                      {new Date(detail.run.created_at).toLocaleString()}
+                    <span className="text-[9px] text-muted_fg capitalize">
+                      {detail.run.provider ?? ""}
                     </span>
                   </div>
                 </div>

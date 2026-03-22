@@ -15,25 +15,33 @@ class CurrentUser(BaseModel):
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
-    # token = request.headers.get("x-jwt-token")
-    # try:
-    #     payload = decode_token(token.strip())
-    #     user_id = int(payload.get("uid"))
-    # except Exception:
-    #     set_request_context(user_id=None, auth_type="anonymous")
-    #     raise HTTPException(
-    #         status_code=status.HTTP_401_UNAUTHORIZED, detail="unauthorized"
-    #     )
+    """Extract and validate JWT token from Authorization header."""
+    auth_header = request.headers.get("authorization", "").strip()
+    if not auth_header.startswith("Bearer "):
+        set_request_context(user_id=None, auth_type="anonymous")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid Authorization header",
+        )
 
-    # user = db.query(User).filter(User.id == user_id).first()
-    # if not user:
-    #     set_request_context(user_id=None, auth_type="anonymous")
-    #     raise HTTPException(
-    #         status_code=status.HTTP_401_UNAUTHORIZED, detail="unauthorized"
-    #     )
+    token = auth_header[7:]  # Remove "Bearer " prefix
+    try:
+        payload = decode_token(token)
+        user_id = int(payload.get("uid"))
+    except (ValueError, KeyError, TypeError) as e:
+        set_request_context(user_id=None, auth_type="anonymous")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {str(e)}",
+        ) from e
 
-    # set_request_context(user_id=user.id, auth_type="jwt")
-    # # return user
-    # return CurrentUser(id=user_id)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        set_request_context(user_id=None, auth_type="anonymous")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
 
-    return CurrentUser(id=1)
+    set_request_context(user_id=user.id, auth_type="jwt")
+    return user
