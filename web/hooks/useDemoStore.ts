@@ -5,14 +5,20 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { toast } from "sonner";
 import { seedDemo, type SeedResponse } from "@/services/api";
 
-// ── Types ─────────────────────────────────────────────────────────────────
-
 export type DemoPhase = "idle" | "seeding" | "success" | "error";
 
 export interface SeedResult {
   agents_created: number;
   runs_created: number;
+  /**
+   * Optional: the Job 8 backend proof shows /dev/seed no longer returns
+   * agent_ids. DemoControls falls back to listAgents() when this is empty.
+   */
   agent_ids: string[];
+  /** Number of workspace files written (new in Job 8 backend). */
+  files_written?: number;
+  /** Guest user DB id (new in Job 8 backend). */
+  guest_user_id?: number;
   seeded_at: string;
   message: string;
 }
@@ -22,33 +28,18 @@ interface DemoState {
   result: SeedResult | null;
   errorMessage: string | null;
   notAvailable: boolean;
-  succeededAt: number | null; // Date.now() when last seed succeeded
-
-  // ── Cross-component reload signal ──────────────────────────────────────
-  // Increments each time seed succeeds.
-  // VibePage: useEffect(() => { loadLeftPane() }, [seedVersion])
-  // Decouples store from VibePage without circular deps.
+  succeededAt: number | null;
   seedVersion: number;
-
-  // ── Actions ────────────────────────────────────────────────────────────
   seed: (opts?: { force?: boolean }) => Promise<void>;
-  reset: () => void; // dev only — back to idle without deleting backend data
+  reset: () => void;
 }
 
-// ── SSR-safe localStorage wrapper ────────────────────────────────────────
 const safeLocalStorage = createJSONStorage(() => {
   if (typeof window === "undefined") {
-    // Server: no-op storage — persist reads nothing, writes nothing
-    return {
-      getItem: () => null,
-      setItem: () => {},
-      removeItem: () => {},
-    };
+    return { getItem: () => null, setItem: () => {}, removeItem: () => {} };
   }
   return localStorage;
 });
-
-// ── Store ─────────────────────────────────────────────────────────────────
 
 export const useDemoStore = create<DemoState>()(
   persist(
@@ -61,9 +52,7 @@ export const useDemoStore = create<DemoState>()(
       seedVersion: 0,
 
       seed: async (opts) => {
-        // EC-1: double-click guard
         if (get().phase === "seeding") return;
-
         set({ phase: "seeding", errorMessage: null });
 
         try {
@@ -77,13 +66,15 @@ export const useDemoStore = create<DemoState>()(
             result: {
               agents_created: (result as SeedResponse).agents_created,
               runs_created: (result as SeedResponse).runs_created,
-              agent_ids: (result as SeedResponse).agent_ids,
+              // New backend may not return agent_ids — default to []
+              agent_ids: (result as SeedResponse).agent_ids ?? [],
+              files_written: (result as SeedResponse).files_written,
+              guest_user_id: (result as SeedResponse).guest_user_id,
               seeded_at: (result as SeedResponse).seeded_at,
               message: (result as SeedResponse).message,
             },
             errorMessage: null,
             succeededAt: Date.now(),
-            // Increment so VibePage's useEffect fires and reloads agents
             seedVersion: s.seedVersion + 1,
           }));
 
@@ -92,15 +83,11 @@ export const useDemoStore = create<DemoState>()(
           );
         } catch (err) {
           const raw = (err as Error).message ?? "Failed to seed demo data";
-
-          // 403 — endpoint not available in this environment
           const notAvailable =
             raw === "Forbidden" ||
             raw.toLowerCase().includes("not available") ||
             raw.toLowerCase().includes("forbidden");
-
           set({ phase: "error", errorMessage: raw, notAvailable });
-
           if (notAvailable) {
             toast.error("Demo seed is only available in development mode.");
           } else {
@@ -116,7 +103,6 @@ export const useDemoStore = create<DemoState>()(
           errorMessage: null,
           succeededAt: null,
           notAvailable: false,
-          // Intentionally keep seedVersion — backend data still exists
         }),
     }),
 
@@ -124,10 +110,7 @@ export const useDemoStore = create<DemoState>()(
       name: "zahara.demo",
       storage: safeLocalStorage,
       skipHydration: true,
-
       partialize: (s): Partial<DemoState> => ({
-        // Never persist "seeding" — if the page closes mid-seed, reopen
-        // should show idle, not a stuck spinner.
         phase: s.phase === "seeding" ? "idle" : s.phase,
         result: s.result,
         succeededAt: s.succeededAt,
@@ -137,8 +120,6 @@ export const useDemoStore = create<DemoState>()(
     },
   ),
 );
-
-// ── Selector hooks (each subscribes only to what it needs) ────────────────
 
 export const useDemoPhase = () => useDemoStore((s) => s.phase);
 export const useSeedVersion = () => useDemoStore((s) => s.seedVersion);

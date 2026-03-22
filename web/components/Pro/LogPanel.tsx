@@ -137,9 +137,14 @@ const LogPanel = () => {
   }, [events]);
 
   return (
-    <div className="h-full border border-border rounded-2xl overflow-hidden">
-      <div className="h-full bg-bg/40 text-xs">
-        <div className="flex items-center justify-between border-b border-border px-3 py-2">
+    // Bug fix: was h-full > h-full > overflow-auto with no flex chain.
+    // Without flex-col + flex-1 min-h-0, h-full children have no constraint
+    // so overflow-auto never triggers — logs overflowed the panel instead
+    // of scrolling. Pattern matches RunConsole which works correctly.
+    <div className="flex h-full flex-col border border-border rounded-2xl overflow-hidden">
+      <div className="flex flex-col flex-1 min-h-0 bg-bg/40 text-xs">
+        {/* Header — fixed height, never scrolls */}
+        <div className="flex items-center justify-between border-b border-border px-3 py-2 shrink-0">
           <div className="flex items-center gap-2 text-muted_fg">
             <span className="font-medium">Run logs</span>
             {runId && (
@@ -163,13 +168,20 @@ const LogPanel = () => {
           </div>
         </div>
 
-        <div className="h-full overflow-auto px-3 py-2">
+        {/* Log body — flex-1 min-h-0 gives it a real height to scroll within */}
+        <div
+          className="flex-1 min-h-0 overflow-auto px-3 py-2"
+          style={{
+            scrollbarWidth: "thin",
+            scrollbarColor: "hsl(var(--border)) transparent",
+          }}
+        >
           {formatted.length === 0 ? (
             <div className="flex h-full items-center justify-center text-muted_fg">
               No events yet. Run the agent to see live logs.
             </div>
           ) : (
-            <ul className="space-y-1.5 overflow-auto">
+            <ul className="space-y-1.5">
               {formatted.map((e) => (
                 <li
                   key={e.id}
@@ -184,7 +196,7 @@ const LogPanel = () => {
                   ].join(" ")}
                 >
                   <div className="mb-1 flex items-center justify-between">
-                    <span className="font-mono text-[11px] uppercase text-">
+                    <span className="font-mono text-[11px] uppercase text-muted_fg">
                       {e.type}
                     </span>
                     {e.timestamp && (

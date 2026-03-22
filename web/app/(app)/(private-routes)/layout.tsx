@@ -8,7 +8,9 @@ export default async function PrivateRoutesLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Enforce authentication — unauthenticated users go to /login
+  // Middleware (middleware.ts) auto-provisions a guest token for users
+  // arriving without a cookie, so by the time this layout runs there
+  // should always be a token. This redirect is a safety-net fallback only.
   const token = await getAccessToken();
   if (!token) redirect("/login");
 

@@ -241,10 +241,20 @@ export async function startAgentRun(
   agent_id: string,
   body: StartRunRequest,
 ): Promise<StartRunResponse> {
+  // Generate a unique idempotency key per call so the backend (Job 9C)
+  // deduplicates double-clicks or fast retries within the 24-hour window.
+  const idempotencyKey =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
   const { json, error } = await api(
     `/agents/${encodeURIComponent(agent_id)}/run`,
     {
       method: "POST",
+      headers: {
+        "Idempotency-Key": idempotencyKey,
+      } as Record<string, string>,
       body: JSON.stringify({
         input: body.input,
         source: body.source ?? "vibe",
@@ -252,7 +262,21 @@ export async function startAgentRun(
       }),
     },
   );
-  if (error) throw new Error(error);
+
+  if (error) {
+    // Attach a machine-readable code so callers (useRunStore) can give
+    // specific error messages without re-parsing the string.
+    const code = error.includes("BUDGET_EXCEEDED")
+      ? "BUDGET_EXCEEDED"
+      : error.includes("AGENT_NOT_ACTIVE")
+        ? "AGENT_NOT_ACTIVE"
+        : error.includes("CONCURRENT_RUN_LIMIT")
+          ? "CONCURRENT_RUN_LIMIT"
+          : undefined;
+    const e = new Error(error) as Error & { code?: string };
+    if (code) e.code = code;
+    throw e;
+  }
 
   const data = ensureOk(json, `starting run for agent ${agent_id}`);
   return data;
@@ -290,15 +314,16 @@ export function streamRun(
     });
 
     if (ev.type === "done") {
-      st.setPhase("finalizing", "Finalizing run…");
       st.setPhase("done", "Completed");
 
       const closeMs =
         typeof opts?.autoCloseMs === "number"
           ? opts.autoCloseMs
-          : (st.autoCloseMs ?? 1000);
+          : (st.autoCloseMs ?? 1500);
 
-      st.safeHideAfter(closeMs, st.sessionId, opts?.fadeMs ?? 180);
+      setTimeout(() => {
+        useRunUIStore.getState().hide();
+      }, closeMs);
     } else if (ev.type === "error") {
       const msg =
         (typeof ev.message === "string" && ev.message) ||
@@ -862,7 +887,16 @@ export interface SeedResponse {
   ok: boolean;
   agents_created: number;
   runs_created: number;
-  agent_ids: string[];
+  /**
+   * Agent IDs created during seeding. Optional — the Job 8 backend proof shows
+   * the updated /dev/seed endpoint no longer returns this field. Consumers
+   * must treat it as potentially absent and fall back to listAgents().
+   */
+  agent_ids?: string[];
+  /** Number of workspace files written to ZAHARA_FS_ROOT (added in Job 8 backend). */
+  files_written?: number;
+  /** DB id of the shared guest user seeded alongside the agents (added in Job 8 backend). */
+  guest_user_id?: number;
   seeded_at: string;
   message: string;
 }

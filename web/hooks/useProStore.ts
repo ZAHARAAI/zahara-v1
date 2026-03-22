@@ -109,7 +109,9 @@ export const useProStore = create<ProState>((set, get) => ({
         content,
         sha ?? undefined,
       );
-      set({ sha: json.sha, dirty: false });
+      // Warning fix: update stored content to the saved value so future
+      // setContent dirty checks compare against what's actually on disk.
+      set({ sha: json.sha, dirty: false, content });
     } catch (err: any) {
       console.error("Failed to save file", err);
       set({ error: err?.message ?? "Failed to save file" });

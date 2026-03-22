@@ -9,7 +9,7 @@ import {
   patchConnector,
   testConnector,
 } from "@/services/api";
-import { useDemoStore } from "@/hooks/useDemoStore";
+import { useDemoStore, useIsSeeded } from "@/hooks/useDemoStore";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Plug, Loader2 } from "lucide-react";
@@ -21,8 +21,9 @@ export default function Panel() {
 
   const demoPhase = useDemoStore((s) => s.phase);
   const demoSeed = useDemoStore((s) => s.seed);
-  const isSeeded =
-    demoPhase === "success" || useDemoStore.getState().seedVersion > 0;
+  // Bug fix: was using useDemoStore.getState().seedVersion inside render —
+  // that reads once and never re-subscribes. useIsSeeded() subscribes properly.
+  const isSeeded = useIsSeeded();
 
   useEffect(() => {
     void load();
@@ -41,7 +42,6 @@ export default function Panel() {
   };
 
   const toggle = async (id: string, enabled: boolean) => {
-    // Optimistic UI update
     setItems((prev) =>
       prev.map((c) =>
         c.id === id
@@ -53,7 +53,6 @@ export default function Panel() {
       await patchConnector(id, { enabled });
       toast.success(`Connector ${enabled ? "enabled" : "disabled"}`);
     } catch (e: any) {
-      // Rollback on failure
       setItems((prev) =>
         prev.map((c) =>
           c.id === id
@@ -76,7 +75,6 @@ export default function Panel() {
       toast.success("Test OK", {
         description: `latency: ${json.latency_ms}ms`,
       });
-      // Refresh to pick up updated last_test_status
       await load();
     } catch (e: any) {
       toast.error("Test failed", { description: e.message });
@@ -116,7 +114,6 @@ export default function Panel() {
         }}
       >
         {loading && items.length === 0 ? (
-          /* Initial skeleton */
           <div className="space-y-2">
             {[1, 2, 3].map((i) => (
               <div
@@ -126,7 +123,6 @@ export default function Panel() {
             ))}
           </div>
         ) : items.length === 0 ? (
-          /* Empty state with actionable CTA */
           <EmptyState
             icon={<Plug className="h-5 w-5" />}
             title="No MCP connectors"
@@ -156,7 +152,6 @@ export default function Panel() {
             }
           />
         ) : (
-          /* Connector list */
           <div className="space-y-2">
             {items.map((c) => (
               <div
@@ -169,7 +164,6 @@ export default function Panel() {
                       <span className="text-sm font-medium truncate">
                         {c.name}
                       </span>
-                      {/* Enabled / disabled pill */}
                       <span
                         className={[
                           "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border",
@@ -186,7 +180,6 @@ export default function Panel() {
                       {c.id}
                     </div>
 
-                    {/* Last test status */}
                     {c.last_test_status && (
                       <div className="text-[11px] text-muted_fg mt-1">
                         Last test:{" "}
@@ -206,7 +199,6 @@ export default function Panel() {
                     )}
                   </div>
 
-                  {/* Controls */}
                   <div className="flex items-center gap-2 shrink-0">
                     <Button
                       size="xs"
@@ -228,9 +220,7 @@ export default function Panel() {
                         checked={c.enabled}
                         onChange={(e) => void toggle(c.id, e.target.checked)}
                       />
-                      {/* Toggle track */}
                       <div className="w-9 h-5 bg-muted border border-border rounded-full peer peer-checked:bg-accent peer-checked:border-accent transition-colors duration-200" />
-                      {/* Toggle thumb */}
                       <div className="absolute left-0.5 top-0.5 h-4 w-4 bg-white rounded-full shadow transition-transform duration-200 peer-checked:translate-x-4" />
                     </label>
                   </div>

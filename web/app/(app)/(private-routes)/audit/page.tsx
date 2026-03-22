@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ClipboardList, Layers } from "lucide-react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonBar } from "@/components/ui/SkeletonCard";
-import { useDemoStore } from "@/hooks/useDemoStore";
+import { useDemoStore, useIsSeeded } from "@/hooks/useDemoStore";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { listAudit, type AuditLogItem } from "@/services/api";
 import Link from "next/link";
+
+const POLL_INTERVAL_MS = 15_000; // refresh every 15 s while page is visible
 
 const typeOptions: [string, string][] = [
   ["", "All types"],
@@ -25,6 +27,10 @@ const typeOptions: [string, string][] = [
   ["run.started", "run.started"],
   ["run.retried", "run.retried"],
   ["run.cancelled", "run.cancelled"],
+  // Job 9 guardrail events
+  ["tool.blocked", "tool.blocked"],
+  ["runaway.stopped", "runaway.stopped"],
+  ["budget.blocked", "budget.blocked"],
   // Auth
   ["user.login", "user.login"],
   ["user.registered", "user.registered"],
@@ -63,6 +69,14 @@ function eventTypePill(eventType: string) {
   ) {
     return "bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-300";
   }
+  // Job 9 guardrail events — red to signal a policy violation or safety stop
+  if (
+    eventType === "tool.blocked" ||
+    eventType === "runaway.stopped" ||
+    eventType === "budget.blocked"
+  ) {
+    return "bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-300";
+  }
   return "bg-muted border-border text-muted_fg";
 }
 
@@ -78,10 +92,18 @@ export default function AuditPage() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
 
+  // ── Refresh key: increment to force a reload from filters/visibility/poll ──
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Keep a stable ref to the latest filter values for use in event listeners
+  const filtersRef = useRef({ type, entityType, entityId, cursor });
+  filtersRef.current = { type, entityType, entityId, cursor };
+
   const demoPhase = useDemoStore((s) => s.phase);
   const demoSeed = useDemoStore((s) => s.seed);
-  const isSeeded =
-    demoPhase === "success" || useDemoStore.getState().seedVersion > 0;
+  // Warning fix: was using useDemoStore.getState().seedVersion during render —
+  // reads once, never re-subscribes. useIsSeeded() subscribes reactively.
+  const isSeeded = useIsSeeded();
 
   const canLoadMore = useMemo(() => !!nextCursor, [nextCursor]);
 
@@ -89,27 +111,33 @@ export default function AuditPage() {
     const reset = opts?.reset ?? false;
     try {
       setLoading(true);
+      const {
+        type: t,
+        entityType: et,
+        entityId: eid,
+        cursor: cur,
+      } = filtersRef.current;
       const res = await listAudit({
         limit: 50,
-        cursor: reset ? undefined : (cursor ?? undefined),
-        type: type || undefined,
-        entity_type: entityType || undefined,
-        entity_id: entityId.trim() || undefined,
+        cursor: reset ? undefined : (cur ?? undefined),
+        type: t || undefined,
+        entity_type: et || undefined,
+        entity_id: eid.trim() || undefined,
       });
 
       const newItems = res.items ?? [];
       setItems((prev) => (reset ? newItems : [...prev, ...newItems]));
       setNextCursor(res.next_cursor ?? null);
       setCursor(res.next_cursor ?? null);
-    } catch (err: any) {
-      toast.error(err?.message ?? "Failed to load audit logs");
+    } catch (err: unknown) {
+      toast.error((err as Error)?.message ?? "Failed to load audit logs");
     } finally {
       setLoading(false);
       setInitialLoad(false);
     }
   }
 
-  // Initial + when filters change
+  // ── Load on filter change or manual refresh ─────────────────────────────
   useEffect(() => {
     setItems([]);
     setCursor(null);
@@ -117,7 +145,33 @@ export default function AuditPage() {
     setInitialLoad(true);
     void loadPage({ reset: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, entityType]);
+  }, [type, entityType, refreshKey]);
+
+  // ── Auto-refresh when the page becomes visible again ─────────────────────
+  // Fixes the case where: user is on Audit → goes to Clinic → cancels a run
+  // → comes back to Audit. Without this, the Next.js router cache or stale
+  // React state means the cancel event never appears without a manual refresh.
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        setRefreshKey((k) => k + 1);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
+  // ── Light polling while page is visible ───────────────────────────────────
+  // Keeps the audit list fresh without the user having to click Refresh.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        setRefreshKey((k) => k + 1);
+      }
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <div className="p-6 space-y-4">
@@ -131,7 +185,7 @@ export default function AuditPage() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => void loadPage({ reset: true })}
+          onClick={() => setRefreshKey((k) => k + 1)}
           disabled={loading}
         >
           Refresh
@@ -164,7 +218,7 @@ export default function AuditPage() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => void loadPage({ reset: true })}
+                onClick={() => setRefreshKey((k) => k + 1)}
                 disabled={loading}
               >
                 Apply

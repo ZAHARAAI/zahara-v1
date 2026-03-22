@@ -17,14 +17,13 @@ Acceptance criteria:
 - Data isolation maintained across users
 """
 
-import pytest
-import asyncio
 import time
-import sys
 from concurrent.futures import ThreadPoolExecutor
-import requests
-from tests._http_helpers import api_post, api_get, api_patch, api_delete
 from typing import Dict, List, Tuple
+
+import pytest
+
+from tests._http_helpers import api_get, api_post
 
 API_BASE = "http://localhost:8000"
 NUM_USERS = 3  # Reduced to stay within rate limits when running with other tests
@@ -284,7 +283,7 @@ class TestJob9cSoak:
                     except RuntimeError:
                         # Rate limited - try next user
                         continue
-                    except Exception as e:
+                    except Exception:
                         # Skip for real errors
                         pass
                 
@@ -336,7 +335,7 @@ class TestJob9cSoak:
                 email, token = signup_user(i + 300)
                 user_token_map[email] = token
                 metrics.add_request(True, (time.time() - start) * 1000)
-            except RuntimeError as e:
+            except RuntimeError:
                 # Rate limited - that's OK in a soak test
                 metrics.add_request(False, 0, "Rate limited")
                 time.sleep(2)  # Wait before retrying

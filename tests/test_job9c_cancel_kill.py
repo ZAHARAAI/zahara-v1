@@ -9,11 +9,11 @@ Covers:
   - Request_id deduplication (where applicable)
 """
 
-import time
 import uuid
-import requests
-from tests._http_helpers import api_post, api_get, api_patch, api_delete
+
 import pytest
+
+from tests._http_helpers import api_get, api_patch, api_post
 
 API_BASE = "http://localhost:8000"
 

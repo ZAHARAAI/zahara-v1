@@ -654,6 +654,7 @@ export default function Timeline() {
       runUI.setError(err?.message ?? `Failed to ${label.toLowerCase()} run`);
     } finally {
       setLoading(false);
+      runUI.hide();
     }
   }
 

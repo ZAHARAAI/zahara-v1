@@ -8,18 +8,20 @@ Tests for enforcement logic in run executor:
 - PATCH clearing tool_allowlist to null (deny-by-default reset)
 """
 
+from datetime import datetime, timedelta, timezone
+from unittest.mock import Mock
+
 import pytest
-from datetime import datetime, timezone, timedelta
-from unittest.mock import Mock, MagicMock, patch
+
+from services.api.app.models.agent import Agent as AgentModel
+from services.api.app.routers.agents import _UNSET, AgentUpdate
 
 # Import the enforcement functions from run_executor
 from services.api.app.services.run_executor import (
-    _extract_tool_names,
-    _check_tool_allowlist,
     _check_runaway_protection,
+    _check_tool_allowlist,
+    _extract_tool_names,
 )
-from services.api.app.models.agent import Agent as AgentModel
-from services.api.app.routers.agents import AgentUpdate, _UNSET
 
 
 class TestToolAllowlistEnforcement:

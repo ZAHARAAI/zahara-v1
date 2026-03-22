@@ -18,7 +18,8 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event as sa_event
+from sqlalchemy import create_engine
+from sqlalchemy import event as sa_event
 from sqlalchemy.orm import sessionmaker
 
 # Path setup
@@ -44,8 +45,6 @@ with (
 ):
     from app.database import Base, get_db
     from app.main import app
-    from app.models.run import Run as RunModel
-    from app.models.user import User as UserModel
 
 from sqlalchemy.pool import StaticPool
 

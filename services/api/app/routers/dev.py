@@ -662,8 +662,6 @@ def seed_demo(
     db: Session = Depends(get_db),
 ) -> SeedResponse:
     """
-    TASK-B1 + TASK-E3  —  Create (or re-create) demo agents and run history.
-
     force=false  idempotent: if demo data exists, raise 409 with "already_seeded"
                  so the frontend api.ts converts it to a soft-success.
     force=true   wipe and re-seed.

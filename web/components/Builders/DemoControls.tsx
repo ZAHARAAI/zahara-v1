@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { useDemoStore } from "@/hooks/useDemoStore";
 import { useActiveRun, useBuildersStore } from "@/hooks/useBuildersStore";
 import { useRunStore } from "@/hooks/useRunStore";
+import { listAgents } from "@/services/api";
 
 // Duration (ms) the re-seed confirm state stays visible before auto-dismissing
 const CONFIRM_DISMISS_MS = 3_000;
@@ -20,15 +21,11 @@ export default function DemoControls() {
   const seed = useDemoStore((s) => s.seed);
   const result = useDemoStore((s) => s.result);
 
-  // EC-2: disable re-seed / run sample when a run is active
   const activeRun = useActiveRun();
   const runIsActive =
     activeRun?.status === "pending" || activeRun?.status === "running";
 
-  // ── Run Sample state ───────────────────────────────────────────────────
   const [isSampling, setIsSampling] = useState(false);
-
-  // ── Re-seed inline confirmation state ─────────────────────────────────
   const [confirming, setConfirming] = useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -46,8 +43,6 @@ export default function DemoControls() {
   }, [phase]);
 
   if (notAvailable) return null;
-
-  // ── Handlers ──────────────────────────────────────────────────────────
 
   function handleFirstSeed() {
     void seed({ force: false });
@@ -71,17 +66,31 @@ export default function DemoControls() {
   }
 
   async function handleRunSample() {
-    // Pick the first seeded agent id
-    const agentIds = result?.agent_ids ?? [];
-    const agentId = agentIds[0] ?? null;
-    if (!agentId) {
-      toast.error("No demo agent found — seed demo data first.");
-      return;
-    }
-
     setIsSampling(true);
     try {
-      // Set agent context in store so Vibe picks it up
+      // ── Agent resolution ───────────────────────────────────────────────
+      // PRIMARY: use agent_ids from seed result if present.
+      // FALLBACK: the Job 8 backend no longer returns agent_ids in the seed
+      // response. When it's absent or empty, call listAgents() and pick the
+      // first demo agent (slug starts with "demo-"), or the first agent at all.
+      let agentId: string | null = result?.agent_ids?.[0] ?? null;
+
+      if (!agentId) {
+        try {
+          const agents = await listAgents();
+          const demoAgent = agents.find((a) => a.slug?.startsWith("demo-"));
+          agentId = demoAgent?.id ?? agents[0]?.id ?? null;
+        } catch {
+          agentId = null;
+        }
+      }
+
+      if (!agentId) {
+        toast.error("No demo agent found — seed demo data first.");
+        return;
+      }
+
+      // Sync agent context so Vibe mode picks it up
       useBuildersStore.getState().setSelectedAgentId(agentId);
 
       // Start the run
@@ -89,7 +98,6 @@ export default function DemoControls() {
         .getState()
         .startRun(agentId, "What can you help me with?");
 
-      // Get the run id that was just created
       const runId = useRunStore.getState().activeRun?.runId ?? null;
 
       toast.success("Sample run started!", {
@@ -109,7 +117,7 @@ export default function DemoControls() {
     }
   }
 
-  // ── Render: Seeding spinner ────────────────────────────────────────────
+  // ── Seeding spinner ────────────────────────────────────────────────────
   if (phase === "seeding") {
     return (
       <Button size="xs" variant="outline" disabled className="gap-1.5">
@@ -119,7 +127,7 @@ export default function DemoControls() {
     );
   }
 
-  // ── Render: Error — Retry button ──────────────────────────────────────
+  // ── Error state ────────────────────────────────────────────────────────
   if (phase === "error") {
     return (
       <Button
@@ -134,11 +142,10 @@ export default function DemoControls() {
     );
   }
 
-  // ── Render: Seeded — show Re-seed + Run Sample ─────────────────────────
+  // ── Seeded — Run Sample + Re-seed ──────────────────────────────────────
   if (phase === "success" || (phase === "idle" && seedVersion > 0)) {
     return (
       <div className="flex items-center gap-2">
-        {/* Run Sample */}
         <Button
           size="xs"
           variant="outline"
@@ -159,7 +166,6 @@ export default function DemoControls() {
           {isSampling ? "Starting…" : "Run Sample"}
         </Button>
 
-        {/* Re-seed */}
         <Button
           size="xs"
           variant={confirming ? "outline" : "ghost"}
@@ -186,7 +192,7 @@ export default function DemoControls() {
     );
   }
 
-  // ── Render: Default — first-time Seed Demo button ─────────────────────
+  // ── First-time seed CTA ────────────────────────────────────────────────
   if (phase === "idle" && seedVersion === 0) {
     return (
       <Button
