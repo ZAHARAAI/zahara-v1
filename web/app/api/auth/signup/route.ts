@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
-import { setAccessToken } from "@/lib/auth-cookies";
+import { setAccessToken, clearGuestFlag } from "@/lib/auth-cookies";
 
 export async function POST(req: Request) {
   const body = await req.json();
@@ -18,15 +18,18 @@ export async function POST(req: Request) {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(res.statusText);
+      if (!res.ok) throw new Error(data?.error?.message ?? res.statusText);
 
+      // Set real user token and clear the guest flag
       await setAccessToken(data.access_token);
+      await clearGuestFlag();
+
       return NextResponse.json({ ok: true, user: data.user });
     } catch (e) {
       last = (e as Error).message;
       if (attempt < Retry.max) {
         await new Promise((r) =>
-          setTimeout(r, Retry.backoffMs * (attempt + 1))
+          setTimeout(r, Retry.backoffMs * (attempt + 1)),
         );
       }
     }

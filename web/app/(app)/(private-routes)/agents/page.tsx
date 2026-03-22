@@ -1,9 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { Users, Layers } from "lucide-react";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { SkeletonBar } from "@/components/ui/SkeletonCard";
+import { useDemoStore } from "@/hooks/useDemoStore";
 import {
   getAgentsStats,
   listAgents,
@@ -13,6 +17,9 @@ import {
   type AgentStatsItem,
 } from "@/services/api";
 import { Button } from "@/components/ui/Button";
+
+// Auto-dismiss duration (ms) for the kill confirm state
+const KILL_CONFIRM_DISMISS_MS = 3_000;
 
 function fmtUsd(n: number) {
   if (!Number.isFinite(n)) return "—";
@@ -41,10 +48,26 @@ export default function AgentsPage() {
     "all",
   );
   const [loading, setLoading] = useState(true);
-
   const [rows, setRows] = useState<Row[]>([]);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [killing, setKilling] = useState<Record<string, boolean>>({});
+
+  // ── Kill confirm: stores the agent_id pending confirmation ────────────────
+  const [killConfirmId, setKillConfirmId] = useState<string | null>(null);
+  const killConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  const demoPhase = useDemoStore((s) => s.phase);
+  const demoSeed = useDemoStore((s) => s.seed);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (killConfirmTimerRef.current)
+        clearTimeout(killConfirmTimerRef.current);
+    };
+  }, []);
 
   async function load() {
     setLoading(true);
@@ -72,7 +95,7 @@ export default function AgentsPage() {
         };
       });
 
-      // also include agents that have no runs yet (not present in stats)
+      // Include agents that have no runs yet (not present in stats)
       const inStats = new Set(stats.map((s) => s.agent_id));
       for (const a of agents) {
         if (inStats.has(a.id)) continue;
@@ -133,7 +156,28 @@ export default function AgentsPage() {
     }
   }
 
-  async function kill(agent_id: string) {
+  // ── Kill: first click arms confirm, second click fires ────────────────────
+  function handleKillClick(agent_id: string) {
+    if (killing[agent_id]) return;
+
+    if (killConfirmId === agent_id) {
+      // Second click — confirmed, execute kill
+      if (killConfirmTimerRef.current)
+        clearTimeout(killConfirmTimerRef.current);
+      setKillConfirmId(null);
+      void executeKill(agent_id);
+    } else {
+      // First click — arm confirm state with auto-dismiss
+      if (killConfirmTimerRef.current)
+        clearTimeout(killConfirmTimerRef.current);
+      setKillConfirmId(agent_id);
+      killConfirmTimerRef.current = setTimeout(() => {
+        setKillConfirmId(null);
+      }, KILL_CONFIRM_DISMISS_MS);
+    }
+  }
+
+  async function executeKill(agent_id: string) {
     setKilling((s) => ({ ...s, [agent_id]: true }));
     try {
       const res = await killAgent(agent_id);
@@ -149,7 +193,7 @@ export default function AgentsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Agents</h1>
@@ -189,7 +233,13 @@ export default function AgentsPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-border bg-panel w-[calc(100dvw-250px)] h-[calc(100dvh-110px)] overflow-auto">
+      <div
+        className="rounded-2xl border border-border bg-panel w-[calc(100dvw-257px)] h-[calc(100dvh-110px)] overflow-auto"
+        style={{
+          scrollbarWidth: "thin",
+          scrollbarColor: "hsl(var(--border)) transparent",
+        }}
+      >
         <table className="w-fit">
           <thead className="border-b border-border">
             <tr className="text-xs uppercase tracking-wide opacity-70">
@@ -206,15 +256,58 @@ export default function AgentsPage() {
 
           <tbody className="divide-y divide-border">
             {loading ? (
-              <tr>
-                <td className="px-4 py-6 text-sm opacity-70" colSpan={8}>
-                  Loading…
-                </td>
-              </tr>
+              Array.from({ length: 4 }, (_, i) => (
+                <tr key={i}>
+                  <td className="px-4 py-3 bg-muted">
+                    <SkeletonBar width="w-28" height="h-3" className="mb-1.5" />
+                    <SkeletonBar width="w-16" height="h-2" className="mb-1" />
+                    <SkeletonBar width="w-40" height="h-2" />
+                  </td>
+                  {Array.from({ length: 7 }, (_, j) => (
+                    <td key={j} className="px-4 py-3">
+                      <SkeletonBar width="w-12" height="h-3" />
+                    </td>
+                  ))}
+                </tr>
+              ))
             ) : filtered.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-sm opacity-70" colSpan={8}>
-                  No agents found.
+                <td colSpan={8} className="px-4 py-12">
+                  <EmptyState
+                    icon={<Users className="h-5 w-5" />}
+                    title={
+                      q || status !== "all"
+                        ? "No agents match filters"
+                        : "No agents yet"
+                    }
+                    description={
+                      q || status !== "all"
+                        ? "Try adjusting your search or status filter."
+                        : "Seed demo data to create agents instantly, or build one in the Flow builder."
+                    }
+                    action={
+                      !q && status === "all" ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <button
+                            onClick={() => void demoSeed({ force: false })}
+                            disabled={demoPhase === "seeding"}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+                          >
+                            {demoPhase === "seeding"
+                              ? "Seeding…"
+                              : "Seed demo data"}
+                          </button>
+                          <Link
+                            href="/builders?v=flow"
+                            className="inline-flex items-center gap-1.5 text-sm text-muted_fg hover:text-fg transition-colors"
+                          >
+                            <Layers className="h-3.5 w-3.5" />
+                            Or build one in Flow →
+                          </Link>
+                        </div>
+                      ) : undefined
+                    }
+                  />
                 </td>
               </tr>
             ) : (
@@ -224,6 +317,9 @@ export default function AgentsPage() {
                 const ratio =
                   budget > 0 ? Math.max(0, Math.min(1, spent / budget)) : 0;
 
+                const isConfirmingKill = killConfirmId === r.agent_id;
+                const isKilling = !!killing[r.agent_id];
+
                 return (
                   <tr key={r.agent_id}>
                     {/* Agent */}
@@ -231,12 +327,12 @@ export default function AgentsPage() {
                       <Link
                         href={`/agents/${encodeURIComponent(r.agent_id)}`}
                         className="font-medium uppercase hover:underline"
-                        title="Open agent details"
+                        title="Open agent detail"
                       >
                         {r.name}
                       </Link>
                       <div className="text-xs opacity-70">{r.slug}</div>
-                      <div className="text-xs opacity-70 text-nowrap ">
+                      <div className="text-xs opacity-70 text-nowrap">
                         <span className="mr-4">
                           Avg latency: {ms(r.avg_latency_ms)}
                         </span>
@@ -367,14 +463,31 @@ export default function AgentsPage() {
                           {saving[r.agent_id] ? "Saving…" : "Save"}
                         </Button>
 
-                        <button
-                          className="h-9 rounded-xl border border-border bg-red-500 px-3 font-semibold text-sm hover:bg-red-200 disabled:opacity-50 text-white hover:text-red-500"
-                          disabled={!!killing[r.agent_id]}
-                          onClick={() => kill(r.agent_id)}
-                          title="Pause agent and cancel running runs"
-                        >
-                          {killing[r.agent_id] ? "Killing…" : "Kill"}
-                        </button>
+                        {/* ── Kill: two-click confirm pattern ── */}
+                        {isKilling ? (
+                          <button
+                            disabled
+                            className="h-9 rounded-xl border border-border px-3 text-sm opacity-50 font-medium"
+                          >
+                            Killing…
+                          </button>
+                        ) : isConfirmingKill ? (
+                          <button
+                            className="h-9 rounded-xl border border-red-500/50 bg-red-500/10 px-3 text-sm font-semibold text-red-500 hover:bg-red-500/20 animate-pulse transition-colors duration-150"
+                            onClick={() => handleKillClick(r.agent_id)}
+                            title="Click again to confirm — pauses agent and cancels all running runs"
+                          >
+                            Confirm kill?
+                          </button>
+                        ) : (
+                          <button
+                            className="h-9 rounded-xl border border-border px-3 text-sm font-medium text-muted_fg hover:border-red-500/40 hover:text-red-500 hover:bg-red-500/5 transition-colors duration-150"
+                            onClick={() => handleKillClick(r.agent_id)}
+                            title="Pause agent and cancel running runs (click twice to confirm)"
+                          >
+                            Kill
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -386,24 +499,4 @@ export default function AgentsPage() {
       </div>
     </div>
   );
-}
-
-{
-  /* detail row */
-}
-{
-  /* <tr key={`${r.agent_id}-detail`}>
-                      <td
-                        className="px-4 pb-3 pt-0 text-xs opacity-70"
-                        colSpan={8}
-                      >
-                        <span className="mr-4">
-                          Avg latency: {ms(r.avg_latency_ms)}
-                        </span>
-                        <span className="mr-4">
-                          P95: {ms(r.p95_latency_ms)}
-                        </span>
-                        <span>Tokens: {r.tokens_total.toLocaleString()}</span>
-                      </td>
-                    </tr> */
 }

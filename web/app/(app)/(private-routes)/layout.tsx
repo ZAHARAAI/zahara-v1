@@ -8,13 +8,25 @@ export default async function PrivateRoutesLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // const token = await getAccessToken();
-  // if (!token) redirect("/login");
+  // Middleware (middleware.ts) auto-provisions a guest token for users
+  // arriving without a cookie, so by the time this layout runs there
+  // should always be a token. This redirect is a safety-net fallback only.
+  const token = await getAccessToken();
+  if (!token) redirect("/login");
+
   return (
     <div className="flex h-dvh bg-bg text-fg min-w-[1200px]">
       <LeftNav />
       <div className="flex-1 flex flex-col">
-        <div className="flex-1 p-4 h-dvh overflow-auto">{children}</div>
+        <div
+          className="flex-1 p-4 overflow-auto"
+          style={{
+            scrollbarWidth: "thin",
+            scrollbarColor: "hsl(var(--border)) transparent",
+          }}
+        >
+          {children}
+        </div>
       </div>
       <RunOverlay />
     </div>

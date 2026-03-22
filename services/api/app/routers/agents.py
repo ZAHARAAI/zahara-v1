@@ -11,12 +11,16 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Request,
     status,
 )
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
+
+# Sentinel to distinguish "field not sent" from "explicitly set to null"
+_UNSET = object()
 
 from ..database import get_db
 from ..middleware.auth import get_current_user
@@ -132,15 +136,28 @@ class AgentCreate(BaseModel):
     slug: Optional[str] = None
     description: Optional[str] = None
     spec: Dict[str, Any] = Field(default_factory=dict)
+    budget_daily_usd: Optional[float] = None
+    tool_allowlist: Optional[List[str]] = None  # Deny-by-default: None blocks tools unless TOOL_GOVERNANCE_LEGACY_OPEN=true
+    max_steps_per_run: Optional[int] = None  # Max steps per run, None = unlimited
+    max_duration_seconds_per_run: Optional[int] = None  # Max duration per run, None = unlimited
 
 
 class AgentUpdate(BaseModel):
+    model_config = {"arbitrary_types_allowed": True}
+
     name: Optional[str] = None
     description: Optional[str] = None
 
     # Job7: allow lifecycle + budget updates from UI
     status: Optional[str] = None  # active | paused | retired
     budget_daily_usd: Optional[float] = None  # None means no cap
+
+    # Job9C Day 6: Tool allowlist and runaway protection
+    # Uses _UNSET sentinel so PATCH can distinguish "not sent" from "explicitly null".
+    # Send tool_allowlist: null in JSON to clear back to deny-by-default.
+    tool_allowlist: Any = Field(default=_UNSET)
+    max_steps_per_run: Optional[int] = None  # Max steps per run, None = unlimited
+    max_duration_seconds_per_run: Optional[int] = None  # Max duration per run, None = unlimited
 
 
 class AgentSpecCreate(BaseModel):
@@ -157,6 +174,11 @@ class AgentItem(BaseModel):
     # Job7
     status: Optional[str] = None
     budget_daily_usd: Optional[float] = None
+
+    # Job9C Day 6
+    tool_allowlist: Optional[List[str]] = None
+    max_steps_per_run: Optional[int] = None
+    max_duration_seconds_per_run: Optional[int] = None
 
     created_at: str
     updated_at: str
@@ -286,6 +308,9 @@ def _to_agent_item(model: AgentModel) -> AgentItem:
         budget_daily_usd=float(getattr(model, "budget_daily_usd", 0) or 0)
         if getattr(model, "budget_daily_usd", None) is not None
         else None,
+        tool_allowlist=getattr(model, "tool_allowlist", None),
+        max_steps_per_run=getattr(model, "max_steps_per_run", None),
+        max_duration_seconds_per_run=getattr(model, "max_duration_seconds_per_run", None),
         created_at=_dt_to_iso_z(model.created_at),
         updated_at=_dt_to_iso_z(model.updated_at),
     )
@@ -632,6 +657,10 @@ def create_agent(
             name=name,
             slug=_slugify(slug),
             description=body.description.strip() if body.description else None,
+            budget_daily_usd=body.budget_daily_usd if body.budget_daily_usd and body.budget_daily_usd > 0 else None,
+            tool_allowlist=body.tool_allowlist,
+            max_steps_per_run=body.max_steps_per_run,
+            max_duration_seconds_per_run=body.max_duration_seconds_per_run,
         )
         db.add(agent)
         db.commit()
@@ -776,6 +805,39 @@ def update_agent(
             body.budget_daily_usd if body.budget_daily_usd > 0 else None
         )
 
+    # Job9C Day 6: Tool allowlist and runaway protection updates
+    if body.tool_allowlist is not _UNSET:
+        # Explicitly sent: None clears to deny-by-default, list sets allowlist
+        agent.tool_allowlist = body.tool_allowlist
+
+    if body.max_steps_per_run is not None:
+        if body.max_steps_per_run < 1:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "INVALID",
+                        "message": "max_steps_per_run must be >= 1",
+                    },
+                },
+            )
+        agent.max_steps_per_run = body.max_steps_per_run
+
+    if body.max_duration_seconds_per_run is not None:
+        if body.max_duration_seconds_per_run < 1:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "ok": False,
+                    "error": {
+                        "code": "INVALID",
+                        "message": "max_duration_seconds_per_run must be >= 1",
+                    },
+                },
+            )
+        agent.max_duration_seconds_per_run = body.max_duration_seconds_per_run
+
     db.add(agent)
     db.commit()
     db.refresh(agent)
@@ -887,10 +949,31 @@ def start_agent_run(
     agent_id: str,
     body: RunRequest,
     background_tasks: BackgroundTasks,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> RunResponse:
     try:
+        # Idempotency-Key support: check if run with this key already exists
+        idempotency_key = request.headers.get("Idempotency-Key") if request else None
+        
+        if idempotency_key:
+            # Check if run with this idempotency key already exists for this user
+            existing_run = (
+                db.query(RunModel)
+                .filter(
+                    RunModel.user_id == current_user.id,
+                    RunModel.request_id == idempotency_key,
+                )
+                .first()
+            )
+            if existing_run:
+                return RunResponse(
+                    ok=True,
+                    run_id=existing_run.id,
+                    request_id=existing_run.request_id,
+                )
+        
         agent: AgentModel | None = (
             db.query(AgentModel)
             .filter(
@@ -948,7 +1031,8 @@ def start_agent_run(
             )
 
         run_id = _new_run_id()
-        request_id = str(uuid4())
+        # Use Idempotency-Key as request_id if provided, otherwise generate UUID
+        request_id = idempotency_key if idempotency_key else str(uuid4())
 
         # Track the exact spec version used for this run (for deterministic retry/replay).
         spec_row = (
@@ -973,11 +1057,15 @@ def start_agent_run(
         db.commit()
         db.refresh(run)
 
+        # Get next seq for this run
+        max_seq = db.query(func.max(RunEventModel.seq)).filter(RunEventModel.run_id == run.id).scalar()
+        seq = (max_seq or 0) + 1
         db.add(
             RunEventModel(
                 run_id=run.id,
                 type="system",
                 payload={"event": "run_created", "request_id": request_id},
+                seq=seq,
             )
         )
         db.commit()
@@ -1071,6 +1159,8 @@ def kill_agent(
         r.error_message = "Cancelled by agent kill"
         db.add(r)
 
+        # Get next seq for this run
+        max_seq_val = db.query(func.max(RunEventModel.seq)).filter(RunEventModel.run_id == r.id).scalar()
         db.add(
             RunEventModel(
                 run_id=r.id,
@@ -1079,6 +1169,7 @@ def kill_agent(
                     "message": "Cancelled by agent kill",
                     "request_id": r.request_id,
                 },
+                seq=(max_seq_val or 0) + 1,
             )
         )
 

@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     rate_limit_requests: int = 60
     rate_limit_window: int = 60
 
+    # Tool governance
+    # When True, agents with tool_allowlist=None allow all tools (legacy).
+    # When False (deny-by-default), tool_allowlist=None blocks all tools.
+    tool_governance_legacy_open: bool = False
+
     # Flowise
     flowise_host: str = "flowise"
     flowise_port: int = 3000

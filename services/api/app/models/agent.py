@@ -1,4 +1,5 @@
 from sqlalchemy import (
+    JSON,
     Column,
     DateTime,
     ForeignKey,
@@ -30,6 +31,9 @@ class Agent(Base):
         String(16), nullable=False, default="active", server_default="active"
     )
     budget_daily_usd = Column(Numeric(10, 2), nullable=True)
+    tool_allowlist = Column(JSON, nullable=True)  # deny-by-default: None blocks unless TOOL_GOVERNANCE_LEGACY_OPEN=true
+    max_steps_per_run = Column(Integer, nullable=True)  # max steps per run, None = unlimited
+    max_duration_seconds_per_run = Column(Integer, nullable=True)  # max duration per run, None = unlimited
 
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

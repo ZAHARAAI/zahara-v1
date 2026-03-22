@@ -49,6 +49,7 @@ def create_access_token(
     subject: str,
     user_id: int,
     expires_minutes: int = 60 * 24 * 7,
+    extra_claims: dict | None = None,
 ) -> str:
     now = datetime.now(timezone.utc)
     exp = now + timedelta(minutes=expires_minutes)
@@ -58,6 +59,8 @@ def create_access_token(
         "iat": int(now.timestamp()),
         "exp": int(exp.timestamp()),
     }
+    if extra_claims:
+        payload.update(extra_claims)
     return jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALG)
 
 

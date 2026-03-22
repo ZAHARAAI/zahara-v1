@@ -1,4 +1,3 @@
-// components/Pro/FileTree.tsx
 "use client";
 
 import { useProStore } from "@/hooks/useProStore";
@@ -37,7 +36,7 @@ const FileTree = () => {
         </div>
       ) : (
         <div className="flex-1 overflow-auto px-2 py-1">
-          {files.length !== 0 && (
+          {files.length === 0 && (
             <div className="px-1 py-1 text-muted_fg/70">
               No files found under workspace root.
             </div>

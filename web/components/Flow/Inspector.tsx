@@ -6,10 +6,10 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { useFlowStore } from "@/hooks/useFlowStore";
-import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import type { AnyNodeData } from "./types";
 import { toast } from "sonner";
+import { useBuildersStore } from "@/hooks/useBuildersStore";
 
 const TABS = ["config", "prompt", "logs"] as const;
 type Tab = (typeof TABS)[number];
@@ -79,10 +79,91 @@ function parseJsonLoose(s: string) {
   return JSON.parse(s || "{}");
 }
 
+// ── Block guide shown when no node is selected ────────────────────────────
+
+const BLOCK_GUIDE: Array<{
+  kind: NodeKind;
+  label: string;
+  hint: string;
+  dot: string;
+}> = [
+  {
+    kind: "start",
+    label: "Start",
+    hint: "Entry point — trigger type",
+    dot: "bg-emerald-400",
+  },
+  {
+    kind: "model",
+    label: "Model",
+    hint: "LLM call — pick provider + model",
+    dot: "bg-blue-400",
+  },
+  {
+    kind: "tool",
+    label: "Tool",
+    hint: "External action or MCP",
+    dot: "bg-amber-400",
+  },
+  {
+    kind: "output",
+    label: "Output",
+    hint: "Final response sink",
+    dot: "bg-purple-400",
+  },
+];
+
+function InspectorEmptyState() {
+  return (
+    <div className="flex flex-col gap-4 p-1">
+      <p className="text-xs text-muted_fg leading-relaxed">
+        Add a block from the left panel, then click it to configure.
+      </p>
+
+      {/* Block type guide */}
+      <div className="rounded-xl border border-border bg-muted/50 divide-y divide-border overflow-hidden">
+        {BLOCK_GUIDE.map(({ kind, label, hint, dot }) => (
+          <div key={kind} className="flex items-center gap-2.5 px-3 py-2">
+            <span className={`h-2 w-2 rounded-full shrink-0 ${dot}`} />
+            <div className="min-w-0">
+              <div className="text-[12px] font-medium">{label}</div>
+              <div className="text-[11px] text-muted_fg">{hint}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Workflow hint */}
+      <div className="rounded-xl border border-border bg-muted/30 px-3 py-2">
+        <div className="text-[10px] uppercase tracking-wide text-muted_fg mb-1.5 font-medium">
+          Typical flow
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {["Start", "→", "Model", "→", "Tool", "→", "Output"].map((item, i) =>
+            item === "→" ? (
+              <span key={i} className="text-muted_fg text-[11px]">
+                →
+              </span>
+            ) : (
+              <span
+                key={i}
+                className="rounded-md border border-border bg-panel px-2 py-0.5 text-[11px] font-medium"
+              >
+                {item}
+              </span>
+            ),
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Inspector() {
   const { nodes, selectedId, setNodes, meta, flowName, runEvents } =
     useFlowStore();
-  const router = useRouter();
+
+  const { setMode } = useBuildersStore();
   const [tab, setTab] = useState<Tab>("config");
   // JSON editor for tool args
   const [argsError, setArgsError] = useState<string>("");
@@ -112,24 +193,18 @@ export default function Inspector() {
   };
 
   const openInPro = () => {
-    router.push(
-      "/pro" +
-        (meta?.agentId ? `?agentId=${encodeURIComponent(meta.agentId)}` : ""),
-    );
+    setMode("pro");
   };
 
   const formattedLogs: LogLine[] = useMemo(() => {
     const out: LogLine[] = [];
-    // console.log(runEvents);
     for (const ev of runEvents as any[]) {
       const t = ev?.type ?? "log";
       const ts = ev?.ts ?? ev?.created_at ?? ev?.timestamp;
 
       if (t === "ping") {
         const last = out[out.length - 1];
-
         if (last && last.type === "ping") {
-          // increment counter
           last.raw.count = (last.raw.count ?? 1) + 1;
           last.message = `heartbeat x${last.raw.count}`;
         } else {
@@ -140,7 +215,6 @@ export default function Inspector() {
             raw: { count: 1 },
           });
         }
-
         continue;
       }
 
@@ -216,11 +290,50 @@ export default function Inspector() {
 
   const data = (selected?.data as any) ?? {};
 
+  // Shared log panel renderer (used in both selected and unselected states)
+  const logPanel = (
+    <div className="space-y-2">
+      {formattedLogs.length === 0 ? (
+        <div className="text-xs opacity-70">
+          Run logs will appear here during execution.
+        </div>
+      ) : (
+        <div
+          className="max-h-[360px] overflow-auto rounded-xl border border-border bg-card p-2"
+          style={{ scrollbarWidth: "thin" }}
+        >
+          {formattedLogs.map((line, i) => (
+            <div
+              key={i}
+              className={`text-xs py-2 border-b border-border last:border-b-0 ${
+                line.type === "error" ? "text-red-200" : ""
+              } ${line.type === "ping" ? "text-blue-200 opacity-70" : ""} ${
+                line.type === "done" ? "text-green-500 opacity-70" : ""
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="opacity-70 font-mono text-[11px] uppercase">
+                  {line.type}
+                </div>
+                {line.ts ? (
+                  <div className="opacity-60 text-[10px]">{line.ts}</div>
+                ) : null}
+              </div>
+              <pre className="mt-1 whitespace-pre-wrap wrap-break-word text-[11px] leading-relaxed">
+                {line.message}
+              </pre>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-border p-3">
         <div className="text-sm font-medium">Inspector</div>
-        <div className="text-xs opacity-70">{flowName}</div>
+        <div className="text-xs opacity-70">{flowName || "No flow loaded"}</div>
       </div>
 
       <div className="flex items-center gap-2 border-b border-border p-2">
@@ -241,11 +354,12 @@ export default function Inspector() {
       </div>
 
       <div className="flex-1 overflow-auto p-3 space-y-3">
+        {/* No node selected — show empty state or logs */}
         {!selected ? (
-          tab !== "logs" ? (
-            <div className="text-sm opacity-70">Select a node to edit.</div>
+          tab === "logs" ? (
+            logPanel
           ) : (
-            ""
+            <InspectorEmptyState />
           )
         ) : (
           <>
@@ -263,7 +377,7 @@ export default function Inspector() {
                   />
                 </div>
 
-                {/* Node kind info (don’t let users change type unless you really want it) */}
+                {/* Node kind info */}
                 <div>
                   <div className="text-xs opacity-70 mb-1">Node</div>
                   <div className="text-xs font-mono opacity-80">
@@ -275,7 +389,6 @@ export default function Inspector() {
                 {selectedKind === "start" && (
                   <div className="space-y-3 rounded-xl border border-border p-3">
                     <div className="text-sm font-medium">Start settings</div>
-
                     <div>
                       <div className="text-xs opacity-70 mb-1">Trigger</div>
                       <Select
@@ -295,7 +408,6 @@ export default function Inspector() {
                 {selectedKind === "model" && (
                   <div className="space-y-3 rounded-xl border border-border p-3">
                     <div className="text-sm font-medium">Model settings</div>
-
                     <div>
                       <div className="text-xs opacity-70 mb-1">Provider</div>
                       <Select
@@ -311,7 +423,6 @@ export default function Inspector() {
                         ]}
                       />
                     </div>
-
                     <div>
                       <div className="text-xs opacity-70 mb-1">Model</div>
                       <Input
@@ -319,10 +430,9 @@ export default function Inspector() {
                         onChange={(e) =>
                           updateNodeData({ model: e.target.value } as any)
                         }
-                        placeholder='e.g. "gpt-4.1-mini"'
+                        placeholder='e.g. "gpt-4o-mini"'
                       />
                     </div>
-
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <div className="text-xs opacity-70 mb-1">
@@ -360,7 +470,6 @@ export default function Inspector() {
                 {selectedKind === "tool" && (
                   <div className="space-y-3 rounded-xl border border-border p-3">
                     <div className="text-sm font-medium">Tool settings</div>
-
                     <div>
                       <div className="text-xs opacity-70 mb-1">Tool name</div>
                       <Input
@@ -371,7 +480,6 @@ export default function Inspector() {
                         placeholder='e.g. "web_search"'
                       />
                     </div>
-
                     <div>
                       <div className="text-xs opacity-70 mb-1">Mode</div>
                       <Select
@@ -384,7 +492,6 @@ export default function Inspector() {
                         ]}
                       />
                     </div>
-
                     <div>
                       <div className="text-xs opacity-70 mb-1">
                         Entry / Route
@@ -397,19 +504,13 @@ export default function Inspector() {
                         placeholder='e.g. "/search" or "google.search"'
                       />
                     </div>
-
                     <div>
                       <div className="text-xs opacity-70 mb-1">Args (JSON)</div>
-
                       <Textarea
                         value={stringifyArgs(data?.args)}
                         onChange={(e) => {
                           const next = e.target.value;
-
-                          // Store as string while typing (so we don't fight formatting)
                           updateNodeData({ args: next } as any);
-
-                          // Live validate (optional)
                           try {
                             parseJsonLoose(next);
                             setArgsError("");
@@ -420,7 +521,6 @@ export default function Inspector() {
                         rows={8}
                         placeholder='{"q":"site:example.com","limit":5}'
                       />
-
                       <div className="mt-2 flex items-center gap-2">
                         <Button
                           onClick={() => {
@@ -428,7 +528,6 @@ export default function Inspector() {
                               const parsed = parseJsonLoose(
                                 stringifyArgs(data?.args),
                               );
-                              // Normalize stored value to an object on apply
                               updateNodeData({ args: parsed } as any);
                               setArgsError("");
                             } catch (err: any) {
@@ -438,7 +537,6 @@ export default function Inspector() {
                         >
                           Apply JSON
                         </Button>
-
                         {argsError ? (
                           <div className="text-xs text-red-200">
                             {argsError}
@@ -457,7 +555,6 @@ export default function Inspector() {
                 {selectedKind === "output" && (
                   <div className="space-y-3 rounded-xl border border-border p-3">
                     <div className="text-sm font-medium">Output settings</div>
-
                     <div>
                       <div className="text-xs opacity-70 mb-1">Sink</div>
                       <Select
@@ -470,7 +567,6 @@ export default function Inspector() {
                         ]}
                       />
                     </div>
-
                     {data?.sink === "webhook" ? (
                       <div>
                         <div className="text-xs opacity-70 mb-1">
@@ -506,89 +602,23 @@ export default function Inspector() {
               </div>
             )}
 
-            {tab === "logs" && (
-              <div className="space-y-2">
-                {formattedLogs.length === 0 ? (
-                  <div className="text-xs opacity-70">
-                    Run logs will appear here during execution.
-                  </div>
-                ) : (
-                  <div className="max-h-[360px] overflow-auto rounded-xl border border-border bg-card p-2">
-                    {formattedLogs.map((line, i) => (
-                      <div
-                        key={i}
-                        className={`text-xs py-2 border-b border-border last:border-b-0 ${
-                          line.type === "error" ? "text-red-200" : ""
-                        } ${
-                          line.type === "ping" ? "text-blue-200 opacity-70" : ""
-                        } ${
-                          line.type === "done"
-                            ? "text-green-500 opacity-70"
-                            : ""
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="opacity-70 font-mono text-[11px] uppercase">
-                            {line.type}
-                          </div>
-                          {line.ts ? (
-                            <div className="opacity-60 text-[10px]">
-                              {line.ts}
-                            </div>
-                          ) : null}
-                        </div>
-                        <pre className="mt-1 whitespace-pre-wrap wrap-break-word text-[11px] leading-relaxed">
-                          {line.message}
-                        </pre>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            {tab === "logs" && logPanel}
           </>
-        )}
-
-        {!selected && tab === "logs" && (
-          <div className="space-y-2">
-            {formattedLogs.length === 0 ? (
-              <div className="text-xs opacity-70">
-                Run logs will appear here during execution.
-              </div>
-            ) : (
-              <div className="max-h-[360px] overflow-auto rounded-xl border border-border bg-card p-2">
-                {formattedLogs.map((line, i) => (
-                  <div
-                    key={i}
-                    className={`text-xs py-2 border-b border-border last:border-b-0 ${
-                      line.type === "error" ? "text-red-200" : ""
-                    } ${
-                      line.type === "ping" ? "text-blue-200 opacity-70" : ""
-                    } ${
-                      line.type === "done" ? "text-green-500 opacity-70" : ""
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="opacity-70 font-mono text-[11px] uppercase">
-                        {line.type}
-                      </div>
-                      {line.ts ? (
-                        <div className="opacity-60 text-[10px]">{line.ts}</div>
-                      ) : null}
-                    </div>
-                    <pre className="mt-1 whitespace-pre-wrap wrap-break-word text-[11px] leading-relaxed">
-                      {line.message}
-                    </pre>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         )}
       </div>
 
       <div className="border-t border-border p-3">
-        <Button onClick={openInPro}>Open in Pro</Button>
+        <Button
+          onClick={openInPro}
+          className="w-full"
+          title={
+            meta?.agentId
+              ? "Open this agent in Pro mode"
+              : "Save the flow as an agent first to open in Pro"
+          }
+        >
+          Open in Pro
+        </Button>
       </div>
     </div>
   );
